@@ -4,6 +4,10 @@ A Pi-hole DNS dashboard that runs as a standalone Docker container. Streams live
 
 Designed to be dropped in alongside an existing Pi-hole v6 setup with no extra dependencies.
 
+<img width="1711" height="1266" alt="action-shot" src="https://github.com/user-attachments/assets/cfc7044a-6394-40a1-b227-9c14e0f8156b" />
+
+
+
 ---
 
 ## Quick Start
