@@ -1,0 +1,51 @@
+services:
+  ph-intercept:
+    image: ghcr.io/m00grin/ph-intercept:latest
+    hostname: ph-intercept
+    container_name: ph-intercept
+    restart: unless-stopped
+
+    # Create a .env file in this directory with:
+    #   PIHOLE_PASSWORD=your_pihole_password
+    env_file:
+      - .env
+
+    environment:
+      # Pi-hole v6 API endpoint. Replace with your Pi-hole's IP/port
+      PIHOLE_URL: "http://your.server.ip.address:your_pihole_port/api"
+
+      # Optional: where ESC in-game navigates to (e.g. your homelab dashboard).
+      # Leave blank ("") to restart the game on ESC instead.
+      RETURN_URL: ""
+
+      # Background style: starfield | dark | nebula
+      BG_MODE: starfield
+
+      # Sky region shown when BG_MODE=starfield:
+      #   summer_triangle | orion | scorpius | southern_cross
+      SKY_PRESET: summer_triangle
+
+      # Set BG_IMAGE to use a custom background. URL to an image, or /bg/your-filename.jpg.
+      # Changing this from ("") will override BG_MODE and show your custom image instead.
+      BG_IMAGE: ""
+
+    volumes:
+      - ./bg:/app/static/bg:ro
+
+    ports:
+      # Host port : container port. Change the left side if 4653 is taken
+      - "4653:4653"
+
+    # Optional: point DNS at your Pi-hole (if used for DNS resolution) or resolver directly (like Unbound). Remove if not needed.
+    dns:
+      - your.dns.dockernet.ip
+
+    # Optional: static IP on an existing Docker network.
+    # Remove the networks blocks entirely if you don't need them.
+    networks:
+      dns_net:
+        ipv4_address: this.container.dockernet.ip
+
+networks:
+  dns_net:
+    external: true

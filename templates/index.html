@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ph-intercept</title>
+  <link rel="icon" href="/static/icons/favicon.svg" type="image/svg+xml">
+
+  {% if bg_mode == 'starfield' %}
+  <link rel="preload" href="/static/stars-lite.json" as="fetch" type="application/json" crossorigin>
+  {% endif %}
+
+  <link rel="preload" href="/static/fonts/Orbitron-Variable.woff2"     as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/IBMPlexMono-Regular.woff2"   as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/static/fonts/PressStart2P.woff2"          as="font" type="font/woff2" crossorigin>
+
+  <link rel="stylesheet" href="/static/css/theme.css">
+  <link rel="stylesheet" href="/static/css/game.css">
+</head>
+<body class="pihole-mode">
+
+<!-- BG config injected server-side so JS doesn't need a separate fetch -->
+<script type="application/json" id="bg-config">{{ bg_config | tojson }}</script>
+<script>
+window.BG_CONFIG = JSON.parse(document.getElementById('bg-config').textContent);
+if (window.BG_CONFIG.bg_image) {
+  document.getElementById('bg-image').style.backgroundImage = 'url(' + window.BG_CONFIG.bg_image + ')';
+}
+</script>
+
+<div id="bg-image"></div>
+
+<canvas id="starfield"></canvas>
+<canvas id="pihole-canvas"></canvas>
+
+<a id="pihole-link" href="{{ pihole_dashboard | e }}" target="_blank" rel="noopener noreferrer">
+  <img src="/static/icons/pihole.svg" alt="Pi-hole" draggable="false">
+</a>
+
+<!-- Starfield deps (always loaded; no-ops when BG_MODE != starfield) -->
+<script src="/static/js/star-catalog.js"></script>
+<script src="/static/js/planets.js"></script>
+<script src="/static/js/transients.js"></script>
+<script src="/static/js/dso-render.js"></script>
+<script src="/static/js/starfield-lite.js"></script>
+
+{% if bg_mode == 'nebula' %}
+<script src="/static/js/bg-nebula.js"></script>
+{% endif %}
+
+<!-- Splash runs first; calls enterPiholeMode() when animation completes -->
+<script src="/static/js/splash.js"></script>
+
+<!-- Game -->
+<script src="/static/js/game-bitmaps.js"></script>
+<script src="/static/js/game.js"></script>
+
+</body>
+</html>

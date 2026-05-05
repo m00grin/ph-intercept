@@ -1,0 +1,48 @@
+/* ── Canvas layers ─────────────────────────────────────────────────── */
+#starfield {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 0; pointer-events: none;
+}
+
+/* Custom image background (BG_MODE=image) */
+#bg-image {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 0; background-size: cover; background-position: center;
+  pointer-events: none;
+}
+
+/* Game canvas — always on top, always active in standalone mode */
+#pihole-canvas {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  z-index: 15; image-rendering: pixelated;
+  opacity: 0; transition: opacity 0.6s linear;
+}
+
+/* body always has .pihole-mode in standalone; this activates the canvas */
+body.pihole-mode #pihole-canvas {
+  pointer-events: auto; cursor: default;
+}
+
+/* Pi-hole dashboard link — far left of HUD strip */
+#pihole-link {
+  position: fixed;
+  left: 20px;
+  bottom: 48px;
+  height: 16px;
+  width: auto;
+  display: none;
+  z-index: 16;
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity 150ms ease, filter 150ms ease;
+  filter: saturate(0.15) brightness(0.65) sepia(0.3) hue-rotate(160deg);
+}
+#pihole-link:hover {
+  opacity: 1;
+  filter: saturate(1.4) brightness(1.15) drop-shadow(0 0 5px rgba(40, 252, 46, 0.55));
+}
+#pihole-link img {
+  height: 16px;
+  width: auto;
+  display: block;
+}
