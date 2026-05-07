@@ -47,10 +47,23 @@ app.mount("/static", StaticFiles(directory=_base / "static"), name="static")
 app.mount("/bg", StaticFiles(directory=_base / "static" / "bg", check_dir=False), name="bg")
 
 
+_CSP = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src * data: blob:; "
+    "font-src 'self'; "
+    "connect-src 'self'; "
+    "frame-ancestors *"
+)
+
+
 class ResponseHeaderMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Content-Security-Policy"] = _CSP
         if request.url.path.startswith("/static/"):
             if request.url.path.endswith(('.woff2', '.woff', '.ttf', '.otf')):
                 response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
@@ -96,7 +109,15 @@ async def pihole_stats():
 @app.post("/api/pihole/toggle")
 async def pihole_toggle(request: Request):
     body = await request.json()
-    return await toggle_blocking(_http_client, bool(body.get("enable", True)), body.get("timer"))
+    timer = body.get("timer")
+    if timer is not None:
+        try:
+            timer = int(timer)
+            if timer <= 0:
+                timer = None
+        except (TypeError, ValueError):
+            timer = None
+    return await toggle_blocking(_http_client, bool(body.get("enable", True)), timer)
 
 
 @app.post("/api/pihole/gravity-update")

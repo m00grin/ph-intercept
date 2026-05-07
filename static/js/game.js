@@ -87,7 +87,7 @@
   let shipMenuHovered = false;
   let shipBodyHitbox = { x: 0, y: 0, w: 0, h: 0 };
   let shipQuote = null;    // { text: string, shownAt: number } | null
-  let shipQuoteCooldown = 0; // performance.now() timestamp — no new quotes until after this
+  let shipQuoteCooldown = 0; // performance.now() timestamp; no new quotes until after this
   let shipQuoteDeck = [];       // shuffled queue for the current ship
   let shipQuoteDeckFor = null;  // which ship the deck was built for
   let shipQuoteLastShown = null;
@@ -730,7 +730,7 @@
         carrierY = H + 240; carrierArrivingAt = t;
       }
     }
-    // Also trigger carrier if we entered already-down (e.g. from saved timer)
+    // Also trigger carrier if blocking was detected off via poll (e.g. external Pi-hole toggle)
     if (shipPowerState === 'down' && blockingEnabled === false && carrierState === 'none') {
       carrierState = 'arriving'; carrierRestY = H * 0.78;
       carrierY = H + 240; carrierArrivingAt = t;
@@ -768,7 +768,7 @@
         // (removing it would trigger the X→burger span animation while fading, visible to the user)
         if (settingsMenuOpen) settingsMenuOpen = false;
       } else if (!settingsMenuOpen) {
-        // Snap the button state clean while opacity is still 0 — the class removal is invisible
+        // Snap the button state clean while opacity is still 0; the class removal is invisible
         settingsBtnEl.classList.remove('menu-open');
       }
     }
@@ -1944,11 +1944,11 @@
       ctx.font = `${_fSub}px "Press Start 2P", monospace`;
       for (const item of _sitems) {
         const hb = { x: smX, y: siy, w: smw, h: smItemH };
-        // Row label (static — no row-level hover)
+        // Row label (static, no row-level hover)
         ctx.textAlign = 'left';
         ctx.fillStyle = 'rgba(175,200,238,0.65)';
         ctx.fillText(item.label, smX + 12, siy + 19);
-        // Toggle switch (track + sliding knob) — hover state on pill only
+        // Toggle switch (track + sliding knob); hover state on pill only
         const pillW = 36, pillH = 14, pillX = smX + smw - 12 - pillW, pillY = siy + (smItemH - pillH) / 2;
         const pillHov = mouseX >= pillX && mouseX <= pillX + pillW && mouseY >= pillY && mouseY <= pillY + pillH;
         const knobSz = 10, knobPad = 2;
@@ -2482,7 +2482,7 @@
           else if (item.key === 'client')      { showClient     = !showClient;     _saveDisplaySettings(); }
           else if (item.key === 'pihole-link') {
             const url = phLinkEl ? phLinkEl.dataset.href : null;
-            if (url) window.open(url, '_blank', 'noopener,noreferrer');
+            if (url && /^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener,noreferrer');
             settingsMenuOpen = false;
             if (settingsBtnEl) settingsBtnEl.classList.remove('menu-open');
           }
@@ -2491,7 +2491,7 @@
       }
       settingsMenuOpen = false;
       if (settingsBtnEl) settingsBtnEl.classList.remove('menu-open');
-      // fall through — let the click reach shield/ship hitboxes
+      // fall through; let the click reach shield/ship hitboxes
     }
 
     // Ship menu open - click selects or dismisses; fall through to activate other targets
@@ -2579,8 +2579,8 @@
     canvas.style.cursor = (arrowHovered || shieldHovered || overShieldMenu || shipMenuHovered || overShipMenu || overSettingsMenu) ? 'pointer' : '';
   });
 
-  // The pihole icon and settings button sit above the canvas (z-index 16) and capture
-  // pointer events, so canvas mousemove never fires while hovering them.
+  // The settings button sits above the canvas (z-index 16) and captures pointer events,
+  // so canvas mousemove never fires while hovering it.
   if (phLinkEl) {
     phLinkEl.addEventListener('mouseenter', () => {
       arrowHovered = false; shieldHovered = false; shipMenuHovered = false;
@@ -2588,7 +2588,7 @@
     });
     phLinkEl.addEventListener('click', () => {
       const url = phLinkEl.dataset.href;
-      if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      if (url && /^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener,noreferrer');
     });
   }
   if (settingsBtnEl) {
@@ -2613,7 +2613,7 @@
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     const ret = (window.BG_CONFIG || {}).return_url;
-    if (!ret) return;
+    if (!ret || /^(javascript|data):/i.test(ret)) return;
     const veil = document.createElement('div');
     veil.dataset.navVeil = '1';
     veil.style.cssText = 'position:fixed;inset:0;background:#000;opacity:0;transition:opacity 180ms linear;z-index:9999;pointer-events:none;';

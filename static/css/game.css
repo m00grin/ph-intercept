@@ -30,11 +30,11 @@ body.pihole-mode #pihole-canvas {
   pointer-events: auto; cursor: default;
 }
 
-/* Settings burger button - sits above pihole icon; bottom synced by JS on resize */
+/* Settings burger button; bottom synced by JS on resize */
 #settings-btn {
   position: fixed;
   left: 14px;
-  bottom: 44px; /* JS overrides this on load via resize() — vertically centered in HUD strip */
+  bottom: 44px; /* JS overrides this on load via resize(); vertically centered in HUD strip */
   width: 24px;
   height: 20px;
   display: none;

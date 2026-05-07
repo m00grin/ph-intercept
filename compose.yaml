@@ -20,6 +20,7 @@ services:
       PIHOLE_PASSWORD: ${PIHOLE_PASSWORD}
 
       # Optional: where ESC navigates to (like your homelab dashboard or homepage)
+      # Accepts http://, https://, protocol-relative (//), relative paths, and custom app schemes
       # Leave blank ("") to disable ESC entirely
       RETURN_URL: ""
 

@@ -27,7 +27,10 @@
 <script>
 window.BG_CONFIG = JSON.parse(document.getElementById('bg-config').textContent);
 if (window.BG_CONFIG.bg_image) {
-  document.getElementById('bg-image').style.backgroundImage = 'url("' + window.BG_CONFIG.bg_image.replace(/"/g, '%22') + '")';
+  const _img = window.BG_CONFIG.bg_image;
+  if (_img.startsWith('/') || /^https?:\/\//i.test(_img)) {
+    document.getElementById('bg-image').style.backgroundImage = 'url("' + _img.replace(/["'\\]/g, encodeURIComponent) + '")';
+  }
 }
 </script>
 

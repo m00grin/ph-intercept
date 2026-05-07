@@ -6,8 +6,6 @@ Designed to be dropped in alongside an existing Pi-hole v6 setup with no extra d
 
 <img width="1711" height="1266" alt="action-shot" src="https://github.com/user-attachments/assets/cfc7044a-6394-40a1-b227-9c14e0f8156b" />
 
-
-
 ---
 
 ## Quick Start
@@ -194,10 +192,10 @@ All configuration is via environment variables in `compose.yaml`.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `RETURN_URL` | *(empty)* | URL that ESC navigates to. Leave blank to disable ESC entirely. |
+| `RETURN_URL` | `""` | URL that ESC navigates to. Accepts `http://`, `https://`, protocol-relative (`//`), relative paths, and custom app schemes. Leave blank to disable ESC. |
 | `BG_MODE` | `starfield` | `starfield` · `dark` · `nebula` |
 | `SKY_PRESET` | `summer_triangle` | `summer_triangle` · `orion` · `scorpius` · `southern_cross` |
-| `BG_IMAGE` | *(empty)* | Image URL or `/bg/filename.jpg`. Overrides `BG_MODE` when set. |
+| `BG_IMAGE` | `""` | Image URL or `/bg/filename.jpg`. Overrides `BG_MODE` when set. |
 | `PIHOLE_VERIFY_SSL` | `true` | Set to `false` if Pi-hole uses HTTPS with a self-signed certificate. |
 
 ---

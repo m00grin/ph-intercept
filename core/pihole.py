@@ -223,4 +223,4 @@ async def query_poller(http_client: httpx.AsyncClient) -> None:
         except asyncio.CancelledError:
             raise
         except Exception:
-            pass
+            logger.debug("query_poller tick error", exc_info=True)
