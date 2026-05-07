@@ -2,8 +2,6 @@
 *.log
 *.pyc
 *.pyo
-*.pytest_cache
-__pycache__/
 .claude/
 .coverage
 .DS_Store
@@ -11,6 +9,7 @@ __pycache__/
 .pytest_cache/
 .venv/
 .vscode/
+__pycache__/
 bg/
 compose.override.yaml
 htmlcov/

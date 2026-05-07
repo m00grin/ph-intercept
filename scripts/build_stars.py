@@ -8,7 +8,7 @@ Usage (run from the ph-intercept/ root):
     python scripts/build_stars.py --src PATH/TO/stars.json [--mag LIMIT] [--out PATH]
 
 Defaults:
-    --mag  6.8   (includes all naked-eye stars + a comfortable margin)
+    --mag  6.8  (includes all naked-eye stars + a comfortable margin)
     --out  static/stars-lite.json
 
 The output format is { stars, bounds, info, colors } -- the same as the
@@ -45,19 +45,19 @@ def main():
 
     # Recompute tight bounds from the filtered set so the renderer doesn't
     # try to clamp pan to regions that no longer have any star data.
-    ra_vals  = [s[1] for s in filtered]
+    ra_vals = [s[1] for s in filtered]
     dec_vals = [s[2] for s in filtered]
     bounds = {
-        "ra_min":  min(ra_vals),
-        "ra_max":  max(ra_vals),
+        "ra_min": min(ra_vals),
+        "ra_max": max(ra_vals),
         "dec_min": min(dec_vals),
         "dec_max": max(dec_vals),
     }
 
     out_data = {
-        "stars":  filtered,
+        "stars": filtered,
         "bounds": bounds,
-        "info":   data.get("info",   {}),
+        "info": data.get("info", {}),
         "colors": data.get("colors", {}),
     }
 

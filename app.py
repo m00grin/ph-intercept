@@ -82,10 +82,10 @@ async def index(request: Request):
         "bg_mode": BG_MODE,
         "pihole_dashboard": PIHOLE_DASHBOARD,
         "bg_config": {
-            "bg_mode":    BG_MODE,
-            "bg_image":   BG_IMAGE,
-            "sky_ra":     preset["ra"],
-            "sky_dec":    preset["dec"],
+            "bg_mode": BG_MODE,
+            "bg_image": BG_IMAGE,
+            "sky_ra": preset["ra"],
+            "sky_dec": preset["dec"],
             "return_url": RETURN_URL,
         },
     })
