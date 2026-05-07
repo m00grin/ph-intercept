@@ -153,8 +153,8 @@ A strip across the bottom, divided into four panels:
 A hamburger button at the left edge of the HUD opens the **Settings** panel, which includes:
 
 - **Friendlies** -- show or hide friendly (allowed) entities
-- **Domain** -- show or hide the domain label beneath each entity
 - **Client** -- show the requesting client (IP or hostname) as a label per entity
+- **Domain** -- show or hide the domain label beneath each entity
 - **Pi-hole** -- link to the Pi-hole admin panel
 
 Display settings are saved to `localStorage` and restored on next load.
