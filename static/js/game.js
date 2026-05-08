@@ -1213,7 +1213,9 @@
         ctx.translate(ex, ey);
         ctx.rotate(Math.atan2(e.vy, e.vx) + Math.PI / 2);
         const _sp = getCachedSprite(bmp, color, glow, EPX - 1);
+        ctx.imageSmoothingEnabled = true;
         ctx.drawImage(_sp.canvas, -_sp.w / 2, -_sp.h / 2);
+        ctx.imageSmoothingEnabled = false;
         ctx.restore();
       }
 

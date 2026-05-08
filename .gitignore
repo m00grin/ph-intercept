@@ -7,6 +7,7 @@
 .DS_Store
 .env
 .pytest_cache/
+.stylelintrc.json
 .venv/
 .vscode/
 __pycache__/

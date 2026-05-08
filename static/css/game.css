@@ -1,6 +1,7 @@
 /* ── Global interaction lockdown ────────────────────────────────────── */
 * {
   user-select: none;
+  /* stylelint-disable-next-line property-no-vendor-prefix */
   -webkit-user-select: none;
 }
 
@@ -45,6 +46,7 @@ body.pihole-mode #pihole-canvas {
 }
 #settings-btn:hover  { opacity: 0.88; }
 #settings-btn.menu-open { opacity: 0.95; }
+
 #settings-btn span {
   position: absolute;
   left: 0;
