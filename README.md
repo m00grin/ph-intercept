@@ -106,7 +106,7 @@ Each DNS query spawns an entity. Tier scales with how many times that domain has
 
 **Allowed queries:** friendly ships traveling across the screen. Cache-answered queries move faster than upstream-answered ones.
 
-<img width="640" height="414" alt="image" src="https://github.com/user-attachments/assets/249da67e-5b87-4645-a36a-265897328429" />
+<img width="487" height="354" alt="image" src="https://github.com/user-attachments/assets/7c80bb93-6ccd-4ac2-b1c9-e34a1f54cc31" />
 
 | Tier | Condition | Shape | Color |
 |------|-----------|-------|-------|
