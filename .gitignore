@@ -12,6 +12,7 @@
 .vscode/
 __pycache__/
 bg/
+scripts/
 compose.override.yaml
 htmlcov/
 pytest.ini
