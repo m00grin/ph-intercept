@@ -4,7 +4,7 @@ A Pi-hole DNS dashboard that runs as a standalone Docker container. Streams live
 
 Designed to be dropped in alongside an existing Pi-hole v6 setup with no extra dependencies.
 
-<img width="1711" height="1266" alt="action-shot" src="https://github.com/user-attachments/assets/cfc7044a-6394-40a1-b227-9c14e0f8156b" />
+<img width="1713" height="1254" alt="image" src="https://github.com/user-attachments/assets/791ba70f-c6cd-4495-8135-0e0d2286668e" />
 
 ---
 
@@ -106,6 +106,8 @@ Each DNS query spawns an entity. Tier scales with how many times that domain has
 
 **Allowed queries:** friendly ships traveling across the screen. Cache-answered queries move faster than upstream-answered ones.
 
+<img width="640" height="414" alt="image" src="https://github.com/user-attachments/assets/249da67e-5b87-4645-a36a-265897328429" />
+
 | Tier | Condition | Shape | Color |
 |------|-----------|-------|-------|
 | 1 | First query | Rounded shuttle · Delta wing · X-wing | Green · Blue · Lime |
@@ -113,6 +115,8 @@ Each DNS query spawns an entity. Tier scales with how many times that domain has
 | 3+ | Three or more queries while on screen | Capital ship | Gold |
 
 **Blocked queries:** enemies the ship targets and destroys. A domain blocked again while still on screen mutates its sprite to the next tier in place.
+
+<img width="621" height="471" alt="image" src="https://github.com/user-attachments/assets/a2da33be-7015-4b34-9c51-6904b06573d0" />
 
 | Tier | Condition | Shape | Color |
 |------|-----------|-------|-------|
@@ -146,7 +150,7 @@ A strip across the bottom, divided into four panels:
 
 **SHIPS:** active ship name. Click to open the ship selector.
 
-<img width="1712" height="103" alt="image" src="https://github.com/user-attachments/assets/0a577b39-6722-4e4d-9f5e-e44488284042" />
+<img width="1453" height="104" alt="image" src="https://github.com/user-attachments/assets/9d2b74cf-76e8-46e3-bd62-4bef9ca47e2d" />
 
 A hamburger button at the left edge of the HUD opens the **Settings** panel, which includes:
 
@@ -164,6 +168,8 @@ Display settings are saved to `localStorage` and restored on next load.
 Three modes are available via `BG_MODE`:
 
 **`starfield` (default):** Renders a real section of the night sky from an accurate star catalog (~12,200 stars to magnitude 6.8, color-coded by spectral type). Positions use equatorial coordinates; what you see is where the stars actually are. The sky region is set by `SKY_PRESET`.
+
+<img width="684" height="487" alt="image" src="https://github.com/user-attachments/assets/d6a04374-9341-464b-8f24-71cafc8bbbeb" />
 
 Star data is from the **HYG Database** by David Nash ([astronexus.com](https://astronexus.com)), combining Hipparcos (ESA) and the Yale Bright Star Catalogue.
 
