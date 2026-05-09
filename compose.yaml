@@ -39,6 +39,9 @@ services:
       #  with a self-signed certificate. Leave as "true" for HTTP or valid HTTPS.
       PIHOLE_VERIFY_SSL: "true"
 
+      # Optional: comma-separated regex patterns — matching domains spawn no ships. Case-insensitive.
+      # PIHOLE_IGNORE_DOMAINS: .*\.local$,.*\.internal$
+
     volumes:
       # Portainer Web users: This will resolve to /data/compose/<stack-id>/bg/
       - ./bg:/app/static/bg

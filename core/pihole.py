@@ -5,7 +5,7 @@ import os
 
 import httpx
 
-from .config import PIHOLE_BASE
+from .config import PIHOLE_BASE, IGNORE_DOMAIN_PATTERNS
 
 logger = logging.getLogger(__name__)
 
@@ -195,6 +195,9 @@ async def query_poller(http_client: httpx.AsyncClient) -> None:
 
             events: list[dict] = []
             for q in new_qs[:20]:
+                domain = q.get("domain") or q.get("name", "unknown")
+                if IGNORE_DOMAIN_PATTERNS and any(p.search(domain) for p in IGNORE_DOMAIN_PATTERNS):
+                    continue
                 status_raw = q.get("status")
                 if isinstance(status_raw, int):
                     is_blocked = status_raw in _BLOCKED_STATUS_INT
@@ -214,7 +217,7 @@ async def query_poller(http_client: httpx.AsyncClient) -> None:
                 else:
                     source = "blocked"
                 events.append({
-                    "domain": q.get("domain") or q.get("name", "unknown"),
+                    "domain": domain,
                     "status": "blocked" if is_blocked else "allowed",
                     "source": source,
                     "client": client_label,
