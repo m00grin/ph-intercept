@@ -52,9 +52,11 @@
   let shieldMenuOpen = false;
   let shieldHitbox = { x: 0, y: 0, w: 0, h: 0 };
   let shieldMenuItems = [];
+  let shieldMenuPopupBox = null;
   let shieldHovered = false;
   let settingsMenuOpen = false;
   let settingsMenuItems = [];
+  let settingsMenuPopupBox = null;
   let mouseX = -1, mouseY = -1;
 
   // Display toggles (persisted to localStorage)
@@ -83,6 +85,7 @@
   let shakeAt = 0, shakeDur = 0, shakeAmp = 0;
   let shipMenuOpen = false;
   let shipMenuItems = [];
+  let shipMenuPopupBox = null;
   let shipMenuHitbox = { x: 0, y: 0, w: 0, h: 0 };
   let shipMenuHovered = false;
   let shipBodyHitbox = { x: 0, y: 0, w: 0, h: 0 };
@@ -1910,6 +1913,7 @@
       ctx.moveTo(menuX + mw, menuY + mh - _ma); ctx.lineTo(menuX + mw, menuY + mh); ctx.lineTo(menuX + mw - _ma, menuY + mh);
       ctx.stroke();
       ctx.font = `${_fSub}px "Press Start 2P", monospace`;
+      shieldMenuPopupBox = { x: menuX, y: menuY, w: mw, h: mh };
       shieldMenuItems = DISABLE_OPTIONS.map((opt, idx) => {
         const iy = menuY + mPad + idx * mItemH;
         const hb = { x: menuX, y: iy, w: mw, h: mItemH };
@@ -1922,6 +1926,7 @@
       });
     } else {
       shieldMenuItems = [];
+      shieldMenuPopupBox = null;
     }
 
     // ── Settings menu - opens upward from bottom-left, bracket-outline style ──
@@ -1934,6 +1939,7 @@
       const smw = 186, smItemH = 28, smPad = 10, smDivH = 10, smPhRowH = 34;
       const smh = smPad + smItemH + smDivH + smItemH * 2 + smDivH + smPhRowH + smPad;
       const smX = 6, smY = SY - smh - 6;
+      settingsMenuPopupBox = { x: smX, y: smY, w: smw, h: smh };
       ctx.fillStyle = 'rgba(8,11,16,0.92)';
       ctx.fillRect(smX, smY, smw, smh);
       const _smGlow = ctx.createLinearGradient(0, smY, 0, smY + 24);
@@ -1973,7 +1979,7 @@
           ? (pillHov ? 'rgba(80,240,150,1)'     : 'rgba(50,215,120,0.95)')
           : (pillHov ? 'rgba(135,140,155,0.90)' : 'rgba(95,100,115,0.75)');
         ctx.fillRect(knobX, knobY, knobSz, knobSz);
-        settingsMenuItems.push({ key: item.key, hitbox: hb });
+        settingsMenuItems.push({ key: item.key, hitbox: { x: pillX - 4, y: pillY - 6, w: pillW + 8, h: pillH + 12 } });
         siy += smItemH;
         if (item.divAfter) {
           ctx.strokeStyle = 'rgba(140,160,175,0.14)'; ctx.lineWidth = 1;
@@ -2020,6 +2026,7 @@
       }
     } else {
       settingsMenuItems = [];
+      settingsMenuPopupBox = null;
     }
 
     // ── INTEL ──────────────────────────────────────────────
@@ -2159,6 +2166,8 @@
       ctx.moveTo(_mX, _mY + _mh - _ma2);  ctx.lineTo(_mX, _mY + _mh);  ctx.lineTo(_mX + _ma2, _mY + _mh);
       ctx.moveTo(_mX + _mw, _mY + _mh - _ma2); ctx.lineTo(_mX + _mw, _mY + _mh); ctx.lineTo(_mX + _mw - _ma2, _mY + _mh);
       ctx.stroke();
+      shipMenuPopupBox = { x: _mX, y: _mY, w: _mw, h: _mh };
+      let _anyHov = false;
       shipMenuItems = _ships.map((s, i) => {
         const _col = i % _cols, _row = Math.floor(i / _cols);
         const _sX  = _mX + _mPad + _col * _slotW;
@@ -2172,7 +2181,8 @@
           : { x: _sX, y: _mY, w: _slotW, h: _mh };
         const _shipCY = _grid2x2 ? _sY + _slotH / 2 - 10 : _mY + _mh / 2 - 10;
         const _labelY = _grid2x2 ? _sY + _slotH - 11      : _mY + _mh - 11;
-        const hov = !_isActive && mouseX >= hb.x && mouseX <= hb.x + hb.w && mouseY >= hb.y && mouseY <= hb.y + hb.h;
+        const hov = !_anyHov && !_isActive && mouseX >= hb.x && mouseX < hb.x + hb.w && mouseY >= hb.y && mouseY < hb.y + hb.h;
+        if (hov) _anyHov = true;
         if (hov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(hb.x, hb.y, hb.w, hb.h); }
         ctx.save();
         ctx.globalAlpha = _isActive ? 0.28 : (hov ? 1.0 : 0.70);
@@ -2186,6 +2196,7 @@
       });
     } else {
       shipMenuItems = [];
+      shipMenuPopupBox = null;
     }
 
     // Intercept-off vignette (gradient cached; alpha drives the pulse)
@@ -2306,7 +2317,7 @@
             shieldMenuOpen = false;
             shipMenuOpen = false; shipMenuItems = [];
             settingsMenuOpen = false;
-            if (settingsBtnEl) settingsBtnEl.classList.remove('menu-open');
+            _closeSettingsBtnAnimated();
           }
           if (!d.blocking) {
             // Recalibrate countdown from Pi-hole's timer whenever blocking is off with a known duration
@@ -2477,6 +2488,17 @@
     return mx >= box.x && mx <= box.x + box.w && my >= box.y && my <= box.y + box.h;
   }
 
+  function _closeSettingsBtnAnimated() {
+    if (!settingsBtnEl || !settingsBtnEl.classList.contains('menu-open')) return;
+    // Freeze the current animated transform on each span so the CSS transition
+    // has a real start value to animate from (animation overrides transition otherwise).
+    const spans = settingsBtnEl.querySelectorAll('span');
+    spans.forEach(s => { s.style.transform = getComputedStyle(s).transform; });
+    settingsBtnEl.classList.remove('menu-open');
+    settingsBtnEl.getBoundingClientRect(); // force reflow
+    spans.forEach(s => { s.style.transform = ''; });
+  }
+
   canvas.addEventListener('click', e => {
     if (!active) return;
     const rect = canvas.getBoundingClientRect();
@@ -2494,13 +2516,14 @@
             const url = phLinkEl ? phLinkEl.dataset.href : null;
             if (url && /^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener,noreferrer');
             settingsMenuOpen = false;
-            if (settingsBtnEl) settingsBtnEl.classList.remove('menu-open');
+            _closeSettingsBtnAnimated();
           }
           return;
         }
       }
+      if (settingsMenuPopupBox && _inBox(mx, my, settingsMenuPopupBox)) return;
       settingsMenuOpen = false;
-      if (settingsBtnEl) settingsBtnEl.classList.remove('menu-open');
+      _closeSettingsBtnAnimated();
       // fall through; let the click reach shield/ship hitboxes
     }
 
@@ -2513,6 +2536,7 @@
           return;
         }
       }
+      if (shipMenuPopupBox && _inBox(mx, my, shipMenuPopupBox)) return;
       shipMenuOpen = false;
       if (_inBox(mx, my, shipMenuHitbox)) return; // don't immediately reopen
     }
@@ -2523,6 +2547,7 @@
       for (const item of shieldMenuItems) {
         if (_inBox(mx, my, item.hitbox)) { setBlocking(false, item.timer); return; }
       }
+      if (shieldMenuPopupBox && _inBox(mx, my, shieldMenuPopupBox)) return;
       shieldMenuOpen = false;
       if (_inBox(mx, my, shieldHitbox)) return; // don't immediately reopen
     }
@@ -2563,7 +2588,7 @@
     if (_inBox(mx, my, shieldHitbox)) {
       e.stopPropagation();
       settingsMenuOpen = false;
-      if (settingsBtnEl) settingsBtnEl.classList.remove('menu-open');
+      _closeSettingsBtnAnimated();
       if (blockingEnabled === false && shipPowerState === 'down') { setBlocking(true); }
       else if (blockingEnabled === true && shipPowerState === 'up') { shieldMenuOpen = true; }
       return;
@@ -2610,7 +2635,8 @@
       e.stopPropagation();
       if (!active) return;
       settingsMenuOpen = !settingsMenuOpen;
-      settingsBtnEl.classList.toggle('menu-open', settingsMenuOpen);
+      if (settingsMenuOpen) { settingsBtnEl.classList.add('menu-open'); }
+      else { _closeSettingsBtnAnimated(); }
       if (settingsMenuOpen) {
         shieldMenuOpen = false;
         shipMenuOpen = false;

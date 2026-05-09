@@ -38,9 +38,16 @@
   const ctx = el.getContext('2d');
 
   let W = 0, H = 0;
-  function resize() { W = el.width = window.innerWidth; H = el.height = window.innerHeight; }
+  function resize() {
+    const nw = window.innerWidth, nh = window.innerHeight;
+    if (nw === W && nh === H) return;
+    W = el.width = nw; H = el.height = nh;
+  }
   window.addEventListener('resize', resize);
   resize();
+
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
 
   let startT = null, gameFired = false;
 
@@ -79,7 +86,7 @@
     const phY      = lineY - lineGap;
     const tagY     = lineY + tagGap;
 
-    const phX      = W / 2;
+    const phX      = W / 2 + 0.06 * phSize / 2;
 
     // ── "PH" ─────────────────────────────────────────────────────
     const phT     = ease(prog(now, PH_IN[0], PH_IN[1]));
@@ -185,7 +192,7 @@
       ctx.textBaseline  = 'top';
       ctx.letterSpacing = '0.38em';
       ctx.fillStyle     = 'rgba(160, 195, 235, 1)';
-      ctx.fillText('INTERCEPT  PROGRAM', W / 2, tagY + tagDrift);
+      ctx.fillText('INTERCEPT  PROGRAM', W / 2 + 0.38 * tagSize / 2, tagY + tagDrift);
       ctx.restore();
     }
 

@@ -10,5 +10,8 @@ COPY static/    static/
 COPY templates/ templates/
 COPY app.py     .
 
+RUN useradd -u 1000 -M app && chown -R app:app /app
+USER app
+
 EXPOSE 4653
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4653"]

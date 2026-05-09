@@ -46,6 +46,14 @@ body.pihole-mode #pihole-canvas {
 }
 #settings-btn:hover  { opacity: 0.88; }
 #settings-btn.menu-open { opacity: 0.95; }
+#settings-btn.menu-open::before {
+  content: '';
+  position: absolute;
+  top: -30px;
+  left: -14px;
+  right: -26px;
+  bottom: -6px;
+}
 
 #settings-btn span {
   position: absolute;
@@ -54,15 +62,62 @@ body.pihole-mode #pihole-canvas {
   height: 2px;
   background: rgba(140, 160, 175, 0.95);
   border-radius: 1px;
-  transition: transform 150ms cubic-bezier(0.4, 0, 0.2, 1.15), opacity 100ms ease;
   transform-origin: center center;
+  /* Closing: crisp snap back, top-first */
+  transition: transform 200ms cubic-bezier(0.4, 0, 0.2, 1), opacity 160ms ease;
 }
-#settings-btn span:nth-child(1) { top: 0; }
-#settings-btn span:nth-child(2) { top: 9px; }
-#settings-btn span:nth-child(3) { top: 18px; }
-#settings-btn.menu-open span:nth-child(1) { transform: translateY(9px) rotate(45deg); }
-#settings-btn.menu-open span:nth-child(2) { opacity: 0; }
-#settings-btn.menu-open span:nth-child(3) { transform: translateY(-9px) rotate(-45deg); }
+#settings-btn span:nth-child(1) { top: 0;    transition-delay: 0ms;  }
+#settings-btn span:nth-child(2) { top: 9px;  transition-delay: 10ms; }
+#settings-btn span:nth-child(3) { top: 18px; transition-delay: 20ms; }
+
+@keyframes ph-float-1 {
+  0%   { transform: translate(-6px,  -15px) rotate(-38deg) skewY(-22deg) scaleX(0.60); opacity: 0.62; }
+  18%  { transform: translate(-10px, -18px) rotate(-42deg) skewY(-26deg) scaleX(0.60); opacity: 0.58; }
+  36%  { transform: translate(-3px,  -21px) rotate(-34deg) skewY(-18deg) scaleX(0.60); opacity: 0.68; }
+  55%  { transform: translate(2px,   -14px) rotate(-30deg) skewY(-15deg) scaleX(0.60); opacity: 0.65; }
+  74%  { transform: translate(-7px,  -11px) rotate(-41deg) skewY(-25deg) scaleX(0.60); opacity: 0.59; }
+  88%  { transform: translate(-9px,  -17px) rotate(-44deg) skewY(-27deg) scaleX(0.60); opacity: 0.61; }
+  100% { transform: translate(-6px,  -15px) rotate(-38deg) skewY(-22deg) scaleX(0.60); opacity: 0.62; }
+}
+@keyframes ph-float-2 {
+  0%   { transform: translate(7px,  -20px) rotate(6deg)   skewY(16deg)  scaleX(0.76); opacity: 0.68; }
+  22%  { transform: translate(12px, -23px) rotate(10deg)  skewY(12deg)  scaleX(0.76); opacity: 0.64; }
+  44%  { transform: translate(14px, -15px) rotate(13deg)  skewY(9deg)   scaleX(0.76); opacity: 0.72; }
+  62%  { transform: translate(5px,  -13px) rotate(2deg)   skewY(20deg)  scaleX(0.76); opacity: 0.66; }
+  80%  { transform: translate(3px,  -22px) rotate(-1deg)  skewY(23deg)  scaleX(0.76); opacity: 0.70; }
+  100% { transform: translate(7px,  -20px) rotate(6deg)   skewY(16deg)  scaleX(0.76); opacity: 0.68; }
+}
+@keyframes ph-float-3 {
+  0%   { transform: translate(16px, -3px)  rotate(30deg)  skewY(-26deg) scaleX(0.48); opacity: 0.58; }
+  20%  { transform: translate(11px, -8px)  rotate(24deg)  skewY(-20deg) scaleX(0.48); opacity: 0.64; }
+  42%  { transform: translate(8px,  -5px)  rotate(21deg)  skewY(-17deg) scaleX(0.48); opacity: 0.61; }
+  64%  { transform: translate(13px, -1px)  rotate(27deg)  skewY(-23deg) scaleX(0.48); opacity: 0.55; }
+  84%  { transform: translate(19px, -7px)  rotate(36deg)  skewY(-31deg) scaleX(0.48); opacity: 0.62; }
+  100% { transform: translate(16px, -3px)  rotate(30deg)  skewY(-26deg) scaleX(0.48); opacity: 0.58; }
+}
+
+/* Opening: hard spring blast, bottom-first */
+#settings-btn.menu-open span {
+  transition: transform 360ms cubic-bezier(0, 0, 0.15, 1), opacity 280ms ease;
+}
+#settings-btn.menu-open span:nth-child(1) {
+  transform: translate(-6px, -15px) rotate(-38deg) skewY(-22deg) scaleX(0.60);
+  opacity: 0.62;
+  transition-delay: 32ms;
+  animation: ph-float-1 22s linear 0.42s infinite;
+}
+#settings-btn.menu-open span:nth-child(2) {
+  transform: translate(7px, -20px) rotate(6deg) skewY(16deg) scaleX(0.76);
+  opacity: 0.68;
+  transition-delay: 16ms;
+  animation: ph-float-2 17s linear 0.40s infinite;
+}
+#settings-btn.menu-open span:nth-child(3) {
+  transform: translate(16px, -3px) rotate(30deg) skewY(-26deg) scaleX(0.48);
+  opacity: 0.58;
+  transition-delay: 0ms;
+  animation: ph-float-3 27s linear 0.38s infinite;
+}
 
 /* Pi-hole dashboard link - hidden DOM element used only as a URL carrier */
 #pihole-link { display: none; }
