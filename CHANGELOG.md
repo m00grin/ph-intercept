@@ -4,6 +4,32 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.1.5] - 2026-05-09
+
+### Security
+
+- Container now runs as a non-root user (uid 1000) with ownership scoped to `/app`.
+- All Linux capabilities dropped via `cap_drop: ALL` in `compose.yaml`.
+- Hadolint Dockerfile linting added to the CodeQL workflow; findings surface in the GitHub Security tab on tagged releases.
+
+### Added
+
+- `PIHOLE_IGNORE_DOMAINS` -- optional comma-separated regex patterns; matching domains are filtered from the event stream and spawn no ships. Case-insensitive. Example: `.*\.local$,.*\.internal$`. Thanks to [@jamespo](https://github.com/jamespo) for the idea.
+
+### Changed
+
+- Switched from FastAPI to Starlette, reducing dependencies and improving compatibility across ARM architectures.
+- Docker build now targets six platforms: `linux/amd64`, `linux/arm64`, `linux/arm/v7`, `linux/arm/v6`, `linux/386`, `linux/riscv64`.
+
+### Visual
+
+- Settings button bars now explode into three independently floating animated lines when the menu opens, with staggered spring transitions on open and a crisp snap-back on close.
+- Clicking inside an open menu no longer closes it; only clicks outside dismiss it.
+- Ship menu hover now correctly highlights only one slot at a time.
+- Splash screen: black fill on first paint prevents a white flash; text centering corrected for the PH and tagline elements; resize skips if dimensions are unchanged.
+
+---
+
 ## [1.1.4] - 2026-05-07
 
 ### Fixed
