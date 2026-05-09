@@ -45,6 +45,7 @@ services:
       PIHOLE_PASSWORD: ${PIHOLE_PASSWORD}
 
       # Optional: where ESC navigates to (like your homelab dashboard or homepage)
+      # Accepts http://, https://, protocol-relative (//), relative paths, and custom app schemes
       # Leave blank ("") to disable ESC entirely
       RETURN_URL: ""
 
@@ -63,9 +64,15 @@ services:
       # with a self-signed certificate. Leave as "true" for HTTP or valid HTTPS.
       PIHOLE_VERIFY_SSL: "true"
 
+      # Optional: comma-separated regex patterns. Matching domains spawn no ships. Case-insensitive.
+      # PIHOLE_IGNORE_DOMAINS: .*\.local$,.*\.internal$
+
     volumes:
       # Portainer Web users: This will resolve to /data/compose/<stack-id>/bg/
       - ./bg:/app/static/bg
+
+    cap_drop:
+      - ALL
 
     ports:
       # Host port : container port. Change the left side if 4653 is taken
