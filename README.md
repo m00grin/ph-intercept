@@ -211,6 +211,7 @@ All configuration is via environment variables in `compose.yaml`.
 - Pi-hole v6 (v5 is not compatible)
 - Docker with Compose
 - Network route from the container to your Pi-hole
+- **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/386` · `linux/riscv64`
 
 The container listens on port 4653. The compose file includes an optional static IP block for existing Docker networks.
 
