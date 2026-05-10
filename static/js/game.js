@@ -20,7 +20,7 @@
   const drone2Missiles = [];
   let hudGravity = null;
   let hudStats = { blocked: null, queries: null, percent: null };
-  let hudStatsPollTimer = null, _onVisible = null, _exitTimer = null;
+  let hudStatsPollTimer = null, _onVisible = null, _onFocus = null, _exitTimer = null;
   let gravityState = 'idle'; // 'idle' | 'updating' | 'done'
   let gravityDoneAt = 0;
   let gravityPollTimer = null;
@@ -2372,6 +2372,12 @@
       if (active) { if (_rafId !== null) cancelAnimationFrame(_rafId); _rafId = requestAnimationFrame(tick); }
     };
     document.addEventListener('visibilitychange', _onVisible);
+    // Also clear on window focus: tab may stay visible all day while machine idles,
+    // skipping visibilitychange entirely, yet the browser can still reclaim GPU-backed
+    // canvas memory. Focus fires when the user returns and is cheap to handle.
+    if (_onFocus) window.removeEventListener('focus', _onFocus);
+    _onFocus = () => clearSpriteCache();
+    window.addEventListener('focus', _onFocus);
     connect();
     requestAnimationFrame(t => {
       lastT = t; lastSpawn = t;
@@ -2398,6 +2404,7 @@
     canvas.style.cursor = '';
     if (evtSource) { evtSource.close(); evtSource = null; }
     if (_onVisible) { document.removeEventListener('visibilitychange', _onVisible); _onVisible = null; }
+    if (_onFocus) { window.removeEventListener('focus', _onFocus); _onFocus = null; }
     _exitTimer = setTimeout(() => {
       _exitTimer = null;
       active = false; if (_rafId !== null) { cancelAnimationFrame(_rafId); _rafId = null; }

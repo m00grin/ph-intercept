@@ -4,6 +4,14 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.1.6] - 2026-05-09
+
+### Fixed
+
+- **Sprite visibility after foreground idle** -- enemy and friendly bitmaps could become invisible if the browser window stayed open and focused while the machine was inactive. When no tab switch or minimize occurs, `visibilitychange` never fires; the browser can still silently reclaim GPU-backed offscreen canvas memory. The sprite cache is now also invalidated on `window focus` so sprites are rebuilt when the user returns.
+
+---
+
 ## [1.1.5] - 2026-05-09
 
 ### Security
