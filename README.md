@@ -157,7 +157,7 @@ The ship targets and destroys blocked entities autonomously. At five on-screen t
 
 Seven ships are selectable from the HUD, shown in an 8-slot 4×2 grid: **Protector** (NSEA Protector, default), **Falcon** (Millennium Falcon), **Swordfish** (Swordfish II), **Enterprise** (NCC-1701), **Serenity** (Firefly), **Normandy** (Mass Effect), and **PES** (Planet Express Ship). Switching ships triggers a warp-out/warp-in transition that pushes nearby entities aside.
 
-<img width="374" height="111" alt="image" src="https://github.com/user-attachments/assets/fcd98b95-fa6b-4149-8247-f2f7ece9f156" />
+<img width="370" height="176" alt="ships" src="https://github.com/user-attachments/assets/694a3786-10b5-4427-8f35-7d160b28c67b" />
 
 ---
 
@@ -173,7 +173,7 @@ A strip across the bottom, divided into four panels:
 
 **SHIPS:** active ship name. Click to open the ship selector.
 
-<img width="370" height="176" alt="ships" src="https://github.com/user-attachments/assets/2970a064-4f00-4add-b71a-caeab1a60b90" />
+<img width="1712" height="105" alt="download" src="https://github.com/user-attachments/assets/91f32bd4-d63f-4f3e-a8fe-f1c5aa62cf16" />
 
 A hamburger button at the left edge of the HUD opens the **Settings** panel, which includes:
 
