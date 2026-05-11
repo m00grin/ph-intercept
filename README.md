@@ -103,6 +103,22 @@ Open `http://your-host:4653`.
 
 ---
 
+## Image Tags
+
+| Tag | What it is |
+|-----|------------|
+| `:latest` | Latest stable release. Use this for production. |
+| `:X.Y.Z` | Pinned release (e.g. `1.1.6`). Good for reproducible deployments. |
+| `:develop` | Built automatically on every push to the `develop` branch. Untagged, may be unstable. Good for trying out what's coming next. |
+
+To switch to the develop build, change the image line in your `compose.yaml`:
+
+```yaml
+image: ghcr.io/m00grin/ph-intercept:develop
+```
+
+---
+
 ## Portainer Note for BG
 
 - Drop image files into `/data/compose/<stack-id>/bg/` on the Portainer host (where the `./bg` bind mount resolves).
