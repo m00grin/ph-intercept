@@ -44,3 +44,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: mode=max
+
+      - name: Clean up old untagged images
+        uses: actions/delete-package-versions@v5.0.0
+        with:
+          package-name: ph-intercept
+          package-type: container
+          delete-only-untagged-versions: 'true'
+          token: ${{ secrets.GITHUB_TOKEN }}

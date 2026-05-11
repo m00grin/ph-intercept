@@ -51,11 +51,12 @@ jobs:
           provenance: mode=max
 
       - name: Clean up old untagged images
-        uses: dataaxiom/ghcr-cleanup-action@v1
+        uses: actions/delete-package-versions@v5.0.0
         with:
+          package-name: ph-intercept
+          package-type: container
+          delete-only-untagged-versions: 'true'
           token: ${{ secrets.GITHUB_TOKEN }}
-          package: ph-intercept
-          delete-untagged: true
 
       - name: Create GitHub Release
         env:
