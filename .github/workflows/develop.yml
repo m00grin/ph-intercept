@@ -43,4 +43,4 @@ jobs:
           tags: ghcr.io/m00grin/ph-intercept:develop
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: false
+          provenance: mode=max
