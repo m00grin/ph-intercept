@@ -77,7 +77,7 @@
 
     // ── Layout - center the whole block vertically ────────────────
     const phSize   = Math.min(W * 0.20, H * 0.22, 180);
-    const tagSize  = Math.max(11, Math.min(W * 0.015, 16));
+    const tagSize  = Math.max(12, Math.min(W * 0.015, 16));
     const lineGap  = phSize * 0.58;
     const tagGap   = 28;
 

@@ -89,6 +89,7 @@
   let shipMenuHitbox = { x: 0, y: 0, w: 0, h: 0 };
   let shipMenuHovered = false;
   let shipBodyHitbox = { x: 0, y: 0, w: 0, h: 0 };
+  let missingnoGlitchAt = 0, missingnoGlitchCooldown = 0;
   let shipQuote = null;    // { text: string, shownAt: number } | null
   let shipQuoteCooldown = 0; // performance.now() timestamp; no new quotes until after this
   let shipQuoteDeck = [];       // shuffled queue for the current ship
@@ -615,17 +616,17 @@
           m.target.state = 'shot'; m.target.killedBy = 'drone';
         }
         const mps = [];
-        for (let j = 0; j < 80; j++) {
+        for (let j = 0; j < 50; j++) {
           const a = Math.random() * Math.PI * 2;
-          const sp = 0.08 + Math.random() * 0.38;
+          const sp = 0.08 + Math.random() * 0.30;
           mps.push({ x: m.x, y: m.y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
-                     r: 3 + Math.random() * 5, col: j < 40 ? '80,220,255' : j < 65 ? '210,245,255' : '255,255,255' });
+                     r: 2 + Math.random() * 3, col: j < 25 ? '80,220,255' : j < 40 ? '210,245,255' : '255,255,255' });
         }
-        explosions.push({ ps: mps, born: t, dur: 1300 });
-        chainRings.push({ x: m.x, y: m.y, born: t, dur: 550,
-                          col1: 'rgba(80,220,255,1)', colS: 'rgba(40,180,255,0.9)', maxR: 110 });
-        chainRings.push({ x: m.x, y: m.y, born: t, dur: 380,
-                          col1: 'rgba(200,245,255,1)', colS: 'rgba(180,235,255,0.9)', maxR: 55 });
+        explosions.push({ ps: mps, born: t, dur: 900 });
+        chainRings.push({ x: m.x, y: m.y, born: t, dur: 420,
+                          col1: 'rgba(80,220,255,1)', colS: 'rgba(40,180,255,0.9)', maxR: 75 });
+        chainRings.push({ x: m.x, y: m.y, born: t, dur: 280,
+                          col1: 'rgba(200,245,255,1)', colS: 'rgba(180,235,255,0.9)', maxR: 38 });
       }
     }
 
@@ -647,17 +648,17 @@
           m.target.state = 'shot'; m.target.killedBy = 'drone';
         }
         const mps = [];
-        for (let j = 0; j < 80; j++) {
+        for (let j = 0; j < 50; j++) {
           const a = Math.random() * Math.PI * 2;
-          const sp = 0.08 + Math.random() * 0.38;
+          const sp = 0.08 + Math.random() * 0.30;
           mps.push({ x: m.x, y: m.y, vx: Math.cos(a)*sp, vy: Math.sin(a)*sp,
-                     r: 3 + Math.random() * 5, col: j < 40 ? '255,190,60' : j < 65 ? '255,230,140' : '255,255,220' });
+                     r: 2 + Math.random() * 3, col: j < 25 ? '255,190,60' : j < 40 ? '255,230,140' : '255,255,220' });
         }
-        explosions.push({ ps: mps, born: t, dur: 1300 });
-        chainRings.push({ x: m.x, y: m.y, born: t, dur: 550,
-                          col1: 'rgba(255,190,60,1)', colS: 'rgba(255,150,30,0.9)', maxR: 110 });
-        chainRings.push({ x: m.x, y: m.y, born: t, dur: 380,
-                          col1: 'rgba(255,240,180,1)', colS: 'rgba(255,220,140,0.9)', maxR: 55 });
+        explosions.push({ ps: mps, born: t, dur: 900 });
+        chainRings.push({ x: m.x, y: m.y, born: t, dur: 420,
+                          col1: 'rgba(255,190,60,1)', colS: 'rgba(255,150,30,0.9)', maxR: 75 });
+        chainRings.push({ x: m.x, y: m.y, born: t, dur: 280,
+                          col1: 'rgba(255,240,180,1)', colS: 'rgba(255,220,140,0.9)', maxR: 38 });
       }
     }
 
@@ -804,13 +805,13 @@
     swordfish:  { bmp: SWORDFISH_BMP,  color: 'rgba(207,50,33,0.95)', glow: 'rgba(203,38,20,0.55)', dimColor: 'rgba(207,50,33,0.22)',
                   flares: [{ xOff: 0, yOff: 5, size: 1.5, len: 1.0, burstWScale: 0 }] },
     enterprise: { bmp: ENTERPRISE_BMP, color: 'rgba(195,208,240,0.95)', glow: 'rgba(170,190,235,0.48)', dimColor: 'rgba(195,208,240,0.22)',
-                  flares: [{ xOff: -13.5, yOff: 0, size: 0.9, burstWScale: 0 }, { xOff: 13.5, yOff: 0, size: 0.9, burstWScale: 0 }, { xOff: 0, yOff: -34, size: 0.50, burstWScale: 0, col: 'fire' }] },
+                  flares: [{ xOff: -13.5, yOff: 2, size: 0.9, burstWScale: 0 }, { xOff: 13.5, yOff: 2, size: 0.9, burstWScale: 0 }, { xOff: 0, yOff: -40, size: 0.50, burstWScale: 0, col: 'fire' }] },
     serenity:   { bmp: SERENITY_BMP,   color: 'rgba(195,208,240,0.95)', glow: 'rgba(170,190,235,0.55)', dimColor: 'rgba(195,208,240,0.22)',
                   flares: [{ xOff: -19.5, yOff: -17, size: 1, burstWScale: 0 }, { xOff: 19.5, yOff: -17, size: 1, burstWScale: 0 }] },
     normandy:   { bmp: NORMANDY_BMP,   color: 'rgba(195,208,240,0.95)', glow: 'rgba(170,190,235,0.55)', dimColor: 'rgba(195,208,240,0.22)',
                   flares: [{ xOff: -7.5, yOff: 4, size: 0.8, burstWScale: 0 }, { xOff: 7.5, yOff: 4, size: 0.8, burstWScale: 0 }, { xOff: -16.5, yOff: -2, size: 0.8, burstWScale: 0 }, { xOff: 16.5, yOff: -2, size: 0.8, burstWScale: 0 }] },
     pes:        { bmp: PES_BMP,        color: 'rgba(89,223,139,0.95)', glow: 'rgba(89,223,139,0.55)', dimColor: 'rgba(89,223,139,0.22)',
-                  flares: [{ xOff: -10, yOff: 0, size: 1, burstWScale: 0 }, { xOff: 10, yOff: 0, size: 1, burstWScale: 0 }] },
+                  flares: [{ xOff: 0, yOff: -24, size: 1.5, burstWScale: 0 }] },
     inbound:    { bmp: INBOUND_BMP,    color: 'rgba(140,145,155,0.50)', glow: 'rgba(120,125,135,0.28)', dimColor: 'rgba(140,145,155,0.15)',
                   flares: [] },
   };
@@ -1136,7 +1137,7 @@
     }
 
     // Entities (drawn after carrier so they appear over it during powerdown)
-    ctx.font = '11px "IBM Plex Mono", monospace';
+    ctx.font = '12px "IBM Plex Mono", monospace';
     ctx.textAlign = 'center';
     ctx.imageSmoothingEnabled = false;
     for (const e of entities) {
@@ -1307,7 +1308,7 @@
 
     // Domain fragments - letters scatter from killed enemies (only when domain labels are on)
     if (showDomain && domainFragments.length > 0) {
-      ctx.font = '11px "IBM Plex Mono", monospace';
+      ctx.font = '12px "IBM Plex Mono", monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       for (const f of domainFragments) {
@@ -1763,7 +1764,7 @@
         const _qA = _qAge < _qFadeIn ? _qAge / _qFadeIn : _qAge > _qFadeStart ? 1 - (_qAge - _qFadeStart) / (_qTotal - _qFadeStart) : 1;
         ctx.save();
         ctx.globalAlpha = _qA;
-        const _qFont = 9;
+        const _qFont = 10;
         ctx.font = `${_qFont}px "Press Start 2P", monospace`;
         const _qMaxW = Math.min(200, W - 40);
         const _qWords = shipQuote.text.split(' ');
@@ -1775,7 +1776,7 @@
           else _qCur = _qTest;
         }
         if (_qCur) _qLines.push(_qCur);
-        const _qLineH = _qFont + 9;
+        const _qLineH = _qFont + 8;
         const _qBY = cy - _shipHH - 14;
         ctx.fillStyle = 'rgba(215,225,248,0.95)';
         ctx.textAlign = 'center';
@@ -1806,9 +1807,9 @@
 
     // Scaled fonts
     const _fs = W < 480 ? 0.75 : W < 660 ? 0.87 : 1;
-    const _fVal   = Math.max(9,  Math.round(16 * _fs));
-    const _fSub   = Math.max(7,  Math.round(10 * _fs));
-    const _fLabel = _fs < 1 ? 7 : 9;
+    const _fVal   = Math.max(10, Math.round(16 * _fs));
+    const _fSub   = Math.max(8,  Math.round(10 * _fs));
+    const _fLabel = _fs < 1 ? 8 : 10;
     const _fShip  = Math.max(8,  Math.round(12 * _fs));
 
     // Scaled Y anchors (proportional to strip height)
@@ -2138,12 +2139,12 @@
     if (OPT_W > 0) {
       ctx.save();
       ctx.beginPath(); ctx.rect(OPT_X, SY, OPT_W, SH); ctx.clip();
-      _modLabel('SHIPS', OPT_X + OPT_W / 2, 'center');
+      _modLabel('SHIP', OPT_X + OPT_W / 2, 'center');
       ctx.textAlign = 'center';
       ctx.font = `${_fShip}px "Press Start 2P", monospace`;
       ctx.fillStyle = shipMenuHovered && _canSelectShip ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.65)';
       ctx.fillText(_shipLabels[currentShip], OPT_X + OPT_W / 2, _yVal);
-      ctx.font = `${_fLabel}px "Press Start 2P", monospace`;
+      ctx.font = `${Math.max(6, _fLabel - 2)}px "Press Start 2P", monospace`;
       ctx.fillStyle = _canSelectShip ? 'rgba(175,200,238,0.32)' : 'rgba(80,80,80,0.28)';
       ctx.fillText(_canSelectShip ? 'SELECT' : '—', OPT_X + OPT_W / 2, _ySub);
       shipMenuHitbox = { x: OPT_X, y: SY, w: OPT_W, h: SH };
@@ -2200,14 +2201,38 @@
         const hov = !_anyHov && !_isActive && !_isLocked && mouseX >= hb.x && mouseX < hb.x + hb.w && mouseY >= hb.y && mouseY < hb.y + hb.h;
         if (hov) _anyHov = true;
         if (hov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(hb.x, hb.y, hb.w, hb.h); }
+        const _glitching = _isLocked && missingnoGlitchAt > 0 && (t - missingnoGlitchAt) < 1400;
         ctx.save();
         ctx.globalAlpha = _isLocked ? 0.60 : (_isActive ? 0.28 : (hov ? 1.0 : 0.70));
-        drawBmp(ctx, _sBmps[s], _sCX, _shipCY, _sCols[s], hov ? _sGlows[s] : null, 2);
+        if (_glitching) {
+          // Draw only existing 1-pixels, each randomly toggled off using a per-pixel sin hash
+          const _gAge = t - missingnoGlitchAt;
+          const _gBmp = INBOUND_BMP;
+          const _gPx  = 2;
+          const _gCols = bmpW(_gBmp), _gRows = bmpH(_gBmp);
+          const _gOx = Math.round(_sCX - (_gCols * _gPx) / 2);
+          const _gOy = Math.round(_shipCY - (_gRows * _gPx) / 2);
+          ctx.fillStyle = _sCols['inbound'];
+          for (let r = 0; r < _gRows; r++) {
+            for (let c = 0; c < _gCols; c++) {
+              if (!_gBmp[r][c]) continue;
+              const _seed = Math.sin(r * 127.1 + c * 311.7 + _gAge * 0.023) * 43758.5453;
+              const _rnd  = _seed - Math.floor(_seed);
+              if (_rnd > 0.30) ctx.fillRect(_gOx + c * _gPx, _gOy + r * _gPx, _gPx - 1, _gPx - 1);
+            }
+          }
+        } else {
+          drawBmp(ctx, _sBmps[s], _sCX, _shipCY, _sCols[s], hov ? _sGlows[s] : null, 2);
+        }
         ctx.restore();
         ctx.textAlign = 'center';
-        ctx.font = '7px "Press Start 2P", monospace';
-        ctx.fillStyle = _isLocked ? 'rgba(130,135,145,0.70)' : _isActive ? 'rgba(80,80,80,0.50)' : hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.65)';
-        ctx.fillText(_isActive ? 'ACTIVE' : _shipLabels[s], _sCX, _labelY);
+        ctx.font = '8px "Press Start 2P", monospace';
+        // Flash the label when glitching (toggle every 400ms)
+        const _labelVisible = !_glitching || Math.floor((t - missingnoGlitchAt) / 400) % 2 === 1;
+        if (_labelVisible) {
+          ctx.fillStyle = _isLocked ? 'rgba(130,135,145,0.70)' : _isActive ? 'rgba(80,80,80,0.50)' : hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.65)';
+          ctx.fillText(_isActive ? 'ACTIVE' : _shipLabels[s], _sCX, _labelY);
+        }
         return { ship: s, hitbox: hb, active: _isActive, locked: _isLocked };
       });
     } else {
@@ -2570,6 +2595,7 @@
       for (const item of shipMenuItems) {
         if (_inBox(mx, my, item.hitbox)) {
           if (!item.active && !item.locked) initWarpOut(item.ship);
+          if (item.locked && performance.now() >= missingnoGlitchCooldown) { missingnoGlitchAt = performance.now(); missingnoGlitchCooldown = missingnoGlitchAt + 2200; }
           return;
         }
       }
