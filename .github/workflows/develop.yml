@@ -3,6 +3,12 @@ name: Publish develop build
 on:
   push:
     branches: ["develop"]
+    paths-ignore:
+      - "README.md"
+      - "CHANGELOG.md"
+      - "compose.yaml"
+      - ".github/FUNDING.yml"
+      - ".github/dependabot.yml"
 
 jobs:
   build-and-push:
