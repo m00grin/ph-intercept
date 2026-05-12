@@ -4,11 +4,19 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.3.3] - 2026-05-12
+
+### Fixed
+
+- **Image pull failure** -- the cleanup action (`actions/delete-package-versions`) was deleting platform-specific manifests that make up multi-architecture images, leaving the manifest index pointing to missing digests. Switched back to `dataaxiom/ghcr-cleanup-action` which is multi-arch aware and skips manifests referenced by a tagged image. Provenance attestation (`mode=max`) restored. Sorry, I'm still learning!
+
+---
+
 ## [1.3.2] - 2026-05-11
 
 ### Fixed
 
-- **Image pull failure** -- provenance attestation (`mode=max` and `mode=min`) produced a manifest format incompatible with GHCR and some Docker clients. Disabled provenance entirely (`provenance: false`).
+- **Image pull failure** -- disabled provenance attestation. (Wrong fix -- see 1.3.3.)
 
 ---
 
@@ -16,7 +24,7 @@ All notable changes to ph-intercept are documented here.
 
 ### Fixed
 
-- **Image pull failure** -- `provenance: mode=max` in the build workflow produced a manifest format incompatible with GHCR and some Docker clients. Downgraded to `mode=min`. (Insufficient -- see 1.3.2.)
+- **Image pull failure** -- downgraded provenance from `mode=max` to `mode=min`. (Wrong fix -- see 1.3.3.)
 
 ---
 
