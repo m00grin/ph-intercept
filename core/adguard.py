@@ -16,7 +16,7 @@ _adguard_last_q_time: float = 0.0
 _BLOCKED_REASONS = frozenset([
     "FilteredBlackList",
     "FilteredSafeBrowsing",
-    "FilteredParentalControl",
+    "FilteredParental",
     "FilteredSafeSearch",
     "FilteredBlockedService",
 ])

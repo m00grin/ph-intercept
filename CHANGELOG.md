@@ -4,6 +4,26 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.3.0] - 2026-05-11
+
+### Added
+
+- **AdGuard Home support** -- ph-intercept now works with AdGuard Home. A dedicated `adguard/compose.yaml` and `adguard/README.md` are included; drop it in alongside your existing AdGuard Home instance, fill in your URL and credentials, and go. Pi-hole behavior is unchanged. Thanks to [@matthijsbro](https://github.com/matthijsbro) (dnsshooter) for the code headstart on AdGuard support.
+- **Timed disable for AdGuard** -- the shield menu offers six durations: 30 sec, 1 min, 10 min, 1 hr, until tomorrow (seconds until midnight, computed at click time), and indefinite. The server auto-re-enables protection after the chosen duration.
+- `ADGUARD_IGNORE_DOMAINS` -- comma-separated regex patterns; matching domains are filtered from the event stream and spawn no ships. Same behavior as `PIHOLE_IGNORE_DOMAINS`.
+
+### Changed
+
+- HUD GRAVITY panel is labelled **FILTER** for AdGuard. Gravity/filter rule count formatting improved for both providers -- comma-separated below 100K, consistent K/M decimal precision above.
+- Provider icon, dashboard link, and settings panel label adapt to the active provider.
+- `shadowBlur` removed from entity client and domain text rendering -- measurable frame-rate improvement, particularly on lower-end hardware.
+
+### Fixed
+
+- **Intercept menu hover hitbox** -- hover detection used `<=` on the right and bottom edges, causing a one-pixel overlap into the adjacent slot.
+
+---
+
 ## [1.2.0] - 2026-05-10
 
 ### Added
