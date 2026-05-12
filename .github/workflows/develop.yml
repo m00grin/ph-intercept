@@ -9,11 +9,14 @@ on:
       - "SECURITY.md"
       - "LICENSE"
       - "compose.yaml"
+      - "adguard/compose.yaml"
+      - "adguard/README.md"
       - ".gitattributes"
       - ".gitignore"
       - ".github/FUNDING.yml"
       - ".github/dependabot.yml"
       - ".github/workflows/codeql.yml"
+      - ".github/workflows/develop.yml"
       - ".github/workflows/publish.yml"
 
 jobs:
