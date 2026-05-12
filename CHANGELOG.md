@@ -4,6 +4,14 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.3.1] - 2026-05-11
+
+### Fixed
+
+- **Image pull failure** -- `provenance: mode=max` in the build workflow produced a manifest format incompatible with GHCR and some Docker clients. Downgraded to `mode=min`.
+
+---
+
 ## [1.3.0] - 2026-05-11
 
 ### Added
