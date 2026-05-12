@@ -35,7 +35,7 @@ async def _pihole_ensure_auth(http_client: httpx.AsyncClient) -> bool:
             )
             session = resp.json().get("session", {})
             if session.get("valid"):
-                # sid is None when Pi-hole has no password (open/passwordless mode)
+                # Pi-hole omits sid in passwordless/open mode
                 _pihole_sid = session.get("sid") or ""
                 return True
         except Exception:

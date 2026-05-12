@@ -45,6 +45,17 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ghcr.io/m00grin/ph-intercept
+          labels: |
+            org.opencontainers.image.description=${{ github.event.repository.description }}
+            org.opencontainers.image.licenses=MIT
+        env:
+          DOCKER_METADATA_ANNOTATIONS_LEVELS: manifest,index
+
       - name: Build and push
         uses: docker/build-push-action@v7
         with:
@@ -52,6 +63,8 @@ jobs:
           platforms: linux/amd64,linux/386,linux/arm64,linux/arm/v7,linux/arm/v6,linux/riscv64
           push: true
           tags: ghcr.io/m00grin/ph-intercept:develop
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
           cache-from: type=local,src=/opt/buildx-cache/ph-intercept
           cache-to: type=local,dest=/opt/buildx-cache/ph-intercept-new,mode=max
           provenance: false

@@ -187,7 +187,7 @@ async def query_poller(http_client: httpx.AsyncClient) -> None:
                 timeout=1.5,
             )
             if resp.status_code == 401:
-                logger.debug("query_poller: 401 from AdGuard — check credentials")
+                logger.debug("query_poller: 401 from AdGuard; check credentials")
                 continue
             if resp.status_code != 200:
                 continue
