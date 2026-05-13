@@ -10,12 +10,17 @@ interface Attachment { role: Role }
 const SESSION_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_MSG_BYTES = 4096;
 
-// Worker entry point — validates hash format and routes to the matching RelaySession DO
+// Fail fast before spinning up a DO instance
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
+    // Only WebSocket upgrades to /relay/<64-hex-char hash> are valid
+    if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+      return new Response(null, { status: 426, headers: { Upgrade: 'websocket' } });
+    }
     const url = new URL(request.url);
     const m = url.pathname.match(/^\/relay\/([0-9a-f]{64})$/i);
-    if (!m) return new Response('Not Found', { status: 404 });
+    if (!m) return new Response(null, { status: 404 });
+
     const id = env.RELAY.idFromName(m[1].toLowerCase());
     return env.RELAY.get(id).fetch(request);
   },
@@ -26,13 +31,13 @@ export default {
 // Hash 2 (the encryption key) is never transmitted through this relay.
 export class RelaySession extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
-    if (request.headers.get('Upgrade') !== 'websocket') {
-      return new Response('Expected WebSocket upgrade', { status: 426 });
+    if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') {
+      return new Response(null, { status: 426 });
     }
 
     const existing = this.ctx.getWebSockets();
     if (existing.length >= 2) {
-      return new Response('Session full', { status: 409 });
+      return new Response(null, { status: 409 });
     }
 
     const pair = new WebSocketPair();
@@ -70,15 +75,11 @@ export class RelaySession extends DurableObject<Env> {
   }
 
   webSocketClose(ws: WebSocket): void {
-    const { role } = ws.deserializeAttachment() as Attachment;
-    const partnerRole: Role = role === 'A' ? 'B' : 'A';
+    this._notifyPartner(ws);
+  }
 
-    for (const peer of this.ctx.getWebSockets()) {
-      if ((peer.deserializeAttachment() as Attachment).role === partnerRole) {
-        peer.send(JSON.stringify({ type: 'partner_disconnected' }));
-        return;
-      }
-    }
+  webSocketError(ws: WebSocket, _error: unknown): void {
+    this._notifyPartner(ws);
   }
 
   async alarm(): Promise<void> {
@@ -87,6 +88,17 @@ export class RelaySession extends DurableObject<Env> {
         ws.send(JSON.stringify({ type: 'timeout' }));
         ws.close(1000, 'timeout');
       } catch { /* already closed */ }
+    }
+  }
+
+  private _notifyPartner(ws: WebSocket): void {
+    const { role } = ws.deserializeAttachment() as Attachment;
+    const partnerRole: Role = role === 'A' ? 'B' : 'A';
+    for (const peer of this.ctx.getWebSockets()) {
+      if ((peer.deserializeAttachment() as Attachment).role === partnerRole) {
+        try { peer.send(JSON.stringify({ type: 'partner_disconnected' })); } catch { /* closed */ }
+        return;
+      }
     }
   }
 }
