@@ -1,0 +1,13 @@
+name            = "ph-intercept-relay"
+main            = "src/index.ts"
+compatibility_date = "2025-01-01"
+
+[[durable_objects.bindings]]
+name       = "RELAY"
+class_name = "RelaySession"
+
+[[migrations]]
+tag         = "v1"
+new_classes = ["RelaySession"]
+
+# Add a custom domain via the Workers dashboard: Settings > Domains & Routes > Custom Domain
