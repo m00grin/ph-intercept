@@ -88,7 +88,7 @@
   let p2EvtSource = null, p2StatsPollTimer = null;
   let relayWs = null;
   let relayState = 'off';           // 'off' | 'waiting' | 'connected'
-  let _relayKey = null;             // CryptoKey for AES-256-GCM
+  let _relayKey = null;             // Uint8Array key for NaCl secretbox (XSalsa20-Poly1305)
   let _p2ShipVisible = false;       // true once P2 has live data (drives ship arrival)
   let _p2ShipRipInAt = 0;           // perf.now() when ship arrival animation fires
   let _2pBannerAt = 0;              // perf.now() when 2P mode first activated (banner anim)
@@ -916,9 +916,8 @@
       sessionStorage.setItem('ph_ship', currentShip);
       if (twoPlayerMode === 'local') p2CurrentShip = currentShip;
       if (twoPlayerMode === 'remote' && relayWs && relayWs.readyState === 1 && relayState === 'connected') {
-        _encryptMsg({ type: 'ship', ship: currentShip })
-          .then(buf => { if (relayWs && relayWs.readyState === 1) relayWs.send(buf); })
-          .catch(() => {});
+        const _shipBuf = _encryptMsg({ type: 'ship', ship: currentShip });
+        if (_shipBuf && relayWs && relayWs.readyState === 1) relayWs.send(_shipBuf);
       }
       warpState = 'in'; warpAt = t;
       for (const c of crewMembers) { if (c.state !== 'fleeing') { c.state = 'fleeing'; c.stateAt = t; c.wpIdx = 0; c.fromX = c.x; c.fromY = c.y; } }
@@ -2868,9 +2867,8 @@
           queue.push(...evts);
           if (twoPlayerMode === 'remote' && relayWs && relayWs.readyState === 1 && relayState === 'connected') {
             const stripped = evts.map(ev => ({ status: ev.status, source: ev.source }));
-            _encryptMsg({ type: 'events', events: stripped })
-              .then(buf => { if (buf && relayWs && relayWs.readyState === 1) relayWs.send(buf); })
-              .catch(() => {});
+            const _evtBuf = _encryptMsg({ type: 'events', events: stripped });
+            if (_evtBuf && relayWs && relayWs.readyState === 1) relayWs.send(_evtBuf);
           }
         }
       } catch {}
@@ -2882,29 +2880,30 @@
     };
   }
 
-  // ── 2P crypto (AES-256-GCM via Web Crypto) ───────────────────────
-  async function _importRelayKey(keyStr) {
-    const raw = new TextEncoder().encode(keyStr);
-    const hash = await crypto.subtle.digest('SHA-256', raw);
-    return crypto.subtle.importKey('raw', hash, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  // ── 2P crypto (XSalsa20-Poly1305 via TweetNaCl — no secure context required) ──
+  function _deriveRelayKey(keyStr) {
+    // SHA-512(keyStr) → first 32 bytes as secretbox key. Key never leaves this device.
+    return nacl.hash(new TextEncoder().encode(keyStr)).subarray(0, 32);
   }
 
-  async function _encryptMsg(obj) {
+  function _encryptMsg(obj) {
     if (!_relayKey) return null;
-    const nonce = crypto.getRandomValues(new Uint8Array(12));
+    const nonce = nacl.randomBytes(nacl.secretbox.nonceLength);
     const plain = new TextEncoder().encode(JSON.stringify(obj));
-    const cipher = await crypto.subtle.encrypt({ name: 'AES-GCM', iv: nonce }, _relayKey, plain);
-    const out = new Uint8Array(12 + cipher.byteLength);
-    out.set(nonce, 0);
-    out.set(new Uint8Array(cipher), 12);
+    const box = nacl.secretbox(plain, nonce, _relayKey);
+    const out = new Uint8Array(nonce.length + box.length);
+    out.set(nonce);
+    out.set(box, nonce.length);
     return out.buffer;
   }
 
-  async function _decryptMsg(buf) {
+  function _decryptMsg(buf) {
     if (!_relayKey) return null;
-    const nonce = new Uint8Array(buf, 0, 12);
-    const cipher = new Uint8Array(buf, 12);
-    const plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: nonce }, _relayKey, cipher);
+    const arr = new Uint8Array(buf);
+    const nonce = arr.subarray(0, nacl.secretbox.nonceLength);
+    const box = arr.subarray(nacl.secretbox.nonceLength);
+    const plain = nacl.secretbox.open(box, nonce, _relayKey);
+    if (!plain) return null;
     return JSON.parse(new TextDecoder().decode(plain));
   }
 
@@ -2968,11 +2967,25 @@
     _disconnectP2();
     p2ShipX = W * 3 / 4;
     p2ShipY = -300;
-    try { _relayKey = await _importRelayKey(keyStr); } catch { return; }
+    _relayKey = _deriveRelayKey(keyStr);
     relayState = 'connecting';
     const ws = new WebSocket(relayUrl);
     ws.binaryType = 'arraybuffer';
     relayWs = ws;
+
+    function _handleRelayGameMsg(msg) {
+      if (!msg) return;
+      if (msg.type === 'events' && Array.isArray(msg.events)) {
+        p2Queue.push(...msg.events);
+      } else if (msg.type === 'stats') {
+        if (msg.blocked != null) p2HudStats.blocked = msg.blocked;
+        if (msg.queries != null) p2HudStats.queries = msg.queries;
+        if (msg.percent != null) p2HudStats.percent = msg.percent;
+        if (msg.blocking != null) p2BlockingEnabled = msg.blocking;
+      } else if (msg.type === 'ship' && _SHIP_CONFIGS[msg.ship]) {
+        p2CurrentShip = msg.ship;
+      }
+    }
 
     ws.onmessage = async e => {
       if (typeof e.data === 'string') {
@@ -2995,20 +3008,7 @@
         } catch {}
         return;
       }
-      try {
-        const msg = await _decryptMsg(e.data);
-        if (!msg) return;
-        if (msg.type === 'events' && Array.isArray(msg.events)) {
-          p2Queue.push(...msg.events);
-        } else if (msg.type === 'stats') {
-          if (msg.blocked != null) p2HudStats.blocked = msg.blocked;
-          if (msg.queries != null) p2HudStats.queries = msg.queries;
-          if (msg.percent != null) p2HudStats.percent = msg.percent;
-          if (msg.blocking != null) p2BlockingEnabled = msg.blocking;
-        } else if (msg.type === 'ship' && _SHIP_CONFIGS[msg.ship]) {
-          p2CurrentShip = msg.ship;
-        }
-      } catch {}
+      try { _handleRelayGameMsg(_decryptMsg(e.data)); } catch {}
     };
     ws.onerror = () => {};
     ws.onclose = () => { if (relayWs === ws) { relayWs = null; relayState = 'off'; } };
@@ -3156,9 +3156,8 @@
         if (d.queries != null) hudStats.queries = d.queries;
         if (d.percent != null) hudStats.percent = d.percent;
         if (twoPlayerMode === 'remote' && relayWs && relayWs.readyState === 1 && relayState === 'connected') {
-          _encryptMsg({ type: 'stats', blocked: d.blocked, queries: d.queries, percent: d.percent, blocking: d.blocking })
-            .then(buf => { if (buf && relayWs && relayWs.readyState === 1) relayWs.send(buf); })
-            .catch(() => {});
+          const _statBuf = _encryptMsg({ type: 'stats', blocked: d.blocked, queries: d.queries, percent: d.percent, blocking: d.blocking });
+          if (_statBuf && relayWs && relayWs.readyState === 1) relayWs.send(_statBuf);
         }
       }).catch(() => {});
     }

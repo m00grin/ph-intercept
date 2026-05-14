@@ -67,6 +67,7 @@ if (window.BG_CONFIG.bg_image) {
 
 <!-- Game -->
 <script src="/static/js/game-bitmaps.js"></script>
+{% if two_player_enabled %}<script src="/static/js/tweetnacl.min.js"></script>{% endif %}
 <script src="/static/js/game.js"></script>
 {% if two_player_enabled %}<script src="/static/js/2p.js"></script>{% endif %}
 
