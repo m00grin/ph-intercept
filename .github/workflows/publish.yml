@@ -64,13 +64,6 @@ jobs:
           mkdir -p /opt/buildx-cache
           mv /opt/buildx-cache/ph-intercept-new /opt/buildx-cache/ph-intercept
 
-      - name: Clean up old untagged images
-        uses: dataaxiom/ghcr-cleanup-action@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          package: ph-intercept
-          delete-untagged: true
-
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
