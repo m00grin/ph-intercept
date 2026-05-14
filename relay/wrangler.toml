@@ -1,6 +1,8 @@
 name            = "intercept-relay"
 main            = "src/index.ts"
 compatibility_date = "2026-05-01"
+workers_dev  = false
+preview_urls = false
 
 [[durable_objects.bindings]]
 name       = "RELAY"
@@ -16,9 +18,6 @@ new_sqlite_classes = ["RelaySession"]
 
 [[migrations]]
 tag         = "v2"
-new_classes = ["RateLimiter"]
-
-workers_dev  = false
-preview_urls = false
+new_sqlite_classes = ["RateLimiter"]
 
 # Add a custom domain via the Workers dashboard: Settings > Domains & Routes > Custom Domain
