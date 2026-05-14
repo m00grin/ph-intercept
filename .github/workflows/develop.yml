@@ -74,3 +74,56 @@ jobs:
           rm -rf /opt/buildx-cache/ph-intercept
           mkdir -p /opt/buildx-cache
           mv /opt/buildx-cache/ph-intercept-new /opt/buildx-cache/ph-intercept
+
+      - name: Cleanup old untagged develop versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+        run: |
+          AUTH=$(curl -sf \
+            -u "${OWNER}:${GH_TOKEN}" \
+            "https://ghcr.io/token?scope=repository:${OWNER}/ph-intercept:pull&service=ghcr.io" \
+            | jq -r .token)
+          if [ -z "${AUTH}" ] || [ "${AUTH}" = "null" ]; then
+            echo "Failed to obtain GHCR auth token; skipping cleanup."
+            exit 0
+          fi
+
+          TAGGED=$(gh api --paginate "/users/${OWNER}/packages/container/ph-intercept/versions" \
+            --jq '.[] | select(.metadata.container.tags | length > 0) | .name')
+          if [ -z "${TAGGED}" ]; then
+            echo "No tagged versions found; skipping cleanup."
+            exit 0
+          fi
+
+          PROTECTED=$(
+            printf '%s\n' "${TAGGED}" \
+            | while read -r DIGEST; do
+                MANIFEST=$(curl -sf \
+                  -H "Authorization: Bearer ${AUTH}" \
+                  -H "Accept: application/vnd.oci.image.index.v1+json,application/vnd.docker.distribution.manifest.list.v2+json" \
+                  "https://ghcr.io/v2/${OWNER}/ph-intercept/manifests/${DIGEST}")
+                if [ -z "${MANIFEST}" ]; then
+                  echo "ABORT"
+                  exit 1
+                fi
+                printf '%s\n' "${MANIFEST}" | jq -r '.manifests[]?.digest // empty' 2>/dev/null
+              done
+          )
+
+          if printf '%s\n' "${PROTECTED}" | grep -q "^ABORT$"; then
+            echo "Manifest fetch failed; skipping cleanup."
+            exit 0
+          fi
+
+          PROTECTED=$(printf '%s\n' "${PROTECTED}" | sort -u)
+
+          gh api --paginate "/users/${OWNER}/packages/container/ph-intercept/versions" \
+            --jq '.[] | select(.metadata.container.tags | length == 0) | "\(.name) \(.id)"' \
+          | while read -r DIGEST ID; do
+              if ! printf '%s\n' "${PROTECTED}" | grep -qF "${DIGEST}"; then
+                gh api --method DELETE \
+                  "/users/${OWNER}/packages/container/ph-intercept/versions/${ID}" \
+                  && echo "Deleted: ${ID} (${DIGEST})" || true
+              fi
+            done

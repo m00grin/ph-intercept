@@ -83,12 +83,17 @@
   let lastP2Spawn = 0;
   let p2ShipX = 0, p2ShipY = -300;
   let p2CurrentShip = 'protector';
+  let p2WarpState = 'none';  // 'none' | 'out' | 'in'
+  let p2WarpAt = 0;
+  let p2WarpNextShip = null;
   let p2HudStats = { blocked: null, queries: null, percent: null };
   let p2BlockingEnabled = null;
   let p2EvtSource = null, p2StatsPollTimer = null;
   let relayWs = null;
   let relayState = 'off';           // 'off' | 'waiting' | 'connected'
   let _relayKey = null;             // Uint8Array key for NaCl secretbox (XSalsa20-Poly1305)
+  let _relayRetries = 0;
+  let _relayLocalConfigured = false;
   let _p2ShipVisible = false;       // true once P2 has live data (drives ship arrival)
   let _p2ShipRipInAt = 0;           // perf.now() when ship arrival animation fires
   let _2pBannerAt = 0;              // perf.now() when 2P mode first activated (banner anim)
@@ -110,12 +115,18 @@
   let shipMenuHitbox = { x: 0, y: 0, w: 0, h: 0 };
   let shipMenuHovered = false;
   let shipBodyHitbox = { x: 0, y: 0, w: 0, h: 0 };
+  let p2ShipBodyHitbox = { x: 0, y: 0, w: 0, h: 0 };
   let missingnoGlitchAt = 0, missingnoGlitchCooldown = 0;
   let shipQuote = null;    // { text: string, shownAt: number } | null
   let shipQuoteCooldown = 0; // performance.now() timestamp; no new quotes until after this
   let shipQuoteDeck = [];       // shuffled queue for the current ship
   let shipQuoteDeckFor = null;  // which ship the deck was built for
   let shipQuoteLastShown = null;
+  let p2ShipQuote = null;
+  let p2ShipQuoteCooldown = 0;
+  let p2ShipQuoteDeck = [];
+  let p2ShipQuoteDeckFor = null;
+  let p2ShipQuoteLastShown = null;
   const SHIP_QUOTES = {
     protector:  ["Never give up, never surrender!", "By Grabthar's hammer, by the suns of Warvan, you shall be avenged.", "EXPLAIN.", "I'm just the guy who dies in episode 3!", "Can you form some sort of rudimentary lathe?", "Are you enjoying your Kep-mok blood ticks, Dr. Lazarus?", "It's all real."],
     falcon:     ["Never tell me the odds!", "I'd just as soon kiss a Wookiee.", "BUT SIR!!", "I am a Jedi, like my father before me.", "I can fly anything.", "It's not my fault!", "Shut him up or shut him down!"],
@@ -317,14 +328,18 @@
     if (ev.status === 'allowed' && !showFriendlies) return;
     const blocked = ev.status === 'blocked';
     const isCache = ev.source === 'cache';
-    const existing = ev.domain != null ? p2Entities.find(e => e.domain === ev.domain && e.type === ev.status && e.state !== 'shot') : null;
+    const now = performance.now();
+    const remoteKey = ev.domain == null ? (ev.status + ':' + (ev.source || 'upstream')) : null;
+    const existing = ev.domain != null
+      ? p2Entities.find(e => e.domain === ev.domain && e.type === ev.status && e.state !== 'shot')
+      : p2Entities.find(e => e.remoteKey === remoteKey && e.state !== 'shot' && now - e.spawnTime < 1500);
     if (existing) {
       const prevTier = Math.min(existing.count, 3);
       existing.count++;
       const newTier = Math.min(existing.count, 3);
       if (blocked && newTier > prevTier) {
         const tierColor = newTier >= 3 ? '190,60,255' : '255,130,30';
-        existing.mutateAt = performance.now();
+        existing.mutateAt = now;
         existing.mutateColor = tierColor;
         const ps = [];
         for (let i = 0; i < 14; i++) {
@@ -333,12 +348,11 @@
           ps.push({ x: existing.x, y: existing.y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
                     r: 1.5 + Math.random() * 2.5, col: tierColor });
         }
-        explosions.push({ ps, born: performance.now(), dur: 600 });
+        explosions.push({ ps, born: now, dur: 600 });
       }
       return;
     }
     if (p2Entities.length >= 50) return;
-    const now = performance.now();
     let x, y, vx, vy, headStart = 0;
     if (blocked) {
       const spd = 0.055 + Math.random() * 0.03;
@@ -355,11 +369,16 @@
       const d = Math.hypot(tx - x, ty - y);
       vx = (tx - x) / d * spd; vy = (ty - y) / d * spd;
     }
+    // For remote P2 (no domain), derive design from source for meaningful visual variety
+    const design = remoteKey == null
+      ? (blocked ? Math.floor(Math.random() * 2) : Math.floor(Math.random() * 3))
+      : (blocked ? (ev.source === 'blocked' ? 1 : 0) : (ev.source === 'cache' ? 0 : ev.source === 'upstream' ? 1 : 2));
     p2Entities.push({
       type: ev.status, source: ev.source || 'upstream',
-      design: blocked ? Math.floor(Math.random() * 2) : Math.floor(Math.random() * 3),
+      design,
       x, y, vx, vy, wobble: Math.random() * Math.PI * 2,
       domain: ev.domain, client: ev.client || '',
+      remoteKey,
       spawnTime: now - headStart, appearAt: now,
       state: 'alive',
       targetedAt: 0, shotAt: 0, labelAlpha: 1, count: 1,
@@ -492,6 +511,7 @@
     settingsMenuOpen = false;
     if (settingsBtnEl) settingsBtnEl.classList.remove('menu-open');
     shipQuote = null; shipQuoteCooldown = 0; shipQuoteDeck = []; shipQuoteDeckFor = null; shipQuoteLastShown = null;
+    p2ShipQuote = null; p2ShipQuoteCooldown = 0; p2ShipQuoteDeck = []; p2ShipQuoteDeckFor = null; p2ShipQuoteLastShown = null;
     lasers.length = 0;
     shakeAt = warpAt; shakeDur = 500; shakeAmp = 16;
     for (const e of entities) e.warpPushed = false;
@@ -525,7 +545,7 @@
         e.y += e.vy * dt;
         if (e.type === 'blocked') {
           e.x += Math.sin(e.wobble + age * 0.002) * 0.012 * dt;
-          if (_p2ShipVisible && warpState === 'none') {
+          if (_p2ShipVisible && warpState === 'none' && p2BlockingEnabled !== false) {
             if (e.state === 'alive' && age > 2200 && t - e.appearAt > 600) { e.state = 'targeted'; e.targetedAt = t; }
             if (e.state === 'targeted' && age > 3400 && t - e.appearAt > 600) fireAtP2(e);
           } else if (e.state === 'targeted') {
@@ -924,6 +944,13 @@
     } else if (warpState === 'in' && t - warpAt >= WARP_IN_DUR) {
       warpState = 'none'; shipPowerState = 'up';
       gunCheckState = 0; gunCheckFiredAt = [0, 0];
+    }
+
+    if (p2WarpState === 'out' && t - p2WarpAt >= WARP_OUT_DUR) {
+      p2CurrentShip = p2WarpNextShip; p2WarpNextShip = null;
+      p2WarpState = 'in'; p2WarpAt = t;
+    } else if (p2WarpState === 'in' && t - p2WarpAt >= WARP_IN_DUR) {
+      p2WarpState = 'none';
     }
 
     // Warp-out shockwave: permanent velocity impulse as ship passes each entity
@@ -2209,6 +2236,8 @@
       const _p2cy = Math.round(p2ShipY + 2.5 * Math.sin(t * 0.00055 + Math.PI));
       const _p2cfg = _SHIP_CONFIGS[p2CurrentShip] || _SHIP_CONFIGS.protector;
       const _p2base = _p2cy + bmpH(_p2cfg.bmp) * PX / 2 - 5;
+      const _p2HW = bmpW(_p2cfg.bmp) * PX / 2, _p2HH = bmpH(_p2cfg.bmp) * PX / 2;
+      p2ShipBodyHitbox = (_p2ShipVisible && p2WarpState === 'none') ? { x: _p2cx - _p2HW, y: _p2cy - _p2HH, w: _p2HW * 2, h: _p2HH * 2 } : { x: 0, y: 0, w: 0, h: 0 };
       const _ripAge = _p2ShipRipInAt > 0 ? t - _p2ShipRipInAt : 99999;
 
       if (relayState === 'waiting') {
@@ -2257,20 +2286,95 @@
           }
         }
 
-        ctx.save();
-        ctx.globalAlpha = (_ripAge < 400 ? Math.min(1, _ripAge / 180) : 1) * 0.72;
-        drawBmp(ctx, _p2cfg.bmp, _p2cx, _p2cy, _p2cfg.color, _p2cfg.glow, PX);
-        for (const f of _p2cfg.flares) {
-          drawEngineFlare(_p2cx + f.xOff, _p2base + f.yOff, t * 0.005,
-            f.size, f.len ?? f.size, f.taper ?? 0.6, f.shape ?? 'arch', f.wobble ?? 1, f.col ?? null);
+        if (p2WarpState !== 'none') {
+          const _p2wdur = p2WarpState === 'out' ? WARP_OUT_DUR : WARP_IN_DUR;
+          const _p2wp  = Math.min(1, (t - p2WarpAt) / _p2wdur);
+          ctx.save();
+          ctx.beginPath(); ctx.rect(W / 2, 0, W / 2, H); ctx.clip();
+          ctx.translate(_p2cx, _p2cy);
+          if (p2WarpState === 'out') {
+            const _w1 = Math.min(1, _p2wp / 0.45);
+            const _w2 = Math.max(0, (_p2wp - 0.40) / 0.60);
+            const _scX = Math.max(0.07, 1 - _w1 * 0.93);
+            const _oY  = -_w2 * (H + 300);
+            if (_p2wp < 0.35) {
+              const fp = 1 - _p2wp / 0.35;
+              const fr = 18 + _p2wp * 560;
+              const fg = ctx.createRadialGradient(0, 0, 0, 0, 0, fr);
+              fg.addColorStop(0, `rgba(255,255,255,${fp.toFixed(2)})`);
+              fg.addColorStop(0.12, `rgba(210,228,255,${(fp * 0.85).toFixed(2)})`);
+              fg.addColorStop(0.4,  `rgba(195,208,240,${(fp * 0.35).toFixed(2)})`);
+              fg.addColorStop(1,   'rgba(195,208,240,0)');
+              ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(0, 0, fr, 0, Math.PI * 2); ctx.fill();
+            }
+            if (_p2wp < 0.55) {
+              const rp = _p2wp / 0.55;
+              const rr = 10 + rp * 260;
+              const ra = Math.max(0, 1 - rp);
+              ctx.save();
+              ctx.strokeStyle = `rgba(185,212,255,${(ra * 0.9).toFixed(2)})`;
+              ctx.lineWidth = Math.max(0.5, 2.5 - rp * 2);
+              ctx.shadowColor = 'rgba(160,200,255,0.9)'; ctx.shadowBlur = 10;
+              ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2); ctx.stroke();
+              ctx.restore();
+            }
+            if (_w1 > 0.25) {
+              const tlen = 80 + _w1 * 340;
+              const top  = _w1 * 0.88;
+              const sg0 = ctx.createLinearGradient(0, _oY, 0, _oY + tlen);
+              sg0.addColorStop(0, `rgba(195,208,240,${(top * 0.42).toFixed(2)})`); sg0.addColorStop(1, 'rgba(195,208,240,0)');
+              ctx.fillStyle = sg0; ctx.fillRect(-16, _oY, 32, tlen);
+              const sg1 = ctx.createLinearGradient(0, _oY, 0, _oY + tlen);
+              sg1.addColorStop(0, `rgba(215,228,255,${(top * 0.68).toFixed(2)})`); sg1.addColorStop(1, 'rgba(215,225,248,0)');
+              ctx.fillStyle = sg1; ctx.fillRect(-6, _oY, 12, tlen);
+              const sg2 = ctx.createLinearGradient(0, _oY, 0, _oY + tlen);
+              sg2.addColorStop(0, `rgba(245,248,255,${top.toFixed(2)})`); sg2.addColorStop(1, 'rgba(240,244,255,0)');
+              ctx.fillStyle = sg2; ctx.fillRect(-2, _oY, 4, tlen);
+            }
+            ctx.save();
+            ctx.translate(0, _oY); ctx.scale(_scX, 1 + _w1 * 7.5);
+            const _wa = _w2 > 0.3 ? Math.max(0, 1 - (_w2 - 0.3) / 0.7) : 1;
+            drawBmp(ctx, _p2cfg.bmp, 0, 0, _p2cfg.color.replace(/[\d.]+\)$/, `${(_wa * 0.72).toFixed(2)})`), _p2cfg.glow, PX);
+            ctx.restore();
+          } else {
+            const _w1 = Math.min(1, _p2wp / 0.50);
+            const _w2 = Math.max(0, (_p2wp - 0.40) / 0.55);
+            if (_w1 < 1) {
+              const streakY = (1 - _w1) * (H + 250);
+              const tlen = 80 + _w1 * 80;
+              const sg = ctx.createLinearGradient(0, streakY, 0, streakY + tlen);
+              sg.addColorStop(0, `rgba(195,208,240,${(0.5 + _w1 * 0.4).toFixed(2)})`);
+              sg.addColorStop(1, 'rgba(170,190,235,0)');
+              ctx.fillStyle = sg; ctx.fillRect(-2, streakY, 4, tlen);
+            }
+            if (_w2 > 0) {
+              const wa2 = (Math.min(1, _w2 * 1.4) * 0.72).toFixed(2);
+              ctx.save();
+              ctx.scale(Math.max(0.08, Math.min(1, _w2 / 0.55)), Math.max(1, 4 - _w2 * 4.5));
+              drawBmp(ctx, _p2cfg.bmp, 0, 0, _p2cfg.color.replace(/[\d.]+\)$/, `${wa2})`), _p2cfg.glow, PX);
+              ctx.restore();
+            }
+          }
+          ctx.restore();
+        } else {
+          const _p2powered = p2BlockingEnabled !== false;
+          ctx.save();
+          ctx.globalAlpha = (_ripAge < 400 ? Math.min(1, _ripAge / 180) : 1) * 0.72;
+          drawBmp(ctx, _p2cfg.bmp, _p2cx, _p2cy, _p2powered ? _p2cfg.color : _p2cfg.dimColor, _p2powered ? _p2cfg.glow : null, PX);
+          if (_p2powered) {
+            for (const f of _p2cfg.flares) {
+              drawEngineFlare(_p2cx + f.xOff, _p2base + f.yOff, t * 0.005,
+                f.size, f.len ?? f.size, f.taper ?? 0.6, f.shape ?? 'arch', f.wobble ?? 1, f.col ?? null);
+            }
+          }
+          ctx.restore();
         }
-        ctx.restore();
 
         // "P2 ONLINE" label fades in after arrival, persists briefly
         if (_p2ShipRipInAt > 0 && _ripAge > 350 && _ripAge < 2200) {
           const _fa = _ripAge < 500 ? (_ripAge - 350) / 150 : Math.max(0, 1 - (_ripAge - 1800) / 400);
           ctx.save(); ctx.globalAlpha = _fa * 0.90;
-          ctx.font = '9px "Press Start 2P", monospace';
+          ctx.font = '8px "Press Start 2P", monospace';
           ctx.textAlign = 'center';
           ctx.fillStyle = 'rgba(50,215,120,1)';
           ctx.shadowColor = 'rgba(50,215,120,0.55)'; ctx.shadowBlur = 10;
@@ -2290,16 +2394,53 @@
         ctx.shadowBlur = 0; ctx.restore();
       }
 
+      // P2 ship easter-egg speech bubble
+      if (p2ShipQuote) {
+        const _q2Age = t - p2ShipQuote.shownAt;
+        const _q2Total = 3500, _q2FadeIn = 100, _q2FadeStart = 3000;
+        if (_q2Age > _q2Total) {
+          p2ShipQuote = null;
+          p2ShipQuoteCooldown = performance.now() + 800;
+        } else {
+          const _q2A = _q2Age < _q2FadeIn ? _q2Age / _q2FadeIn : _q2Age > _q2FadeStart ? 1 - (_q2Age - _q2FadeStart) / (_q2Total - _q2FadeStart) : 1;
+          ctx.save();
+          ctx.globalAlpha = _q2A;
+          const _q2Font = 10;
+          ctx.font = `${_q2Font}px "Press Start 2P", monospace`;
+          const _q2MaxW = Math.min(200, W / 2 - 20);
+          const _q2Words = p2ShipQuote.text.split(' ');
+          const _q2Lines = [];
+          let _q2Cur = '';
+          for (const _q2W of _q2Words) {
+            const _q2Test = _q2Cur ? _q2Cur + ' ' + _q2W : _q2W;
+            if (ctx.measureText(_q2Test).width > _q2MaxW && _q2Cur) { _q2Lines.push(_q2Cur); _q2Cur = _q2W; }
+            else _q2Cur = _q2Test;
+          }
+          if (_q2Cur) _q2Lines.push(_q2Cur);
+          const _q2LineH = _q2Font + 8;
+          const _q2BY = _p2cy - _p2HH - 14;
+          ctx.fillStyle = 'rgba(215,225,248,0.95)';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.shadowColor = 'rgba(0,0,0,0.8)';
+          ctx.shadowBlur = 6;
+          for (let _q2i = 0; _q2i < _q2Lines.length; _q2i++) {
+            ctx.fillText(_q2Lines[_q2i], _p2cx, _q2BY - (_q2Lines.length - 1 - _q2i) * _q2LineH);
+          }
+          ctx.restore();
+        }
+      }
+
       // P2 mini stats (top of right half)
       if (_p2ShipVisible || relayState === 'connected') {
         const _p2fmt = n => n == null ? '—' : n >= 1e6 ? (n/1e6).toFixed(2)+'M' : n >= 1e4 ? (n/1e3).toFixed(2)+'K' : String(n);
         const _p2b = _p2fmt(p2HudStats.blocked);
         const _p2q = _p2fmt(p2HudStats.queries);
         ctx.save(); ctx.globalAlpha = 0.55;
-        ctx.font = '7px "Press Start 2P", monospace';
+        ctx.font = '10px "Press Start 2P", monospace';
         ctx.textAlign = 'right';
         ctx.fillStyle = p2BlockingEnabled === false ? 'rgba(255,80,60,0.65)' : 'rgba(50,215,120,0.55)';
-        ctx.fillText(`P2  ${_p2b} / ${_p2q}`, W - 8, 16);
+        ctx.fillText(`P2  ${_p2b} / ${_p2q}`, W - 8, 20);
         ctx.restore();
       }
 
@@ -2309,7 +2450,7 @@
         if (_bAge < 2800) {
           const _ba = _bAge < 300 ? _bAge / 300 : _bAge > 2200 ? Math.max(0, 1 - (_bAge - 2200) / 600) : 1;
           ctx.save(); ctx.globalAlpha = _ba * 0.92;
-          ctx.font = '11px "Press Start 2P", monospace';
+          ctx.font = '10px "Press Start 2P", monospace';
           ctx.textAlign = 'center';
           ctx.fillStyle = 'rgba(50,215,120,1)';
           ctx.shadowColor = 'rgba(50,215,120,0.55)'; ctx.shadowBlur = 14;
@@ -2982,8 +3123,10 @@
         if (msg.queries != null) p2HudStats.queries = msg.queries;
         if (msg.percent != null) p2HudStats.percent = msg.percent;
         if (msg.blocking != null) p2BlockingEnabled = msg.blocking;
-      } else if (msg.type === 'ship' && _SHIP_CONFIGS[msg.ship]) {
-        p2CurrentShip = msg.ship;
+      } else if (msg.type === 'ship' && _SHIP_CONFIGS[msg.ship] && msg.ship !== p2CurrentShip) {
+        p2WarpNextShip = msg.ship;
+        p2WarpState = 'out';
+        p2WarpAt = performance.now();
       }
     }
 
@@ -2994,6 +3137,7 @@
           if (msg.type === 'waiting') {
             relayState = 'waiting';
           } else if (msg.type === 'connected') {
+            _relayRetries = 0;
             relayState = 'connected';
             _p2Reveal();
             const _hsBuf = _encryptMsg({ type: 'ship', ship: currentShip });
@@ -3013,7 +3157,29 @@
       try { _handleRelayGameMsg(_decryptMsg(e.data)); } catch {}
     };
     ws.onerror = () => {};
-    ws.onclose = () => { if (relayWs === ws) { relayWs = null; relayState = 'off'; } };
+    ws.onclose = () => {
+      if (relayWs !== ws) return;
+      relayWs = null;
+      const prev = relayState;
+      relayState = 'off';
+      if (prev === 'connected' || prev === 'waiting') {
+        if (_relayRetries < 3) {
+          _relayRetries++;
+          setTimeout(_init2P, 5000);
+        } else {
+          _relayRetries = 0;
+          _fallbackFrom2P();
+        }
+      }
+    };
+  }
+
+  async function _fallbackFrom2P() {
+    try {
+      const fallback = _relayLocalConfigured ? 'local' : 'off';
+      await fetch('/api/2p/mode', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: fallback }) });
+    } catch {}
+    _init2P();
   }
 
   async function _init2P() {
@@ -3021,6 +3187,7 @@
       const s = await fetch('/api/2p/status', { signal: AbortSignal.timeout(1800) }).then(r => r.json());
       const newMode = s.mode || 'off';
       const wasOff = twoPlayerMode === 'off';
+      _relayLocalConfigured = !!s.local_configured;
       twoPlayerMode = newMode;
       if (newMode === 'local') {
         _connectP2Local();
@@ -3425,6 +3592,31 @@
         const _chosen = shipQuoteDeck.shift();
         shipQuoteLastShown = _chosen;
         shipQuote = { text: _chosen, shownAt: performance.now() };
+      }
+      return;
+    }
+
+    // P2 ship body easter egg
+    if (_p2ShipVisible && _inBox(mx, my, p2ShipBodyHitbox) && p2WarpState === 'none' && p2BlockingEnabled !== false) {
+      e.stopPropagation();
+      if (!p2ShipQuote && performance.now() >= p2ShipQuoteCooldown) {
+        const _p2q = p2CurrentShip || 'protector';
+        if (p2ShipQuoteDeck.length === 0 || p2ShipQuoteDeckFor !== _p2q) {
+          const _src = [...(SHIP_QUOTES[_p2q] || SHIP_QUOTES.protector)];
+          for (let _i = _src.length - 1; _i > 0; _i--) {
+            const _j = Math.floor(Math.random() * (_i + 1));
+            [_src[_i], _src[_j]] = [_src[_j], _src[_i]];
+          }
+          if (_src.length > 1 && p2ShipQuoteDeckFor === _p2q && _src[0] === p2ShipQuoteLastShown) {
+            const _sw = 1 + Math.floor(Math.random() * (_src.length - 1));
+            [_src[0], _src[_sw]] = [_src[_sw], _src[0]];
+          }
+          p2ShipQuoteDeck = _src;
+          p2ShipQuoteDeckFor = _p2q;
+        }
+        const _chosen = p2ShipQuoteDeck.shift();
+        p2ShipQuoteLastShown = _chosen;
+        p2ShipQuote = { text: _chosen, shownAt: performance.now() };
       }
       return;
     }

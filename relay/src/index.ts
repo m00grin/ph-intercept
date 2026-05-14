@@ -146,6 +146,7 @@ export class RelaySession extends DurableObject<Env> {
     for (const peer of this.ctx.getWebSockets()) {
       if ((peer.deserializeAttachment() as Attachment).role === partnerRole) {
         try { peer.send(JSON.stringify({ type: 'partner_disconnected' })); } catch { /* closed */ }
+        try { peer.close(1001, 'partner disconnected'); } catch { /* closed */ }
         return;
       }
     }
