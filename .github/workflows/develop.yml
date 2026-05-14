@@ -83,7 +83,7 @@ jobs:
           AUTH=$(curl -sf \
             -u "${OWNER}:${GH_TOKEN}" \
             "https://ghcr.io/token?scope=repository:${OWNER}/ph-intercept:pull&service=ghcr.io" \
-            | python3 -c "import sys,json; print(json.load(sys.stdin).get('token',''))")
+            | jq -r .token)
           if [ -z "${AUTH}" ] || [ "${AUTH}" = "null" ]; then
             echo "Failed to obtain GHCR auth token; skipping cleanup."
             exit 0
@@ -107,7 +107,7 @@ jobs:
                   echo "ABORT"
                   exit 1
                 fi
-                printf '%s\n' "${MANIFEST}" | python3 -c "import sys,json; [print(m['digest']) for m in json.load(sys.stdin).get('manifests',[]) if m.get('digest')]" 2>/dev/null
+                printf '%s\n' "${MANIFEST}" | jq -r '.manifests[]?.digest // empty' 2>/dev/null
               done
           )
 
