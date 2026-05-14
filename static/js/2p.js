@@ -89,7 +89,7 @@
         <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:rgba(100,180,255,0.78);letter-spacing:0.04em;margin-bottom:6px">WHAT YOUR PARTNER RECEIVES</div>
         <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:rgba(175,200,238,0.48);letter-spacing:0.03em;line-height:1.9;margin-bottom:14px">&nbsp;&bull;&nbsp;QUERY STATUS (BLOCKED / ALLOWED)<br>&nbsp;&bull;&nbsp;QUERY TYPE (CACHE / UPSTREAM / BLOCKED)<br>&nbsp;&bull;&nbsp;BLOCKING ON/OFF AND SHIP SELECTION<br>&nbsp;&bull;&nbsp;NO DOMAINS. NO CLIENT IPS. NOTHING ELSE.</div>
         <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:rgba(100,180,255,0.78);letter-spacing:0.04em;margin-bottom:6px">SECURITY</div>
-        <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:rgba(175,200,238,0.48);letter-spacing:0.03em;line-height:1.9;margin-bottom:14px">&nbsp;&bull;&nbsp;AES-256-GCM END-TO-END ENCRYPTION<br>&nbsp;&bull;&nbsp;SESSION KEY NEVER LEAVES THIS DEVICE<br>&nbsp;&bull;&nbsp;THE RELAY SEES ONLY CIPHERTEXT</div>
+        <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:rgba(175,200,238,0.48);letter-spacing:0.03em;line-height:1.9;margin-bottom:14px">&nbsp;&bull;&nbsp;XSALSA20-POLY1305 END-TO-END ENCRYPTION<br>&nbsp;&bull;&nbsp;SESSION KEY NEVER LEAVES THIS DEVICE<br>&nbsp;&bull;&nbsp;THE RELAY SEES ONLY CIPHERTEXT</div>
         <div style="font-family:'Press Start 2P',monospace;font-size:8px;color:rgba(255,200,80,0.92);letter-spacing:0.04em;line-height:1.7">SHARE YOUR SESSION ID + KEY<br>ONLY WITH SOMEONE YOU TRUST.</div>
       </div>
       <div class="m2p-confirm-row">
@@ -171,7 +171,7 @@
           // SESSION KEY row
           h += `<div class="m2p-hash-row" style="margin-top:4px">
             <span class="m2p-hash-label">SESSION KEY</span>
-            <span class="m2p-hash-val" title="BLAKE2b/base85 · AES-256-GCM">${_esc(_status.session_key || '—')}</span>
+            <span class="m2p-hash-val" title="SHA-512/base64 · XSalsa20-Poly1305">${_esc(_status.session_key || '—')}</span>
             <div class="m2p-hash-actions">
               <button class="m2p-btn" id="m2p-copy-key">COPY</button>
               <button class="m2p-btn" id="m2p-paste-key">PASTE</button>

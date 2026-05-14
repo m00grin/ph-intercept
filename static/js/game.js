@@ -317,7 +317,7 @@
     if (ev.status === 'allowed' && !showFriendlies) return;
     const blocked = ev.status === 'blocked';
     const isCache = ev.source === 'cache';
-    const existing = p2Entities.find(e => e.domain === ev.domain && e.type === ev.status && e.state !== 'shot');
+    const existing = ev.domain != null ? p2Entities.find(e => e.domain === ev.domain && e.type === ev.status && e.state !== 'shot') : null;
     if (existing) {
       const prevTier = Math.min(existing.count, 3);
       existing.count++;
@@ -2996,6 +2996,8 @@
           } else if (msg.type === 'connected') {
             relayState = 'connected';
             _p2Reveal();
+            const _hsBuf = _encryptMsg({ type: 'ship', ship: currentShip });
+            if (_hsBuf && relayWs && relayWs.readyState === 1) relayWs.send(_hsBuf);
           } else if (msg.type === 'partner_disconnected') {
             relayState = 'waiting';
             _p2ShipVisible = false; _p2ShipRipInAt = 0;
