@@ -3217,6 +3217,7 @@
   }
   window.addEventListener('resize', () => { if (active) resize(); });
   document.addEventListener('dragstart', e => e.preventDefault());
+  document.addEventListener('contextmenu', e => e.preventDefault());
 
   // ── Public API ────────────────────────────────────────────────────
   window.enterPiholeMode = function() {

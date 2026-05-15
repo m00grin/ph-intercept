@@ -258,7 +258,7 @@ body.pihole-mode #pihole-canvas {
 }
 .m2p-hash-enc {
   font-family: "Press Start 2P", monospace;
-  font-size: 8px;
+  font-size: 6px;
   color: rgba(175, 200, 238, 0.28);
   white-space: nowrap;
   flex-shrink: 0;
