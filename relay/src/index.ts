@@ -3,16 +3,28 @@ import { DurableObject } from 'cloudflare:workers';
 export interface Env {
   RELAY: DurableObjectNamespace<RelaySession>;
   RATE_LIMITER: DurableObjectNamespace<RateLimiter>;
+  IP_SALT: string;
 }
 
 type Role = 'A' | 'B';
-interface Attachment { role: Role; ip: string; lastMsgMs: number; msgCount: number }
+interface Attachment { role: Role; slotToken: string; lastMsgMs: number; msgCount: number }
 
 const SESSION_TIMEOUT_MS = 10 * 60 * 1000;
 const MAX_MSG_BYTES      = 4096;
 const MAX_CONNS_PER_IP   = 6;   // 2 per session × up to 3 concurrent; covers same-IP / NAT / local testing
 const MSG_RATE_LIMIT     = 20;  // messages per second per socket
 const MSG_RATE_WINDOW_MS = 1000;
+
+// Produces a hex HMAC-SHA256 of `data` keyed with `secret`.
+// Used to hash IPs before they appear in any Cloudflare-visible identifier.
+async function hmacHex(secret: string, data: string): Promise<string> {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(data));
+  return [...new Uint8Array(sig)].map(b => b.toString(16).padStart(2, '0')).join('');
+}
 
 // ── Worker entrypoint ─────────────────────────────────────────────────────────
 
@@ -30,7 +42,8 @@ export default {
     if (!m) return new Response(null, { status: 404 });
 
     const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
-    const limiter = env.RATE_LIMITER.get(env.RATE_LIMITER.idFromName(ip));
+    const ipKey = await hmacHex(env.IP_SALT, ip);
+    const limiter = env.RATE_LIMITER.get(env.RATE_LIMITER.idFromName(ipKey));
     if (!await limiter.tryConnect()) return new Response(null, { status: 429 });
 
     const response = await env.RELAY.get(env.RELAY.idFromName(m[1])).fetch(request);
@@ -65,6 +78,9 @@ export class RateLimiter extends DurableObject<Env> {
 // Holds at most two WebSocket connections and relays messages between them.
 // The session key (AES-256-GCM encryption secret) is never transmitted here —
 // the relay sees only ciphertext.
+//
+// IPs are HMAC-hashed and stored transiently via a random slot token so that
+// no raw or hashed IP ever lives in the WebSocket attachment.
 
 export class RelaySession extends DurableObject<Env> {
   async fetch(request: Request): Promise<Response> {
@@ -80,10 +96,14 @@ export class RelaySession extends DurableObject<Env> {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair) as [WebSocket, WebSocket];
     const role: Role = existing.length === 0 ? 'A' : 'B';
+
     const ip = request.headers.get('CF-Connecting-IP') ?? 'unknown';
+    const ipKey = await hmacHex(this.env.IP_SALT, ip);
+    const slotToken = crypto.randomUUID();
+    await this.ctx.storage.put(`slot:${slotToken}`, ipKey);
 
     this.ctx.acceptWebSocket(server);
-    server.serializeAttachment({ role, ip, lastMsgMs: 0, msgCount: 0 } satisfies Attachment);
+    server.serializeAttachment({ role, slotToken, lastMsgMs: 0, msgCount: 0 } satisfies Attachment);
 
     if (role === 'A') {
       server.send(JSON.stringify({ type: 'waiting' }));
@@ -122,9 +142,9 @@ export class RelaySession extends DurableObject<Env> {
     }
   }
 
-  webSocketClose(ws: WebSocket): void {
+  async webSocketClose(ws: WebSocket): Promise<void> {
     this._notifyPartner(ws);
-    void this._releaseSlot(ws);
+    await this._releaseSlot(ws);
   }
 
   webSocketError(ws: WebSocket, _error: unknown): void {
@@ -153,7 +173,11 @@ export class RelaySession extends DurableObject<Env> {
   }
 
   private async _releaseSlot(ws: WebSocket): Promise<void> {
-    const { ip } = ws.deserializeAttachment() as Attachment;
-    await this.env.RATE_LIMITER.get(this.env.RATE_LIMITER.idFromName(ip)).release();
+    const { slotToken } = ws.deserializeAttachment() as Attachment;
+    const ipKey = await this.ctx.storage.get<string>(`slot:${slotToken}`);
+    if (ipKey) {
+      await this.ctx.storage.delete(`slot:${slotToken}`);
+      await this.env.RATE_LIMITER.get(this.env.RATE_LIMITER.idFromName(ipKey)).release();
+    }
   }
 }
