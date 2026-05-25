@@ -40,7 +40,7 @@ services:
 
     environment:
       # REQUIRED: Pi-hole v6 API endpoint
-      # Example: "http://192.168.1.2:8053/api"
+      # Example: "http://192.168.1.2:80/api"
       PIHOLE_URL: "http://CHANGE.ME:PORT/api"
 
       # CLI users: Create a .env file in the same dir as this compose file with:
