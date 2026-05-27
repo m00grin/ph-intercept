@@ -4,6 +4,14 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.3.4] - 2026-05-27
+
+### Security
+
+- **Pinned all dependencies** -- `starlette==1.1.0` (patches a vulnerability disclosed 2026-05-27), `uvicorn==0.48.0`, `httpx==0.28.1`, `jinja2==3.1.6`. Previously the image was built against unpinned versions, so affected builds should pull the updated image.
+
+---
+
 ## [1.3.3] - 2026-05-12
 
 ### Fixed
