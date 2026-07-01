@@ -3377,9 +3377,9 @@
       ctx.fillStyle = _canSelectShip ? 'rgba(175,200,238,0.32)' : 'rgba(80,80,80,0.28)';
       ctx.fillText(_canSelectShip ? 'SELECT' : '—', OPT_X + OPT_W / 2, _ySubLabel);
       {
-        const _hbPad = 8;
-        const _hbTop = _yVal - Math.round(_fShip * 0.95);
-        const _hbH = Math.round(_fShip * 1.35);
+        const _hbPad = 12;
+        const _hbTop = _yVal - Math.round(_fShip * 1.05);
+        const _hbH = Math.round(_fShip * 1.55);
         shipMenuHitbox = { x: OPT_X + OPT_W / 2 - _shipTW / 2 - _hbPad, y: _hbTop, w: _shipTW + _hbPad * 2, h: _hbH };
       }
       ctx.restore();
