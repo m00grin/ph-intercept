@@ -3965,12 +3965,46 @@
     ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
     _carrierSmoothX = twoPlayerMode !== 'off' ? W * 0.50 : W * 0.40;
     _p2CarrierSmoothX = W * 0.80;
-    if (!skipShipSnap) shipX = twoPlayerMode !== 'off' ? W / 4 : W / 2;
-    shipY = (H - safeBottom) * 0.65;
-    p2ShipX = W * 3 / 4;
-    if (_p2ShipVisible && p2CarrierState === 'none') p2ShipY = (H - safeBottom) * 0.65;
     const _2pH = twoPlayerMode !== 'off' ? (W < 480 ? 66 : W < 660 ? 76 : 86) : 0;
     hudSH = _2pH > 0 ? _2pH * 2 + 1 : (W < 480 ? 84 : W < 660 ? 94 : 108);
+    // Carrier rest Y for the new viewport; docked-ship bay offsets hang off this.
+    const _restY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10;
+
+    // A docked ship must be snapped onto its bay on the re-centered carrier, not
+    // reset to the free-flight position, or it lands off the carrier after a resize.
+    const _p1Docked = (carrierState === 'arriving' || carrierState === 'present') && (shipPowerState === 'down' || shipPowerState === 'startup');
+    if (_p1Docked) {
+      carrierRestY = _restY;
+      if (carrierState === 'present') carrierY = _restY;
+      const _bi = CARRIER_SHIP_ORDER.indexOf(currentShip);
+      shipX = _carrierSmoothX + (_bi >= 0 ? CARRIER_BAY_DX[_bi] : 0);
+      shipY = _restY + (_bi >= 0 ? CARRIER_BAY_DY[_bi] : 0);
+    } else {
+      if (!skipShipSnap) shipX = twoPlayerMode !== 'off' ? W / 4 : W / 2;
+      shipY = (H - safeBottom) * 0.65;
+    }
+
+    // P2 shares the main carrier in 2P, has its own in 1P.
+    const _p2Own = twoPlayerMode === 'off';
+    if (_p2Own) p2CarrierRestY = _restY;
+    const _p2CarrierSt = _p2Own ? p2CarrierState : carrierState;
+    const _p2Docked = _p2ShipVisible && p2BlockingEnabled === false && (_p2CarrierSt === 'arriving' || _p2CarrierSt === 'present');
+    if (_p2Docked) {
+      if (_p2Own && _p2CarrierSt === 'present') p2CarrierY = _restY;
+      const _p2cx = _p2Own ? _p2CarrierSmoothX : _carrierSmoothX;
+      const _p2bi = CARRIER_SHIP_ORDER.indexOf(p2CurrentShip);
+      p2ShipX = _p2cx + (_p2bi >= 0 ? CARRIER_BAY_DX[_p2bi] : 0);
+      p2ShipY = _restY + (_p2bi >= 0 ? CARRIER_BAY_DY[_p2bi] : 0);
+    } else {
+      p2ShipX = W * 3 / 4;
+      if (_p2ShipVisible && p2CarrierState === 'none') p2ShipY = (H - safeBottom) * 0.65;
+    }
+
+    // Crew coordinates are anchored to the old carrier position; drop them so they
+    // re-emerge cleanly at the new hatch instead of floating off the carrier.
+    crewMembers = []; crewNextSpawn = 0; lastFuelAt = 0;
+    p2CrewMembers = []; p2CrewNextSpawn = 0; p2LastFuelAt = 0;
+
     // Settings button centered on the full HUD strip
     if (settingsBtnEl) settingsBtnEl.style.bottom = Math.round(hudSH / 2 - 10 + safeBottom) + 'px';
   }
