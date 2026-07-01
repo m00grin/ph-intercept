@@ -6,6 +6,7 @@
   const PROVIDER = window.PROVIDER || 'pihole';
   const settingsBtnEl = document.getElementById('settings-btn');
   let W = 0, H = 0;
+  let _dpr = 1; // device pixel ratio the backing store is currently sized for
 
   let safeBottom = 0, hudSH = 108;
   let active = false, evtSource = null, sseRetryDelay = 3000, _rafId = null;
@@ -1169,6 +1170,8 @@
       // Reassigning canvas.width resets the entire 2D context state (transform, clip,
       // save stack) so a dirty ctx from a mid-render throw can't corrupt future frames.
       canvas.width = canvas.width;
+      // The reset above also clears the device-pixel transform; restore it.
+      ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
     }
 
   }
@@ -3911,7 +3914,17 @@
 
   function resize(skipShipSnap) {
     safeBottom = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0;
-    W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight;
+    // Render the backing store at physical-pixel resolution so fractional OS/browser
+    // scaling (e.g. Windows 150% => devicePixelRatio 1.5) stays crisp instead of the
+    // browser nearest-neighbor upscaling a CSS-resolution canvas into uneven blocks.
+    // At devicePixelRatio 1 (100% scaling) this is a no-op: _dpr=1, transform=identity.
+    // Cap at 3 to bound the backing-store size on very high-DPR displays.
+    _dpr = Math.min(window.devicePixelRatio || 1, 3);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W * _dpr); canvas.height = Math.round(H * _dpr);
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    // All game coordinates stay in CSS pixels; the transform maps them to device pixels.
+    ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
     _carrierSmoothX = twoPlayerMode !== 'off' ? W * 0.50 : W * 0.40;
     _p2CarrierSmoothX = W * 0.80;
     if (!skipShipSnap) shipX = twoPlayerMode !== 'off' ? W / 4 : W / 2;

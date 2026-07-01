@@ -45,15 +45,18 @@
 
   // ── Build offscreen ───────────────────────────────────────────────
   let offscreen = null;
-  let lastW = 0, lastH = 0;
+  let lastW = 0, lastH = 0, lastDpr = 0;
 
-  function build(w, h) {
-    if (offscreen && lastW === w && lastH === h) return;
-    lastW = w; lastH = h;
+  function build(w, h, dpr) {
+    if (offscreen && lastW === w && lastH === h && lastDpr === dpr) return;
+    lastW = w; lastH = h; lastDpr = dpr;
 
+    // Rasterize at device resolution but keep all layout in CSS pixels (w/h) so the
+    // star count and positions are identical across scaling - only sharpness changes.
     offscreen = document.createElement('canvas');
-    offscreen.width = w; offscreen.height = h;
+    offscreen.width = Math.round(w * dpr); offscreen.height = Math.round(h * dpr);
     const oc = offscreen.getContext('2d');
+    oc.setTransform(dpr, 0, 0, dpr, 0, 0);
 
     // Background gradient
     const bg = oc.createRadialGradient(w*0.5, h*0.5, 0, w*0.5, h*0.5, Math.max(w,h)*0.7);
@@ -136,12 +139,21 @@
 
   // ── Draw loop ─────────────────────────────────────────────────────
   function draw() {
+    // Render at physical-pixel resolution so fractional OS/browser scaling stays crisp.
+    // The offscreen is built at device pixels and blitted 1:1; at devicePixelRatio 1
+    // this reduces to the original cw/ch sizing.
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
     const cw = window.innerWidth, ch = window.innerHeight;
-    if (canvas.width !== cw || canvas.height !== ch) {
-      canvas.width = cw; canvas.height = ch;
+    const bw = Math.round(cw * dpr), bh = Math.round(ch * dpr);
+    if (canvas.width !== bw || canvas.height !== bh) {
+      canvas.width = bw; canvas.height = bh;
+      canvas.style.width = cw + 'px'; canvas.style.height = ch + 'px';
     }
-    build(cw, ch);
-    ctx.clearRect(0, 0, cw, ch);
+    // Offscreen is built at device resolution, so blit it 1:1. Force identity in case
+    // starfield-lite.js left a DPR transform on the shared #starfield context.
+    build(cw, ch, dpr);
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, bw, bh);
     ctx.drawImage(offscreen, 0, 0);
     requestAnimationFrame(draw);
   }
