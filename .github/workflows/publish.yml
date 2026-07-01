@@ -13,7 +13,7 @@ jobs:
       packages: write
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - name: Set up Docker Buildx
         run: docker buildx use vega-builder 2>/dev/null || docker buildx create --name vega-builder --driver docker-container --use
