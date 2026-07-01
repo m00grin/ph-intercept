@@ -13,7 +13,12 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
-from core.config import BG_MODE, BG_IMAGE, PROVIDER, RETURN_URL, SKY_PRESET, SKY_PRESETS, TWO_PLAYER_LOCAL_CONFIGURED, TWO_PLAYER_ENABLED, PIHOLE2_DASHBOARD, PIHOLE2_URL, PIHOLE2_PASSWORD
+from core.config import (
+    BG_MODE, BG_IMAGE, PROVIDER, RETURN_URL, SKY_PRESET, SKY_PRESETS,
+    TWO_PLAYER_LOCAL_CONFIGURED, TWO_PLAYER_ENABLED, P2_DASHBOARD, P2_VERIFY_SSL,
+    PIHOLE2_URL, PIHOLE2_PASSWORD,
+    ADGUARD2_BASE, ADGUARD2_USERNAME, ADGUARD2_PASSWORD,
+)
 from core.multiplayer import get_status as mp_status, set_mode as mp_set_mode
 
 if PROVIDER == "adguard":
@@ -30,11 +35,19 @@ else:
     )
 
 if TWO_PLAYER_LOCAL_CONFIGURED:
-    from core.pihole import (
-        add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark,
-        get_p2_pihole_stats, drop_p2_session, query_p2_poller,
-        toggle_p2_blocking, trigger_p2_gravity_update,
-    )
+    # The second instance mirrors the primary provider.
+    if PROVIDER == "adguard":
+        from core.adguard import (
+            add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark,
+            get_p2_stats, drop_p2_session, query_p2_poller,
+            toggle_p2_blocking, trigger_p2_gravity_update,
+        )
+    else:
+        from core.pihole import (
+            add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark,
+            get_p2_pihole_stats as get_p2_stats, drop_p2_session, query_p2_poller,
+            toggle_p2_blocking, trigger_p2_gravity_update,
+        )
 
 _http_client: httpx.AsyncClient | None = None
 _http_client2: httpx.AsyncClient | None = None
@@ -46,7 +59,7 @@ async def lifespan(_app):
     _http_client = httpx.AsyncClient(timeout=1.5, headers={"User-Agent": "ph-intercept"}, verify=_VERIFY_SSL)
     tasks = [asyncio.create_task(query_poller(_http_client))]
     if TWO_PLAYER_LOCAL_CONFIGURED:
-        _http_client2 = httpx.AsyncClient(timeout=1.5, headers={"User-Agent": "ph-intercept"})
+        _http_client2 = httpx.AsyncClient(timeout=1.5, headers={"User-Agent": "ph-intercept"}, verify=P2_VERIFY_SSL)
         tasks.append(asyncio.create_task(query_p2_poller(_http_client2)))
     yield
     for t in tasks:
@@ -105,7 +118,7 @@ async def index(request: Request) -> HTMLResponse:
         "bg_mode": BG_MODE,
         "provider": PROVIDER,
         "pihole_dashboard": _DASHBOARD,
-        "pihole2_dashboard": PIHOLE2_DASHBOARD,
+        "p2_dashboard": P2_DASHBOARD,
         "two_player_enabled": TWO_PLAYER_ENABLED,
         "bg_config": {
             "bg_mode": BG_MODE,
@@ -148,31 +161,63 @@ async def two_player_status(_request: Request) -> JSONResponse:
     return JSONResponse(mp_status(TWO_PLAYER_LOCAL_CONFIGURED))
 
 
-_PIHOLE2_PLACEHOLDER = "CHANGE.ME"
+_P2_PLACEHOLDER = "CHANGE.ME"
+
+
+async def _p2_config_error() -> str | None:
+    """Validate the second-instance config and probe reachability for the active
+    provider. Returns an error string, or None when the instance is usable."""
+    if PROVIDER == "adguard":
+        if not ADGUARD2_BASE:
+            return "ADGUARD2_URL is not set in your configuration"
+        if _P2_PLACEHOLDER in ADGUARD2_BASE:
+            return "ADGUARD2_URL still has the default placeholder value. Update it in your compose.yaml"
+        if not (ADGUARD2_BASE.startswith("http://") or ADGUARD2_BASE.startswith("https://")):
+            return "ADGUARD2_URL must start with http:// or https://"
+        if not ADGUARD2_PASSWORD:
+            return "ADGUARD2_PASSWORD is not set in your configuration"
+        if _http_client2:
+            try:
+                resp = await _http_client2.get(
+                    f"{ADGUARD2_BASE}/status",
+                    auth=(ADGUARD2_USERNAME, ADGUARD2_PASSWORD),
+                )
+                if resp.status_code == 401:
+                    return "AdGuard 2 authentication failed. Check ADGUARD2_USERNAME and ADGUARD2_PASSWORD"
+                if resp.status_code != 200:
+                    return "Could not reach AdGuard 2. Check ADGUARD2_URL"
+            except Exception:
+                return "Could not reach AdGuard 2. Check ADGUARD2_URL"
+        return None
+
+    if not PIHOLE2_URL:
+        return "PIHOLE2_URL is not set in your configuration"
+    if _P2_PLACEHOLDER in PIHOLE2_URL:
+        return "PIHOLE2_URL still has the default placeholder value. Update it in your compose.yaml"
+    if not (PIHOLE2_URL.startswith("http://") or PIHOLE2_URL.startswith("https://")):
+        return "PIHOLE2_URL must start with http:// or https://"
+    if not PIHOLE2_PASSWORD:
+        return "PIHOLE2_PASSWORD is not set in your configuration"
+    if _http_client2:
+        try:
+            resp = await _http_client2.post(
+                f"{PIHOLE2_URL}/auth",
+                json={"password": PIHOLE2_PASSWORD},
+            )
+            if not resp.json().get("session", {}).get("valid"):
+                return "Pi-hole 2 authentication failed. Check PIHOLE2_PASSWORD"
+        except Exception:
+            return "Could not reach Pi-hole 2. Check PIHOLE2_URL"
+    return None
 
 
 async def two_player_set_mode(request: Request) -> JSONResponse:
     body = await request.json()
     mode = body.get("mode", "")
     if mode == "local":
-        if not PIHOLE2_URL:
-            return JSONResponse({"error": "PIHOLE2_URL is not set in your configuration"}, status_code=400)
-        if _PIHOLE2_PLACEHOLDER in PIHOLE2_URL:
-            return JSONResponse({"error": "PIHOLE2_URL still has the default placeholder value - update it in your compose.yaml"}, status_code=400)
-        if not (PIHOLE2_URL.startswith("http://") or PIHOLE2_URL.startswith("https://")):
-            return JSONResponse({"error": "PIHOLE2_URL must start with http:// or https://"}, status_code=400)
-        if not PIHOLE2_PASSWORD:
-            return JSONResponse({"error": "PIHOLE2_PASSWORD is not set in your configuration"}, status_code=400)
-        if _http_client2:
-            try:
-                resp = await _http_client2.post(
-                    f"{PIHOLE2_URL}/auth",
-                    json={"password": PIHOLE2_PASSWORD},
-                )
-                if not resp.json().get("session", {}).get("valid"):
-                    return JSONResponse({"error": "Pi-hole 2 authentication failed - check PIHOLE2_PASSWORD"}, status_code=400)
-            except Exception:
-                return JSONResponse({"error": "Could not reach Pi-hole 2 - check PIHOLE2_URL"}, status_code=400)
+        err = await _p2_config_error()
+        if err:
+            return JSONResponse({"error": err}, status_code=400)
     try:
         return JSONResponse(mp_set_mode(mode, TWO_PLAYER_LOCAL_CONFIGURED))
     except ValueError as exc:
@@ -182,7 +227,7 @@ async def two_player_set_mode(request: Request) -> JSONResponse:
 async def pihole2_stats(_request: Request) -> JSONResponse:
     if not TWO_PLAYER_LOCAL_CONFIGURED or not _http_client2:
         return JSONResponse({})
-    data = await get_p2_pihole_stats(_http_client2)
+    data = await get_p2_stats(_http_client2)
     if not data:
         return JSONResponse({})
     return JSONResponse({

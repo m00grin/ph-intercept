@@ -49,9 +49,17 @@ services:
       # Optional: comma-separated regex patterns. Matching domains spawn no ships. Case-insensitive.
       # ADGUARD_IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
+      # 2-player local mode: set all three to enable a second AdGuard ship on the right half
+      # ADGUARD2_URL: "http://192.168.1.3:3000/control"
+      # ADGUARD2_USERNAME: "CHANGE.ME"
+      # ADGUARD2_PASSWORD: ${ADGUARD2_PASSWORD}
+      # ADGUARD2_VERIFY_SSL: "true"
+
     volumes:
       # Portainer Web users: This will resolve to /data/compose/<stack-id>/bg/
       - ./bg:/app/static/bg
+      # Persists 2-player mode state across container restarts
+      - data:/app/data
 
     cap_drop:
       - ALL
@@ -82,3 +90,6 @@ services:
 # networks:
 #   intercept_net:
 #     external: true
+
+volumes:
+  data:

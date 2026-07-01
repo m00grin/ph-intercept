@@ -238,6 +238,32 @@ All configuration is via environment variables in `compose.yaml`.
 | `BG_MODE` | `starfield` | `starfield` · `dark` · `nebula` |
 | `SKY_PRESET` | `summer_triangle` | `summer_triangle` · `orion` · `scorpius` · `southern_cross` |
 | `BG_IMAGE` | `""` | Image URL or `/bg/filename.jpg`. Overrides `BG_MODE` when set. |
+| `ADGUARD2_URL` | _(unset)_ | Second AdGuard Home control API base URL. Setting a valid URL activates local 2-player split-screen mode. See below. |
+| `ADGUARD2_USERNAME` | `""` | Username or email for the second AdGuard Home instance. |
+| `ADGUARD2_PASSWORD` | `""` | Password for the second AdGuard Home instance. |
+| `ADGUARD2_VERIFY_SSL` | `true` | Set to `false` if the second AdGuard Home uses HTTPS with a self-signed certificate. |
+
+---
+
+## Local 2-Player Mode
+
+Two AdGuard Home instances can run side by side in split-screen. P1's ship occupies the left half of the canvas, P2's ship the right. Each instance streams its own query events independently.
+
+Add the second AdGuard Home to your `compose.yaml` environment block:
+
+```yaml
+ADGUARD2_URL: "http://192.168.1.3:3000/control"
+ADGUARD2_USERNAME: "admin"
+ADGUARD2_PASSWORD: ${ADGUARD2_PASSWORD}
+```
+
+And add the password to your `.env` file:
+
+```env
+ADGUARD2_PASSWORD=your_second_adguard_password
+```
+
+Setting a valid `ADGUARD2_URL` is all that is required to activate split-screen mode; toggle it on from the in-game 2-player panel. The second instance mirrors the primary provider, so AdGuard pairs with AdGuard (a Pi-hole second instance uses `PIHOLE2_*` instead).
 
 ---
 

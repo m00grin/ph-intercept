@@ -53,8 +53,9 @@
     </div>`;
 
     if (!off) {
+      const _p2Name = window.PROVIDER === 'adguard' ? 'ADGUARD' : 'PI-HOLE';
       h += `<div class="m2p-divider"></div>
-      <div class="m2p-info">SECOND PI-HOLE CONNECTED</div>`;
+      <div class="m2p-info">SECOND ${_p2Name} CONNECTED</div>`;
     }
 
     if (_error) {

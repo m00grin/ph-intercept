@@ -3145,7 +3145,7 @@
       ];
       const smw = 186, smItemH = 28, smPad = 10, smDivH = 10, smPhRowH = 34;
       const _has2P = window.TWO_PLAYER_ENABLED !== false;
-      const smh = smPad + smItemH + smDivH + smItemH * 2 + (_has2P ? smDivH + smItemH : 0) + smDivH + smPhRowH + (twoPlayerMode === 'local' && window.PIHOLE2_DASHBOARD ? smPhRowH : 0) + smPad;
+      const smh = smPad + smItemH + smDivH + smItemH * 2 + (_has2P ? smDivH + smItemH : 0) + smDivH + smPhRowH + (twoPlayerMode === 'local' && window.P2_DASHBOARD ? smPhRowH : 0) + smPad;
       const smX = 6, smY = SY - smh - 6;
       settingsMenuPopupBox = { x: smX, y: smY, w: smw, h: smh };
       ctx.fillStyle = 'rgba(8,11,16,0.92)';
@@ -3248,7 +3248,7 @@
         ctx.textAlign = 'left';
         ctx.font = `${_fSub}px "Press Start 2P", monospace`;
         ctx.fillStyle = phHov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
-        ctx.fillText(PROVIDER === 'adguard' ? 'ADGUARD' : (_isP2 ? 'PI-HOLE 1' : 'PI-HOLE'), iconX + iconW + 12, siy + smPhRowH / 2 + 6);
+        ctx.fillText(PROVIDER === 'adguard' ? (_isP2 ? 'ADGUARD 1' : 'ADGUARD') : (_isP2 ? 'PI-HOLE 1' : 'PI-HOLE'), iconX + iconW + 12, siy + smPhRowH / 2 + 6);
         // External link arrow drawn with lines
         const _ax = smX + smw - 14, _ay = siy + smPhRowH / 2;
         ctx.strokeStyle = phHov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
@@ -3260,13 +3260,13 @@
         settingsMenuItems.push({ key: 'pihole-link', hitbox: phHb });
         siy += smPhRowH;
         // PI-HOLE 2 admin link (local 2P mode only)
-        if (twoPlayerMode === 'local' && window.PIHOLE2_DASHBOARD) {
+        if (twoPlayerMode === 'local' && window.P2_DASHBOARD) {
           const ph2Hb = { x: smX, y: siy, w: smw, h: smPhRowH };
           const ph2Hov = !phHov && mouseX >= ph2Hb.x && mouseX <= ph2Hb.x + ph2Hb.w && mouseY >= ph2Hb.y && mouseY <= ph2Hb.y + ph2Hb.h;
           ctx.strokeStyle = 'rgba(140,160,175,0.10)'; ctx.lineWidth = 1;
           ctx.beginPath(); ctx.moveTo(smX + 30, siy + 0.5); ctx.lineTo(smX + smw - 10, siy + 0.5); ctx.stroke();
           if (ph2Hov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(ph2Hb.x, ph2Hb.y, ph2Hb.w, ph2Hb.h); }
-          const _icon2H = smPhRowH - 8, _icon2W = Math.round(_icon2H * (90 / 130));
+          const _icon2H = smPhRowH - 8, _icon2W = Math.round(_icon2H * (PROVIDER === 'adguard' ? 1.0 : (90 / 130)));
           const _icon2X = smX + 12, _icon2Y = siy + (smPhRowH - _icon2H) / 2;
           if (_phIcon.complete && _phIcon.naturalWidth > 0) {
             ctx.save(); ctx.globalAlpha = ph2Hov ? 0.88 : 0.45;
@@ -3276,7 +3276,7 @@
           ctx.textAlign = 'left';
           ctx.font = `${_fSub}px "Press Start 2P", monospace`;
           ctx.fillStyle = ph2Hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
-          ctx.fillText('PI-HOLE 2', _icon2X + _icon2W + 12, siy + smPhRowH / 2 + 6);
+          ctx.fillText(PROVIDER === 'adguard' ? 'ADGUARD 2' : 'PI-HOLE 2', _icon2X + _icon2W + 12, siy + smPhRowH / 2 + 6);
           const _a2x = smX + smw - 14, _a2y = siy + smPhRowH / 2;
           ctx.strokeStyle = ph2Hov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
           ctx.lineWidth = 1.5; ctx.lineCap = 'round';
@@ -4386,7 +4386,7 @@
             _closeSettingsBtnAnimated();
           }
           else if (item.key === 'pihole-link-2') {
-            const url2 = window.PIHOLE2_DASHBOARD;
+            const url2 = window.P2_DASHBOARD;
             if (url2 && /^https?:\/\//i.test(url2)) window.open(url2, '_blank', 'noopener,noreferrer');
             settingsMenuOpen = false;
             _closeSettingsBtnAnimated();

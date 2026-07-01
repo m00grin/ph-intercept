@@ -31,7 +31,7 @@ def set_mode(mode: str, local_configured: bool) -> dict:
     if mode not in _VALID_MODES:
         raise ValueError(f"invalid mode: {mode!r}")
     if mode == "local" and not local_configured:
-        raise ValueError("local mode requires PIHOLE2_URL")
+        raise ValueError("local mode requires a configured second instance")
     data = _load()
     data["mode"] = mode
     _save(data)
