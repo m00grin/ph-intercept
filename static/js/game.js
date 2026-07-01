@@ -43,6 +43,11 @@
   let blockingCmdExpected = null, blockingCmdDeadline = 0;
   let _firstEnterFetch = false;
   let blockingOffAt = 0;
+  // When blocking last transitioned to off. Unlike blockingOffAt (which the poll
+  // recalibrates every tick to track a live countdown), this is set once per
+  // off-transition so the 30s ground-crew timer can actually elapse even when the
+  // provider reports a counting-down timer (e.g. an AdGuard remote timed disable).
+  let blockingOffSince = 0;
   let blockingDuration = 0;   // ms; 0 = indefinite
   let shipPowerState = 'up';  // 'up' | 'down' | 'startup'
   let startupAt = 0;
@@ -100,6 +105,7 @@
   let p2HudStats = { blocked: null, queries: null, percent: null };
   let p2BlockingEnabled = null;
   let p2BlockingOffAt = 0, p2BlockingDuration = 0, p2PowerdownAt = 0;
+  let p2BlockingOffSince = 0;  // set once per off-transition; see blockingOffSince
   // Reconciliation guard for locally-issued remote toggles. While a command is
   // pending, ignore stale poll reads (which lag the toggle round-trip + Pi-hole
   // propagation) so they can't clobber optimistic state or kill the in-flight
@@ -738,7 +744,10 @@
     const _freeCX = twoPlayerMode !== 'off' ? W / 4 : W / 2;
     let goalX, goalXLerp;
     if ((carrierState === 'arriving' || carrierState === 'present') && (shipPowerState === 'down' || shipPowerState === 'startup')) {
-      goalX = _activeBayX; goalXLerp = carrierState === 'present' ? 1 : 0.002;
+      // In 2P the carrier may already be present (the other player brought it up),
+      // so a welding lerp of 1 would snap P1 to the bay. Glide instead, matching the
+      // P2 ship's handling; single-player still welds since the carrier arrives with it.
+      goalX = _activeBayX; goalXLerp = carrierState === 'present' ? (twoPlayerMode === 'off' ? 1 : 0.003) : 0.002;
     } else if (launchAt > 0 && t - launchAt < LAUNCH_BOOST_DUR) {
       goalX = _activeBayX; goalXLerp = 0.0015;
     } else {
@@ -1317,7 +1326,7 @@
         const _gapDXs = [-90, 0, 90, 90, -90, 0, 90];
 
         const _crewEligible = carrierState === 'present' && shipPowerState === 'down'
-            && blockingEnabled === false && t - blockingOffAt >= 30000;
+            && blockingEnabled === false && t - blockingOffSince >= 30000;
 
         // Build a ship-avoiding flee path using per-crew fleeX/fleeViaY safe corridor
         const _makeFleePath = c => {
@@ -1560,7 +1569,7 @@
         const _p2HatchX = ccx, _p2HatchY = ccy - 111;
         const _p2TopRail = ccy - 90, _p2MidCY = ccy + 6, _p2BotRail = ccy + 102;
         const _p2GapDXs = [-90, 0, 90, 90, -90, 0, 90];
-        const _p2CrewEligible = carrierState === 'present' && p2BlockingEnabled === false && t - p2BlockingOffAt >= 30000;
+        const _p2CrewEligible = carrierState === 'present' && p2BlockingEnabled === false && t - p2BlockingOffSince >= 30000;
         const _p2MakeFleePath = c => {
           const fx = c.fleeX, fy = c.fleeViaY, pts = [];
           if (c.y <= fy) {
@@ -1727,7 +1736,7 @@
         const _p2HatchX = _p2ccx, _p2HatchY = _p2ccy - 111;
         const _p2TopRail = _p2ccy - 90, _p2MidCY = _p2ccy + 6, _p2BotRail = _p2ccy + 102;
         const _p2GapDXs = [-90, 0, 90, 90, -90, 0, 90];
-        const _p2CrewEligible = p2CarrierState === 'present' && p2BlockingEnabled === false && t - p2BlockingOffAt >= 30000;
+        const _p2CrewEligible = p2CarrierState === 'present' && p2BlockingEnabled === false && t - p2BlockingOffSince >= 30000;
         const _p2MakeFleePath = c => {
           const fx = c.fleeX, fy = c.fleeViaY, pts = [];
           if (c.y <= fy) {
@@ -3874,6 +3883,8 @@
           }
           if (d.blocking != null) {
             const _pb = p2BlockingEnabled; p2BlockingEnabled = d.blocking;
+            // Stamp the off-transition once so the P2 crew timer runs even under a live countdown.
+            if (d.blocking === false && _pb !== false) p2BlockingOffSince = performance.now();
             if (d.blocking === false && d.block_timer > 0) { p2BlockingOffAt = performance.now(); p2BlockingDuration = d.block_timer * 1000; }
             else if (d.blocking === true) { p2BlockingDuration = 0; }
             if (d.blocking === true && _pb === false && p2StartupAt === 0 && p2LaunchAt === 0) { const _now = performance.now(); p2StartupAt = _now; p2PowerdownAt = 0; p2GunCheckFiredAt[0] = 0; p2GunCheckFiredAt[1] = 0; if ((twoPlayerMode !== 'off' ? carrierState : p2CarrierState) === 'none') chainRings.push({ x: p2ShipX, y: p2ShipY, born: _now, dur: 380, maxR: 90, col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' }); }
@@ -4047,6 +4058,9 @@
           if (_firstEnterFetch) _firstEnterFetch = false;
           const _prev = blockingEnabled;
           blockingEnabled = d.blocking;
+          // Stamp the off-transition once (not every poll) so the crew timer runs.
+          // Already-off on first load: backdate so crew can emerge promptly.
+          if (!d.blocking && _prev !== false) blockingOffSince = _wasFirst ? performance.now() - 30000 : performance.now();
           if (!d.blocking && !_wasFirst && _prev !== false) {
             shieldMenuOpen = false;
             shipMenuOpen = false; shipMenuItems = [];
@@ -4199,6 +4213,7 @@
     shieldMenuOpen = false;
     if (!enable) {
       blockingOffAt = performance.now();
+      blockingOffSince = performance.now();
       blockingDuration = timerSec ? timerSec * 1000 : 0;
       if (blockingDuration > 0)
         sessionStorage.setItem('ph_block_timer', JSON.stringify({ wallOffAt: Date.now(), duration: blockingDuration }));
@@ -4270,6 +4285,7 @@
     // this value (or the deadline lapses if the toggle silently failed).
     p2CmdExpected = enable; p2CmdDeadline = performance.now() + 4000;
     p2BlockingEnabled = enable;
+    if (enable === false && _prevP2 !== false) p2BlockingOffSince = performance.now();
     if (enable === false && timerSec > 0) { p2BlockingOffAt = performance.now(); p2BlockingDuration = timerSec * 1000; }
     else if (enable === true) { p2BlockingDuration = 0; }
     if (enable === true && _prevP2 === false) { const _now = performance.now(); p2StartupAt = _now; p2PowerdownAt = 0; p2GunCheckFiredAt[0] = 0; p2GunCheckFiredAt[1] = 0; const _p2rc = twoPlayerMode !== 'off' ? carrierState : p2CarrierState; if (_p2rc === 'none') chainRings.push({ x: p2ShipX, y: p2ShipY, born: _now, dur: 380, maxR: 90, col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' }); }
