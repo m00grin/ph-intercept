@@ -6,14 +6,18 @@
   const PROVIDER = window.PROVIDER || 'pihole';
   const settingsBtnEl = document.getElementById('settings-btn');
   let W = 0, H = 0;
+  let _dpr = 1; // device pixel ratio the backing store is currently sized for
 
   let safeBottom = 0, hudSH = 108;
   let active = false, evtSource = null, sseRetryDelay = 3000, _rafId = null;
   let lastT = 0, lastSpawn = 0, shipX = 0, shipY = 0, lastGun = 0;
-  let lastEnemyAt = 0;
-  let activeEnemies = 0, idleBlend = 0;
+  let lastEnemyAt = 0, p2LastEnemyAt = 0;
+  let activeEnemies = 0, idleBlend = 0, p2IdleBlend = 0;
   let _hudGlowGrad = null, _hudGlowGradSY = -1;
-  let _vigGrad = null, _vigGradW = -1, _vigGradH = -1;
+  let _vigGrad = null, _vigGradL = null, _vigGradR = null;
+  let _vigGradW = -1, _vigGradH = -1, _vigGradIs2P = false;
+  let _hudSlideAt = 0, _hudSlideFrom = 0, _hudSlideTo = 0;
+  const HUD_SLIDE_DUR = 340;
   const entities = [], lasers = [], explosions = [], queue = [];
   let drone = { state: 'docked', x: 0, y: 0, lastFire: 0, side: 0, angle: 0, targetX: null, targetY: null, deployedAt: 0, recallAt: 0 };
   const droneMissiles = [];
@@ -32,8 +36,18 @@
   const debris = [];
   const chainRings = [];
   let blockingEnabled = null; // null=unknown, true, false
+  // Reconciliation guard for the local blocking toggle: while a command is
+  // pending, ignore stale poll reads (which lag the toggle round-trip + Pi-hole
+  // propagation) so a delayed poll can't spuriously flip shipPowerState after a
+  // genuine toggle. null = none pending, else true/false.
+  let blockingCmdExpected = null, blockingCmdDeadline = 0;
   let _firstEnterFetch = false;
   let blockingOffAt = 0;
+  // When blocking last transitioned to off. Unlike blockingOffAt (which the poll
+  // recalibrates every tick to track a live countdown), this is set once per
+  // off-transition so the 30s ground-crew timer can actually elapse even when the
+  // provider reports a counting-down timer (e.g. an AdGuard remote timed disable).
+  let blockingOffSince = 0;
   let blockingDuration = 0;   // ms; 0 = indefinite
   let shipPowerState = 'up';  // 'up' | 'down' | 'startup'
   let startupAt = 0;
@@ -43,6 +57,7 @@
   let carrierState = 'none';  // 'none'|'arriving'|'present'|'leaving'
   let carrierY = 0, carrierRestY = 0, carrierArrivingAt = 0, carrierLeavingAt = 0, launchAt = 0;
   let crewMembers = [], crewNextSpawn = 0, lastFuelAt = 0;
+  let p2CrewMembers = [], p2CrewNextSpawn = 0, p2LastFuelAt = 0;
   const CARRIER_ARRIVE_DUR = 2200;
   const CARRIER_LEAVE_DUR = 1800;
   const LAUNCH_BOOST_DUR = 550;
@@ -77,10 +92,46 @@
   function _saveDisplaySettings() {
     try { localStorage.setItem('ph_display', JSON.stringify({ friendlies: showFriendlies, domain: showDomain, client: showClient })); } catch {}
   }
+  // ── 2P state ──────────────────────────────────────────────────────
+  let twoPlayerMode = 'off';        // 'off' | 'local'
+  const p2Entities = [], p2Queue = [];
+  let lastP2Spawn = 0;
+  let p2ShipX = 0, p2ShipY = -300;
+  let p2CurrentShip = localStorage.getItem('ph_p2_ship') || 'falcon';
+  let p2WarpState = 'none';  // 'none' | 'out' | 'in'
+  let p2WarpAt = 0;
+  let p2WarpNextShip = null;
+  let p2WarpPrevShip = null;
+  let p2HudStats = { blocked: null, queries: null, percent: null };
+  let p2BlockingEnabled = null;
+  let p2BlockingOffAt = 0, p2BlockingDuration = 0, p2PowerdownAt = 0;
+  let p2BlockingOffSince = 0;  // set once per off-transition; see blockingOffSince
+  // Reconciliation guard for locally-issued remote toggles. While a command is
+  // pending, ignore stale poll reads (which lag the toggle round-trip + Pi-hole
+  // propagation) so they can't clobber optimistic state or kill the in-flight
+  // startup/powerdown animation. p2CmdExpected: null = none pending, else true/false.
+  let p2CmdExpected = null, p2CmdDeadline = 0;
+  let p2GunCheckFiredAt = [0, 0];
+  let p2EvtSource = null, p2StatsPollTimer = null;
+  let _p1ShipVisible = false;       // true once P1 has live data (gated in 2P mode)
+  let _p2ShipVisible = false;       // true once P2 has live data (drives ship arrival)
+  let _p2ShipRipInAt = 0;           // perf.now() when ship arrival animation fires
+  let _2pBannerAt = 0;              // perf.now() when 2P mode first activated (banner anim)
+  let _carrierSmoothX = 0;          // lerped carrier center X for smooth 2P mode transitions
+  let p2CarrierState = 'none';  // 'none'|'arriving'|'present'|'leaving'
+  let p2CarrierY = 0, p2CarrierRestY = 0, p2CarrierArrivingAt = 0, p2CarrierLeavingAt = 0, p2LaunchAt = 0, p2StartupAt = 0;
+  let _p2CarrierSmoothX = 0;
+  let _p2FastDepart = false;    // true while ship is animating off-screen after disconnect
+  let _p2BottomEntry = false;   // true when ship enters from bottom (suppress rip-in trail)
+  let _p2SnapReveal = false;    // true on page-load refresh: snap P2 ship to position, no animation
+  const p2Lasers = [];
+  let lastP2Gun = 0;
+
   let currentShip = 'protector';  // 'protector'|'falcon'|'swordfish'|'enterprise'|'serenity'|'normandy'|'pes'
   let warpState = 'none';         // 'none' | 'out' | 'in'
   let warpAt = 0;
   let warpNextShip = null;
+  let warpPrevShip = null;
   const WARP_OUT_DUR = 300;
   const WARP_IN_DUR = 500;
   let shakeAt = 0, shakeDur = 0, shakeAmp = 0;
@@ -90,19 +141,40 @@
   let shipMenuHitbox = { x: 0, y: 0, w: 0, h: 0 };
   let shipMenuHovered = false;
   let shipBodyHitbox = { x: 0, y: 0, w: 0, h: 0 };
+  let p2ShipBodyHitbox = { x: 0, y: 0, w: 0, h: 0 };
   let missingnoGlitchAt = 0, missingnoGlitchCooldown = 0;
   let shipQuote = null;    // { text: string, shownAt: number } | null
   let shipQuoteCooldown = 0; // performance.now() timestamp; no new quotes until after this
   let shipQuoteDeck = [];       // shuffled queue for the current ship
   let shipQuoteDeckFor = null;  // which ship the deck was built for
   let shipQuoteLastShown = null;
+  let p2ShipQuote = null;
+  let p2ShipQuoteCooldown = 0;
+  let p2ShipQuoteDeck = [];
+  let p2ShipQuoteDeckFor = null;
+  let p2ShipQuoteLastShown = null;
+  let p2HudGravity = null;
+  let p2GravityState = 'idle';
+  let p2GravityDoneAt = 0;
+  let p2ShieldHitbox = { x: 0, y: 0, w: 0, h: 0 };
+  let p2ShieldHovered = false;
+  let p2ShieldMenuOpen = false;
+  let p2ShieldMenuItems = [];
+  let p2ShieldMenuPopupBox = null;
+  let p2ShipMenuHitbox = { x: 0, y: 0, w: 0, h: 0 };
+  let p2ShipMenuOpen = false;
+  let p2ShipMenuItems = [];
+  let p2ShipMenuPopupBox = null;
+  let p2ShipMenuHovered = false;
+  let p2ArrowHitbox = { x: 0, y: 0, w: 0, h: 0 };
+  let p2ArrowHovered = false;
   const SHIP_QUOTES = {
     protector:  ["Never give up, never surrender!", "By Grabthar's hammer, by the suns of Warvan, you shall be avenged.", "EXPLAIN.", "I'm just the guy who dies in episode 3!", "Can you form some sort of rudimentary lathe?", "Are you enjoying your Kep-mok blood ticks, Dr. Lazarus?", "It's all real."],
     falcon:     ["Never tell me the odds!", "I'd just as soon kiss a Wookiee.", "BUT SIR!!", "I am a Jedi, like my father before me.", "I can fly anything.", "It's not my fault!", "Shut him up or shut him down!"],
     swordfish:  ["Bang.", "Whatever happens, happens.", "I'm not going there to die. I'm going to find out if I'm really alive.", "I'm not a bounty hunter for the money.", "I love a man who can cook.", "Ed and Ein are hungry!"],
     enterprise: ["THERE ARE FOUR LIGHTS!", "Good tea, nice house.", "Shaka, when the walls fell.", "Will you.. Please... Sit down?", "Live long and prosper.", "The needs of the many outweigh the needs of the few, or the one.", "He's dead, Jim.", "Risk is our business.", "Fascinating."],
     serenity:   ["Time for some thrilling heroics.", "I am a leaf on the wind. Watch how I soar.", "Curse your sudden but inevitable betrayal!", "Also, I can kill you with my brain."],
-    normandy:   ["Just because I like you doesn't mean I won't kill you.", "I'm Commander Shepard, and this is my favorite store on the Citadel.", "I should go."],
+    normandy:   ["Just because I like you doesn't mean I won't kill you.", "I'm Commander Shepard, and this is my favorite store on the Citadel.", "I should go.", "You big stupid jellyfish!", "Does this unit have a soul?", "Emergency... Induction... Port.", "I've had enough of your snide insinuations!"],
     pes:        ["Good news everyone!", "I don't want to live on this planet anymore.", "Shut up and take my money!", "I did do the nasty in the pasty."],
     inbound:    ["[coming soon.]"],
   };
@@ -253,7 +325,7 @@
     let x, y, vx, vy, headStart = 0;
     if (blocked) {
       const spd = 0.055 + Math.random() * 0.03;
-      x = W * (0.1 + Math.random() * 0.8);
+      x = twoPlayerMode !== 'off' ? W * (0.05 + Math.random() * 0.40) : W * (0.1 + Math.random() * 0.8);
       if (Math.random() < 0.65) {
         y = -50;
       } else {
@@ -263,9 +335,10 @@
       vx = (Math.random() - 0.5) * 0.018; vy = spd;
     } else {
       const spd = isCache ? (0.095 + Math.random() * 0.03) : (0.078 + Math.random() * 0.03);
-      x = W * (0.05 + Math.random() * 0.9); y = -50;
+      x = twoPlayerMode !== 'off' ? W * (0.03 + Math.random() * 0.44) : W * (0.05 + Math.random() * 0.9);
+      y = -50;
       const goRight = Math.random() < 0.5;
-      const tx = goRight ? W + 100 : -100;
+      const tx = twoPlayerMode !== 'off' ? (goRight ? W / 2 - 20 : -100) : (goRight ? W + 100 : -100);
       const ty = H * (0.35 + Math.random() * 0.5);
       const d = Math.hypot(tx - x, ty - y);
       vx = (tx - x) / d * spd; vy = (ty - y) / d * spd;
@@ -289,6 +362,61 @@
       mutateAt: 0,
       mutateColor: '',
       warpPushed: false,
+    });
+  }
+
+  function spawnP2Entity(ev) {
+    if (ev.status === 'allowed' && !showFriendlies) return;
+    const blocked = ev.status === 'blocked';
+    const isCache = ev.source === 'cache';
+    const now = performance.now();
+    const existing = p2Entities.find(e => e.domain === ev.domain && e.type === ev.status && e.state !== 'shot');
+    if (existing) {
+      const prevTier = Math.min(existing.count, 3);
+      existing.count++;
+      const newTier = Math.min(existing.count, 3);
+      if (blocked && newTier > prevTier) {
+        const tierColor = newTier >= 3 ? '190,60,255' : '255,130,30';
+        existing.mutateAt = now;
+        existing.mutateColor = tierColor;
+        const ps = [];
+        for (let i = 0; i < 14; i++) {
+          const a = (Math.PI * 2 * i / 14) + (Math.random() - 0.5) * 0.3;
+          const s = 0.05 + Math.random() * 0.12;
+          ps.push({ x: existing.x, y: existing.y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+                    r: 1.5 + Math.random() * 2.5, col: tierColor });
+        }
+        explosions.push({ ps, born: now, dur: 600 });
+      }
+      return;
+    }
+    if (p2Entities.length >= 50) return;
+    let x, y, vx, vy, headStart = 0;
+    if (blocked) {
+      const spd = 0.055 + Math.random() * 0.03;
+      x = W * (0.55 + Math.random() * 0.40);
+      if (Math.random() < 0.65) { y = -50; }
+      else { y = H * (0.05 + Math.random() * 0.14); headStart = Math.min((y + 50) / spd, 1800); }
+      vx = (Math.random() - 0.5) * 0.018; vy = spd;
+    } else {
+      const spd = isCache ? (0.095 + Math.random() * 0.03) : (0.078 + Math.random() * 0.03);
+      x = W * (0.55 + Math.random() * 0.40); y = -50;
+      const goRight = Math.random() < 0.5;
+      const tx = goRight ? W + 100 : W / 2 + 50;
+      const ty = H * (0.35 + Math.random() * 0.5);
+      const d = Math.hypot(tx - x, ty - y);
+      vx = (tx - x) / d * spd; vy = (ty - y) / d * spd;
+    }
+    const design = blocked ? Math.floor(Math.random() * 2) : Math.floor(Math.random() * 3);
+    p2Entities.push({
+      type: ev.status, source: ev.source || 'upstream',
+      design,
+      x, y, vx, vy, wobble: Math.random() * Math.PI * 2,
+      domain: ev.domain, client: ev.client || '',
+      spawnTime: now - headStart, appearAt: now,
+      state: 'alive',
+      targetedAt: 0, shotAt: 0, labelAlpha: 1, count: 1,
+      mutateAt: 0, mutateColor: '', warpPushed: false,
     });
   }
 
@@ -353,7 +481,64 @@
     }
   }
 
+  function fireAtP2(ent) {
+    ent.shotAt = performance.now();
+    ent.mutateAt = 0;
+    const now = performance.now();
+    const tier = Math.min(ent.count, 3);
+    let seekerFire = false;
+    const _gtp2 = shipGunTipPos(p2CurrentShip, Math.round(p2ShipX), Math.round(p2ShipY));
+    if (tier >= 3) {
+      if (Math.random() < 0.5) {
+        ent.state = 'shot';
+        const sp = 10;
+        p2Lasers.push({ side: 0, tier, x1: ent.x - sp, y1: ent.y, born: now });
+        p2Lasers.push({ side: 2, tier, x1: ent.x,      y1: ent.y, born: now });
+        p2Lasers.push({ side: 1, tier, x1: ent.x + sp, y1: ent.y, born: now });
+      } else {
+        seekerFire = true;
+        ent.state = 'seeker-incoming';
+        ent.detonateAt = now + 330;
+        const sx0 = _gtp2.nx, sy0 = _gtp2.ny;
+        const tx = ent.x, ty = ent.y;
+        const ddx = tx - sx0, ddy = ty - sy0, ddist = Math.hypot(ddx, ddy) || 1;
+        const px = -ddy / ddist, py = ddx / ddist;
+        const midX = (sx0 + tx) / 2, midY = (sy0 + ty) / 2;
+        const offsets = [-52, 38, -24, 58, -10];
+        for (let bi = 0; bi < offsets.length; bi++) {
+          const off = offsets[bi] + (Math.random() - 0.5) * 18;
+          p2Lasers.push({ style: 'seeker', tier, target: ent,
+                          x0: sx0, y0: sy0, x1: tx, y1: ty,
+                          cpx: midX + px * off, cpy: midY + py * off,
+                          born: now + bi * 30, dur: 210 });
+        }
+      }
+    } else if (tier === 2) {
+      ent.state = 'shot';
+      p2Lasers.push({ side: 0, tier, x1: ent.x, y1: ent.y, born: now });
+      p2Lasers.push({ side: 1, tier, x1: ent.x, y1: ent.y, born: now });
+    } else {
+      ent.state = 'shot';
+      const side = lastP2Gun;
+      lastP2Gun = 1 - lastP2Gun;
+      p2Lasers.push({ side, tier, x1: ent.x, y1: ent.y, born: now });
+    }
+    if (!seekerFire) {
+      const ps = [];
+      const n = 10 + Math.floor(Math.random() * 6);
+      for (let i = 0; i < n; i++) {
+        const a = (Math.PI * 2 * i / n) + (Math.random() - 0.5) * 0.5;
+        const s = 0.06 + Math.random() * 0.14;
+        const palettes = ['255,60,30', '255,130,40', '255,200,70', '255,255,180'];
+        ps.push({ x: ent.x, y: ent.y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+                  r: 1.5 + Math.random() * 2.5, col: palettes[Math.floor(Math.random() * 4)] });
+      }
+      explosions.push({ ps, born: performance.now(), dur: 680 });
+    }
+  }
+
   function initWarpOut(nextShip) {
+    warpPrevShip = null;
     warpNextShip = nextShip;
     warpState = 'out';
     warpAt = performance.now();
@@ -361,6 +546,7 @@
     settingsMenuOpen = false;
     if (settingsBtnEl) settingsBtnEl.classList.remove('menu-open');
     shipQuote = null; shipQuoteCooldown = 0; shipQuoteDeck = []; shipQuoteDeckFor = null; shipQuoteLastShown = null;
+    p2ShipQuote = null; p2ShipQuoteCooldown = 0; p2ShipQuoteDeck = []; p2ShipQuoteDeckFor = null; p2ShipQuoteLastShown = null;
     lasers.length = 0;
     shakeAt = warpAt; shakeDur = 500; shakeAmp = 16;
     for (const e of entities) e.warpPushed = false;
@@ -378,6 +564,93 @@
     if (queue.length > 0 && t - lastSpawn > spawnRate) {
       spawnEntity(queue.shift());
       lastSpawn = t;
+    }
+
+    if (twoPlayerMode !== 'off') {
+      const p2Rate = p2Queue.length > 10 ? 70 : 130;
+      if (p2Queue.length > 0 && t - lastP2Spawn > p2Rate) {
+        spawnP2Entity(p2Queue.shift());
+        lastP2Spawn = t;
+      }
+      // P2 entity movement + AI
+      for (let i = p2Entities.length - 1; i >= 0; i--) {
+        const e = p2Entities[i];
+        const age = t - e.spawnTime;
+        e.x += e.vx * dt;
+        e.y += e.vy * dt;
+        if (e.type === 'blocked') {
+          e.x += Math.sin(e.wobble + age * 0.002) * 0.012 * dt;
+          if (_p2ShipVisible && warpState === 'none' && p2BlockingEnabled !== false) {
+            if (e.state === 'alive' && age > 2200 && t - e.appearAt > 600) { e.state = 'targeted'; e.targetedAt = t; }
+            if (e.state === 'targeted' && age > 3400 && t - e.appearAt > 600) fireAtP2(e);
+          } else if (e.state === 'targeted') {
+            e.state = 'alive';
+          }
+          if (e.state === 'seeker-incoming' && t >= e.detonateAt) {
+            e.state = 'shot';
+            e.killedBy = Math.min(e.count, 3);
+          }
+          if (e.state === 'shot') {
+            const tier = Math.min(e.count, 3);
+            const bmp = tier >= 3 ? E3 : tier === 2 ? E2 : (e.design === 0 ? E0 : E1);
+            const color = tier >= 3 ? `rgba(190,60,255,0.9)` : tier === 2 ? `rgba(255,130,30,0.9)` : `rgba(255,50,50,0.9)`;
+            createExplosionFromBmp(bmp, e.x, e.y, e.killedBy, color);
+            p2Entities.splice(i, 1); continue;
+          }
+          if (e.y > H + 80) { p2Entities.splice(i, 1); continue; }
+        } else {
+          e.labelAlpha = Math.max(0, 1 - (age - 2400) / 1000);
+          if (e.x < W / 2 - 50 || e.x > W + 130 || e.y > H + 80) {
+            p2Entities.splice(i, 1);
+          }
+        }
+      }
+      // P2 ship movement: drop in, passive drift, track targeted enemy, dock to carrier
+      const _p2targeted = p2Entities.find(e => e.state === 'targeted');
+      const _p2ActiveEnemies = p2Entities.filter(e => e.type === 'blocked' && e.state !== 'shot').length;
+      if (_p2ActiveEnemies > 0) p2LastEnemyAt = t;
+      p2IdleBlend = (p2BlockingEnabled !== false) ? Math.min(1, Math.max(0, (t - p2LastEnemyAt - 15000) / 2000)) : 0;
+      const _p2PassiveDrift = 5 * Math.sin(t * 0.00038 + Math.PI) + 2 * Math.sin(t * 0.00067 + Math.PI);
+      const _p2FreeCX = W * 3 / 4;
+      _p2CarrierSmoothX += (W * 0.80 - _p2CarrierSmoothX) * Math.min(1, 0.003 * dt);
+      const _p2BayIdx = CARRIER_SHIP_ORDER.indexOf(p2CurrentShip);
+      const _p2effCarrierState = twoPlayerMode !== 'off'
+        ? (p2BlockingEnabled === false ? carrierState : (p2StartupAt > 0 ? carrierState : (p2LaunchAt > 0 && t - p2LaunchAt < CARRIER_LEAVE_DUR ? 'leaving' : 'none')))
+        : p2CarrierState;
+      const _p2effCarrierX     = twoPlayerMode !== 'off' ? _carrierSmoothX : _p2CarrierSmoothX;
+      const _p2effCarrierY     = twoPlayerMode !== 'off' ? carrierRestY    : p2CarrierRestY;
+      const _p2effLaunchAt     = p2LaunchAt;
+      const _p2ActiveBayX  = _p2effCarrierX + (_p2BayIdx >= 0 ? CARRIER_BAY_DX[_p2BayIdx] : 0);
+      const _p2CarrierDockY = _p2effCarrierY + (_p2BayIdx >= 0 ? CARRIER_BAY_DY[_p2BayIdx] : 0);
+      let _p2GoalX, _p2GoalXLerp;
+      if (_p2effCarrierState === 'arriving') {
+        _p2GoalX = _p2ActiveBayX; _p2GoalXLerp = 0.002;
+      } else if (_p2effCarrierState === 'present') {
+        _p2GoalX = _p2ActiveBayX; _p2GoalXLerp = twoPlayerMode === 'off' ? 1 : 0.003;
+      } else if (_p2effCarrierState === 'leaving' && t - _p2effLaunchAt < LAUNCH_BOOST_DUR) {
+        _p2GoalX = _p2ActiveBayX; _p2GoalXLerp = 0.0015;
+      } else {
+        _p2GoalX = _p2ShipVisible
+          ? (_p2targeted ? _p2FreeCX + Math.max(-80, Math.min(80, _p2targeted.x - _p2FreeCX)) : _p2FreeCX + _p2PassiveDrift)
+          : _p2FreeCX;
+        _p2GoalXLerp = 0.0038;
+      }
+      p2ShipX += (_p2GoalX - p2ShipX) * Math.min(1, _p2GoalXLerp * dt);
+      const _p2inCarrier = _p2effCarrierState === 'arriving' || _p2effCarrierState === 'present';
+      let _p2GoalY, _p2GoalYLerp;
+      if (_p2inCarrier) {
+        _p2GoalY = _p2CarrierDockY;
+        _p2GoalYLerp = _p2effCarrierState === 'present' ? 0.003 : 0.0015;
+      } else if (_p2effCarrierState === 'leaving' && t - _p2effLaunchAt < LAUNCH_BOOST_DUR) {
+        _p2GoalY = H * 0.65 - 90; _p2GoalYLerp = 0.02;
+      } else {
+        _p2GoalY = _p2ShipVisible
+          ? H * 0.65 + (_p2ActiveEnemies > 0 ? -42 : 0)
+          : (_p2BottomEntry ? H + 100 : (_p2SnapReveal ? (H - safeBottom) * 0.65 : -300));
+        _p2GoalYLerp = (_p2GoalY > p2ShipY + 10 || p2ShipY > H * 0.8) ? 0.009 : (_p2FastDepart ? 0.007 : 0.0008);
+      }
+      p2ShipY += (_p2GoalY - p2ShipY) * Math.min(1, _p2GoalYLerp * dt);
+      if (_p2FastDepart && p2ShipY <= -250) _p2FastDepart = false;
     }
 
     for (let i = entities.length - 1; i >= 0; i--) {
@@ -437,6 +710,22 @@
         }
       }
     }
+    // P2 laser collision
+    if (twoPlayerMode !== 'off') {
+      for (let i = p2Lasers.length - 1; i >= 0; i--) {
+        const l = p2Lasers[i];
+        if (t < l.born) continue;
+        if (l.style === 'seeker') continue;
+        for (const e of p2Entities) {
+          if (e.state === 'alive' && Math.hypot(e.x - l.x1, e.y - l.y1) < 25) {
+            e.state = 'shot';
+            e.killedBy = l.tier;
+            p2Lasers.splice(i, 1);
+            break;
+          }
+        }
+      }
+    }
     // Ship movement - passive hover drift + idle wander; track targeted enemy
     activeEnemies = 0;
     for (const e of entities) {
@@ -447,16 +736,22 @@
     const passiveDrift = 5 * Math.sin(t * 0.00038) + 2 * Math.sin(t * 0.00067);
     const idleDrift = idleBlend * 26 * Math.sin(t * 0.00021);
     const targeted = entities.find(e => e.state === 'targeted');
-    const _carrierCX = W * 0.40;
+    const _carrierTargetX = twoPlayerMode !== 'off' ? W * 0.50 : W * 0.40;
+    _carrierSmoothX += (_carrierTargetX - _carrierSmoothX) * Math.min(1, 0.003 * dt);
+    const _carrierCX = _carrierSmoothX;
     const _shipBayIdx = CARRIER_SHIP_ORDER.indexOf(currentShip);
     const _activeBayX = _carrierCX + (_shipBayIdx >= 0 ? CARRIER_BAY_DX[_shipBayIdx] : 0);
+    const _freeCX = twoPlayerMode !== 'off' ? W / 4 : W / 2;
     let goalX, goalXLerp;
-    if (carrierState === 'arriving' || carrierState === 'present') {
-      goalX = _activeBayX; goalXLerp = 0.002;
-    } else if (carrierState === 'leaving' && t - launchAt < LAUNCH_BOOST_DUR) {
+    if ((carrierState === 'arriving' || carrierState === 'present') && (shipPowerState === 'down' || shipPowerState === 'startup')) {
+      // In 2P the carrier may already be present (the other player brought it up),
+      // so a welding lerp of 1 would snap P1 to the bay. Glide instead, matching the
+      // P2 ship's handling; single-player still welds since the carrier arrives with it.
+      goalX = _activeBayX; goalXLerp = carrierState === 'present' ? (twoPlayerMode === 'off' ? 1 : 0.003) : 0.002;
+    } else if (launchAt > 0 && t - launchAt < LAUNCH_BOOST_DUR) {
       goalX = _activeBayX; goalXLerp = 0.0015;
     } else {
-      goalX = targeted ? W / 2 + Math.max(-110, Math.min(110, targeted.x - W / 2)) : W / 2 + passiveDrift + idleDrift;
+      goalX = targeted ? _freeCX + Math.max(-80, Math.min(80, targeted.x - _freeCX)) : _freeCX + passiveDrift + idleDrift;
       goalXLerp = 0.0038;
     }
     shipX += (goalX - shipX) * Math.min(1, goalXLerp * dt);
@@ -468,7 +763,7 @@
         (shipPowerState === 'down' || shipPowerState === 'startup')) {
       goalY = _carrierDockY;
       goalYLerp = carrierState === 'present' ? 0.003 : 0.0015;
-    } else if (carrierState === 'leaving' && t - launchAt < LAUNCH_BOOST_DUR) {
+    } else if (launchAt > 0 && t - launchAt < LAUNCH_BOOST_DUR) {
       goalY = H * 0.65 - 90;
       goalYLerp = 0.02;
     } else {
@@ -679,6 +974,20 @@
       const _l = lasers[i];
       if (t - _l.born > (_l.style === 'seeker' ? _l.dur + 60 : 300)) lasers.splice(i, 1);
     }
+    for (let i = p2Lasers.length - 1; i >= 0; i--) {
+      const _l = p2Lasers[i];
+      if (t - _l.born > (_l.style === 'seeker' ? _l.dur + 60 : 300)) p2Lasers.splice(i, 1);
+    }
+
+    // Defensive caps; these arrays expire fast and are bounded by game mechanics,
+    // but trim the oldest entries if something anomalous pumps them.
+    if (lasers.length > 120) lasers.length = 120;
+    if (p2Lasers.length > 120) p2Lasers.length = 120;
+    if (explosions.length > 120) explosions.length = 120;
+    if (domainFragments.length > 800) domainFragments.length = 800;
+    if (chainRings.length > 80) chainRings.length = 80;
+    if (droneMissiles.length > 12) droneMissiles.length = 12;
+    if (drone2Missiles.length > 12) drone2Missiles.length = 12;
 
     for (let i = explosions.length - 1; i >= 0; i--) {
       const ex = explosions[i];
@@ -703,13 +1012,24 @@
 
     // Warp state machine
     if (warpState === 'out' && t - warpAt >= WARP_OUT_DUR) {
+      warpPrevShip = currentShip;
       currentShip = warpNextShip; warpNextShip = null;
-      sessionStorage.setItem('ph_ship', currentShip);
+      localStorage.setItem('ph_ship', currentShip);
       warpState = 'in'; warpAt = t;
       for (const c of crewMembers) { if (c.state !== 'fleeing') { c.state = 'fleeing'; c.stateAt = t; c.wpIdx = 0; c.fromX = c.x; c.fromY = c.y; } }
     } else if (warpState === 'in' && t - warpAt >= WARP_IN_DUR) {
-      warpState = 'none'; shipPowerState = 'up';
+      warpState = 'none'; warpPrevShip = null; shipPowerState = 'up';
       gunCheckState = 0; gunCheckFiredAt = [0, 0];
+    }
+
+    if (p2WarpState === 'out' && t - p2WarpAt >= WARP_OUT_DUR) {
+      p2WarpPrevShip = p2CurrentShip;
+      p2CurrentShip = p2WarpNextShip; p2WarpNextShip = null;
+      localStorage.setItem('ph_p2_ship', p2CurrentShip);
+      p2WarpState = 'in'; p2WarpAt = t;
+      for (const c of p2CrewMembers) { if (c.state !== 'fleeing') { c.state = 'fleeing'; c.stateAt = t; c.wpIdx = 0; c.fromX = c.x; c.fromY = c.y; } }
+    } else if (p2WarpState === 'in' && t - p2WarpAt >= WARP_IN_DUR) {
+      p2WarpState = 'none'; p2WarpPrevShip = null;
     }
 
     // Warp-out shockwave: permanent velocity impulse as ship passes each entity
@@ -729,13 +1049,31 @@
         }
       }
     }
+    if (twoPlayerMode !== 'off' && p2WarpState === 'out') {
+      const _p2wp = Math.max(0, Math.min(1, (t - p2WarpAt) / WARP_OUT_DUR));
+      const _p2p2 = Math.max(0, (_p2wp - 0.40) / 0.60);
+      if (_p2p2 > 0) {
+        const _p2warpFrontY = p2ShipY - _p2p2 * (H + 300);
+        for (const e of p2Entities) {
+          if (!e.warpPushed && _p2warpFrontY <= e.y) {
+            const lateralDist = e.x - p2ShipX;
+            const falloff = Math.exp(-Math.abs(lateralDist) / 160);
+            e.vx += Math.sign(lateralDist || 1) * 0.12 * falloff;
+            e.vy -= 0.04 * falloff;
+            e.warpPushed = true;
+          }
+        }
+      }
+    }
 
     // Startup sequence completion
     if (shipPowerState === 'startup' && t - startupAt >= STARTUP_DUR) {
       shipPowerState = 'up';
-      if (carrierState === 'present') {
-        carrierState = 'leaving'; carrierLeavingAt = t; launchAt = t;
+      launchAt = t;
+      if (carrierState === 'present' && (twoPlayerMode === 'off' || (p2BlockingEnabled !== false && p2StartupAt === 0))) {
+        carrierState = 'leaving'; carrierLeavingAt = t;
         crewMembers = []; crewNextSpawn = 0; lastFuelAt = 0;
+        if (twoPlayerMode !== 'off') { p2CrewMembers = []; p2CrewNextSpawn = 0; p2LastFuelAt = 0; }
         chainRings.push({ x: shipX, y: shipY, born: t, dur: 380, maxR: 90,
           col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' });
       }
@@ -750,13 +1088,13 @@
     if (shipPowerState === 'powerdown' && t - powerdownAt >= POWERDOWN_DUR) {
       shipPowerState = 'down';
       if (carrierState === 'none') {
-        carrierState = 'arriving'; carrierRestY = H * 0.78;
+        carrierState = 'arriving'; carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10;
         carrierY = H + 240; carrierArrivingAt = t;
       }
     }
     // Also trigger carrier if blocking was detected off via poll (e.g. external Pi-hole toggle)
     if (shipPowerState === 'down' && blockingEnabled === false && carrierState === 'none') {
-      carrierState = 'arriving'; carrierRestY = H * 0.78;
+      carrierState = 'arriving'; carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10;
       carrierY = H + 240; carrierArrivingAt = t;
     }
     // Timed-block countdown → auto re-enable with startup sequence
@@ -765,7 +1103,7 @@
         blockingEnabled = true; blockingDuration = 0;
         gunCheckState = 0; gunCheckFiredAt = [0, 0];
         shipPowerState = 'startup'; startupAt = t;
-        if (carrierState === 'arriving') { carrierState = 'leaving'; carrierLeavingAt = t; launchAt = t; }
+        if (carrierState === 'arriving' && (twoPlayerMode === 'off' || p2BlockingEnabled !== false)) { carrierState = 'leaving'; carrierLeavingAt = t; launchAt = t; }
       }
     }
     // Carrier position animation
@@ -777,19 +1115,65 @@
     }
     // Guard: carrier must not stay present while ship is up (happens when startup completes before
     // carrier finishes arriving - e.g. rapid remote toggle or returning from a backgrounded tab)
-    if (shipPowerState === 'up' && carrierState === 'present') {
-      carrierState = 'leaving'; carrierLeavingAt = t; launchAt = t;
+    if (shipPowerState === 'up' && (carrierState === 'present' || carrierState === 'arriving') && (twoPlayerMode === 'off' || (p2BlockingEnabled !== false && p2StartupAt === 0))) {
+      carrierState = 'leaving'; carrierLeavingAt = t;
+      if (twoPlayerMode === 'off') launchAt = t;
       crewMembers = []; crewNextSpawn = 0; lastFuelAt = 0;
+      if (twoPlayerMode !== 'off') { p2CrewMembers = []; p2CrewNextSpawn = 0; p2LastFuelAt = 0; }
     }
     if (carrierState === 'leaving') {
       const lp = Math.min(1, (t - carrierLeavingAt) / CARRIER_LEAVE_DUR);
       carrierY = carrierRestY + lp * lp * (H + 240 - carrierRestY);
-      if (lp >= 1) { carrierState = 'none'; carrierY = 0; carrierRestY = 0; }
+      // Carrier gone -> no ship docked, so no crew should remain. The P2 crew loop
+      // is gated on carrierState !== 'none', so any still-fleeing crew would freeze
+      // and reappear on the next arrival; force-clear them here as a catch-all.
+      if (lp >= 1) { carrierState = 'none'; carrierY = 0; carrierRestY = 0; if (twoPlayerMode !== 'off') { p2CrewMembers = []; p2CrewNextSpawn = 0; p2LastFuelAt = 0; } }
+    }
+
+    // P2 timed-block auto-re-enable
+    if (p2BlockingEnabled === false && p2BlockingDuration > 0 && t - p2BlockingOffAt >= p2BlockingDuration) {
+      p2BlockingEnabled = true; p2BlockingDuration = 0;
+      p2StartupAt = t; p2GunCheckFiredAt[0] = 0; p2GunCheckFiredAt[1] = 0;
+      if ((twoPlayerMode !== 'off' ? carrierState : p2CarrierState) === 'none') chainRings.push({ x: p2ShipX, y: p2ShipY, born: t, dur: 380, maxR: 90, col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' });
+    }
+    // In 2P mode, trigger shared carrier when P2 goes offline (poll-detected or setP2Blocking missed it)
+    if (twoPlayerMode !== 'off' && p2BlockingEnabled === false && _p2ShipVisible && carrierState === 'none') {
+      carrierState = 'arriving'; carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10;
+      carrierY = H + 240; carrierArrivingAt = t;
+    }
+    // P2 startup sequence: engine on → weapon check → launch
+    if (p2StartupAt > 0 && p2BlockingEnabled === true) {
+      const _p2sp = (t - p2StartupAt) / STARTUP_DUR;
+      if (p2GunCheckFiredAt[0] === 0 && _p2sp >= GUN_CHECK_AT[0]) { p2GunCheckFiredAt[0] = t; }
+      if (p2GunCheckFiredAt[0] > 0 && p2GunCheckFiredAt[1] === 0 && _p2sp >= GUN_CHECK_AT[1]) { p2GunCheckFiredAt[1] = t; }
+      if (_p2sp >= 1.0) { p2LaunchAt = t; p2StartupAt = 0; }
+    }
+
+    // ── P2 carrier state tick (1P mode only — in 2P mode P2 shares the main carrier) ───
+    if (twoPlayerMode === 'off') {
+      if (p2BlockingEnabled === false && _p2ShipVisible && p2CarrierState === 'none') {
+        p2CarrierState = 'arriving'; p2CarrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10;
+        p2CarrierY = H + 240; p2CarrierArrivingAt = t;
+      }
+      if (p2BlockingEnabled === true && p2StartupAt === 0 && p2LaunchAt > 0 && (p2CarrierState === 'present' || p2CarrierState === 'arriving')) {
+        p2CarrierState = 'leaving'; p2CarrierLeavingAt = t;
+      }
+      if (p2CarrierState === 'arriving') {
+        const _p2cp = Math.min(1, (t - p2CarrierArrivingAt) / CARRIER_ARRIVE_DUR);
+        const _p2ease = 1 - Math.pow(1 - _p2cp, 3);
+        p2CarrierY = (H + 240) + (p2CarrierRestY - (H + 240)) * _p2ease;
+        if (_p2cp >= 1) { p2CarrierState = 'present'; p2CarrierY = p2CarrierRestY; }
+      }
+      if (p2CarrierState === 'leaving') {
+        const _p2lp = Math.min(1, (t - p2CarrierLeavingAt) / CARRIER_LEAVE_DUR);
+        p2CarrierY = p2CarrierRestY + _p2lp * _p2lp * (H + 240 - p2CarrierRestY);
+        if (_p2lp >= 1) { p2CarrierState = 'none'; p2CarrierY = 0; p2CarrierRestY = 0; }
+      }
     }
 
     if (settingsBtnEl) {
       const _startupPhase = shipPowerState === 'startup' ? (t - startupAt) / STARTUP_DUR : -1;
-      const _btnHide = shipPowerState === 'powerdown' || (_startupPhase >= 0 && _startupPhase <= 0.72);
+      const _btnHide = twoPlayerMode === 'off' && (shipPowerState === 'powerdown' || (_startupPhase >= 0 && _startupPhase <= 0.72));
       settingsBtnEl.style.transition = _btnHide ? 'opacity 100ms ease' : '';
       settingsBtnEl.style.opacity = _btnHide ? '0' : '';
       settingsBtnEl.style.pointerEvents = _btnHide ? 'none' : '';
@@ -803,7 +1187,16 @@
       }
     }
 
-    render(t);
+    try {
+      render(t);
+    } catch (e) {
+      console.error('Render error, resetting canvas context:', e);
+      // Reassigning canvas.width resets the entire 2D context state (transform, clip,
+      // save stack) so a dirty ctx from a mid-render throw can't corrupt future frames.
+      canvas.width = canvas.width;
+      // The reset above also clears the device-pixel transform; restore it.
+      ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
+    }
 
   }
 
@@ -857,17 +1250,47 @@
     // End shake translate - entities get warp-blast distortion instead of shaking
     if (shakeOn) { ctx.restore(); shakeOn = false; }
 
+
     // Ship-position-based warp distortion: Gaussian bell centered on ship's current Y
     let warpFrontY = null;
     if (warpState === 'out') {
-      const _wp = Math.min(1, (t - warpAt) / WARP_OUT_DUR);
+      const _wp = Math.max(0, Math.min(1, (t - warpAt) / WARP_OUT_DUR));
       const _p2 = Math.max(0, (_wp - 0.40) / 0.60);
       if (_p2 > 0) warpFrontY = shipY - _p2 * (H + 300);
     }
 
+    // Bay trapdoor: two panels slide in/out at a ship's carrier bay during ship swaps
+    const _drawTrapDoor = (shName, isClosing, p, _cx, _cy) => {
+      const _bi = CARRIER_SHIP_ORDER.indexOf(shName);
+      if (_bi < 0) return;
+      const _bx = _cx + CARRIER_BAY_DX[_bi];
+      const _by = _cy + CARRIER_BAY_DY[_bi];
+      const _ep = isClosing ? p : 1 - p;  // 0 = open, 1 = closed
+      const hw = 38, ph = 28;
+      const _lx = _bx - hw * (2 - _ep);   // left panel left edge
+      const _rx = _bx + hw * (1 - _ep);   // right panel left edge
+      ctx.save();
+      ctx.fillStyle = 'rgba(8, 28, 105, 1)';
+      ctx.fillRect(_lx, _by - ph, hw, ph * 2);
+      ctx.fillRect(_rx, _by - ph, hw, ph * 2);
+      const _gA = Math.min(1, _ep * 2.5);
+      ctx.shadowColor = 'rgba(145, 210, 255, 1)';
+      ctx.shadowBlur = 16;
+      ctx.fillStyle = `rgba(220, 248, 255, ${_gA.toFixed(2)})`;
+      ctx.fillRect(_lx + hw - 1, _by - ph, 3, ph * 2);
+      ctx.fillRect(_rx, _by - ph, 3, ph * 2);
+      ctx.shadowBlur = 0;
+      if (_ep > 0.60) {
+        const _fa = (_ep - 0.60) / 0.40;
+        ctx.fillStyle = `rgba(200, 242, 255, ${(_fa * 0.90).toFixed(2)})`;
+        ctx.fillRect(_bx - hw, _by - ph, hw * 2, ph * 2);
+      }
+      ctx.restore();
+    };
+
     // ── Carrier ship ──────────────────────────────────────────────────────
     if (carrierState !== 'none') {
-      const ccx = Math.round(W * 0.40);
+      const ccx = Math.round(_carrierSmoothX);
       const ccy = Math.round(carrierY);
       const _cFade = carrierState === 'arriving'
         ? Math.min(1, (t - carrierArrivingAt) / 700)
@@ -903,7 +1326,7 @@
         const _gapDXs = [-90, 0, 90, 90, -90, 0, 90];
 
         const _crewEligible = carrierState === 'present' && shipPowerState === 'down'
-            && blockingEnabled === false && t - blockingOffAt >= 30000;
+            && blockingEnabled === false && t - blockingOffSince >= 30000;
 
         // Build a ship-avoiding flee path using per-crew fleeX/fleeViaY safe corridor
         const _makeFleePath = c => {
@@ -1141,16 +1564,126 @@
           ctx.restore();
         }
       }
+      // Ground crew for P2 ship on shared carrier (2P mode)
+      if (twoPlayerMode !== 'off') {
+        const _p2HatchX = ccx, _p2HatchY = ccy - 111;
+        const _p2TopRail = ccy - 90, _p2MidCY = ccy + 6, _p2BotRail = ccy + 102;
+        const _p2GapDXs = [-90, 0, 90, 90, -90, 0, 90];
+        const _p2CrewEligible = carrierState === 'present' && p2BlockingEnabled === false && t - p2BlockingOffSince >= 30000;
+        const _p2MakeFleePath = c => {
+          const fx = c.fleeX, fy = c.fleeViaY, pts = [];
+          if (c.y <= fy) {
+            if (Math.abs(c.x - _p2HatchX) > 6) pts.push({ x: _p2HatchX, y: c.y });
+            pts.push({ x: _p2HatchX, y: _p2HatchY });
+          } else {
+            if (Math.abs(c.x - fx) > 10) pts.push({ x: fx, y: c.y });
+            pts.push({ x: fx, y: fy });
+            if (Math.abs(fx - _p2HatchX) > 6) pts.push({ x: _p2HatchX, y: fy });
+            pts.push({ x: _p2HatchX, y: _p2HatchY });
+          }
+          return pts;
+        };
+        if (p2StartupAt > 0) {
+          for (const c of p2CrewMembers) {
+            if (c.state !== 'fleeing') { c.state = 'fleeing'; c.stateAt = t; c.wpIdx = 0; c.fromX = c.x; c.fromY = c.y; c.returnPath = _p2MakeFleePath(c); c.fleepathReady = true; }
+          }
+        }
+        for (const c of p2CrewMembers) {
+          if (c.state === 'fleeing' && !c.fleepathReady) { c.fromX = c.x; c.fromY = c.y; c.returnPath = _p2MakeFleePath(c); c.fleepathReady = true; }
+        }
+        for (const c of p2CrewMembers) {
+          const _dt = (t - c.stateAt) / 1000;
+          if (c.state === 'walking' || c.state === 'returning' || c.state === 'fleeing') {
+            const _path = c.state === 'walking' ? c.waypoints : c.returnPath;
+            const _speed = c.state === 'fleeing' ? 85 : 28;
+            if (c.wpIdx >= _path.length) { if (c.state === 'walking') { c.state = 'at_post'; c.stateAt = t; } continue; }
+            const _wp = _path[c.wpIdx];
+            const _dist = Math.hypot(_wp.x - c.fromX, _wp.y - c.fromY);
+            const _p = _dist > 0 ? Math.min(1, _dt * _speed / _dist) : 1;
+            c.x = c.fromX + (_wp.x - c.fromX) * _p; c.y = c.fromY + (_wp.y - c.fromY) * _p;
+            if (_p >= 1) { c.x = _wp.x; c.y = _wp.y; c.wpIdx++; c.fromX = c.x; c.fromY = c.y; c.stateAt = t; if (c.wpIdx >= _path.length && c.state === 'walking') { c.state = 'at_post'; c.stateAt = t; } }
+          } else if (c.state === 'at_post') {
+            if (t - c.stateAt >= c.lifetime) { c.state = 'returning'; c.stateAt = t; c.wpIdx = 0; c.fromX = c.x; c.fromY = c.y; if (c.type === 'fuel') p2LastFuelAt = t; }
+          }
+        }
+        p2CrewMembers = p2CrewMembers.filter(c => (c.state !== 'returning' && c.state !== 'fleeing') || Math.hypot(c.x - _p2HatchX, c.y - _p2HatchY) > 5);
+        if (_p2CrewEligible && t > p2CrewNextSpawn && p2CrewMembers.length < 3 && CARRIER_SHIP_ORDER.indexOf(p2CurrentShip) >= 0) {
+          const _hasFuel = p2CrewMembers.some(c => c.type === 'fuel');
+          const _fuelOk = !_hasFuel && t - p2LastFuelAt >= 300000;
+          const _firstCrew = p2CrewMembers.length === 0 && p2LastFuelAt === 0;
+          const _type = (_firstCrew || _fuelOk) && !_hasFuel ? 'fuel' : ['inspect', 'signal', 'repair', 'idle'][Math.floor(Math.random() * 4)];
+          const _p2SI = CARRIER_SHIP_ORDER.indexOf(p2CurrentShip);
+          const _p2BayX = ccx + CARRIER_BAY_DX[_p2SI], _p2BayDY = CARRIER_BAY_DY[_p2SI];
+          const _p2GapX = ccx + _p2GapDXs[_p2SI], _p2IsRow1 = _p2BayDY < 0;
+          const _p2RowTopCY = _p2IsRow1 ? _p2TopRail : _p2MidCY;
+          const _p2BumpX = ccx + CARRIER_BUMP_DX[_p2SI], _p2BumpY = ccy + CARRIER_BUMP_DY[_p2SI];
+          let _p2Wp, _p2Ret, _p2FleeX, _p2FleeViaY;
+          if (_type === 'fuel') {
+            const _p2ShipBackY = ccy + _p2BayDY + Math.ceil(bmpH(_SHIP_CONFIGS[p2CurrentShip].bmp) * PX / 2) - (p2CurrentShip === 'enterprise' ? 9 : 0) + (p2CurrentShip === 'swordfish' ? 4 : 0) - (p2CurrentShip === 'protector' ? 9 : 0) + (p2CurrentShip === 'falcon' ? 2 : 0);
+            if (_p2IsRow1) {
+              _p2FleeX = _p2GapX; _p2FleeViaY = _p2TopRail;
+              _p2Wp  = [{ x: _p2HatchX, y: _p2TopRail }, { x: _p2GapX, y: _p2TopRail }, { x: _p2GapX, y: _p2BumpY }, { x: _p2BumpX, y: _p2BumpY }, { x: _p2BayX, y: _p2ShipBackY }];
+              _p2Ret = [{ x: _p2BumpX, y: _p2BumpY }, { x: _p2GapX, y: _p2BumpY }, { x: _p2GapX, y: _p2TopRail }, { x: _p2HatchX, y: _p2TopRail }, { x: _p2HatchX, y: _p2HatchY }];
+            } else {
+              _p2FleeX = _p2GapX; _p2FleeViaY = _p2MidCY;
+              _p2Wp  = [{ x: _p2HatchX, y: _p2MidCY }, { x: _p2GapX, y: _p2MidCY }, { x: _p2GapX, y: _p2BotRail }, { x: _p2BumpX, y: _p2BumpY - 4 }, { x: _p2BayX, y: _p2ShipBackY }];
+              _p2Ret = [{ x: _p2BumpX, y: _p2BumpY - 4 }, { x: _p2GapX, y: _p2BotRail }, { x: _p2GapX, y: _p2MidCY }, { x: _p2HatchX, y: _p2MidCY }, { x: _p2HatchX, y: _p2HatchY }];
+            }
+          } else {
+            const _taken = p2CrewMembers.filter(c => c.type !== 'fuel' && c.waypoints).map(c => c.waypoints[c.waypoints.length - 1]);
+            if (Math.random() < 0.4) {
+              _p2FleeX = _p2GapX; _p2FleeViaY = _p2RowTopCY;
+              let _sy, _sa = 0; do { _sy = ccy + _p2BayDY + Math.round((Math.random() - 0.5) * 48); _sa++; } while (_sa < 20 && _taken.some(s => Math.abs(s.x - _p2GapX) < 5 && Math.abs(s.y - _sy) < 14));
+              _p2Wp  = [{ x: _p2HatchX, y: _p2RowTopCY }, { x: _p2GapX, y: _p2RowTopCY }, { x: _p2GapX, y: _sy }];
+              _p2Ret = [{ x: _p2GapX, y: _p2RowTopCY }, { x: _p2HatchX, y: _p2RowTopCY }, { x: _p2HatchX, y: _p2HatchY }];
+            } else {
+              _p2FleeX = _p2HatchX; _p2FleeViaY = _p2RowTopCY;
+              let _wx, _wa = 0; do { _wx = _p2BayX + Math.round((Math.random() - 0.5) * 40); _wa++; } while (_wa < 20 && _taken.some(s => Math.abs(s.y - _p2RowTopCY) < 5 && Math.abs(s.x - _wx) < 14));
+              _p2Wp  = [{ x: _p2HatchX, y: _p2RowTopCY }, { x: _wx, y: _p2RowTopCY }];
+              _p2Ret = [{ x: _p2HatchX, y: _p2RowTopCY }, { x: _p2HatchX, y: _p2HatchY }];
+            }
+          }
+          p2CrewMembers.push({ type: _type, x: _p2HatchX, y: _p2HatchY, fromX: _p2HatchX, fromY: _p2HatchY, state: 'walking', stateAt: t, wpIdx: 0, waypoints: _p2Wp, returnPath: _p2Ret, bumpX: _p2BumpX, bumpY: _p2BumpY, fleeX: _p2FleeX, fleeViaY: _p2FleeViaY, hoseFwdWpIdx: _p2Wp.length - 1, spawnedAt: t, lifetime: 18000 + Math.random() * 14000 });
+          p2CrewNextSpawn = t + 5000 + Math.random() * 8000;
+        }
+        for (const c of p2CrewMembers) {
+          const _distToHatch = Math.hypot(c.x - _p2HatchX, c.y - _p2HatchY);
+          const _a = Math.min(1, (t - c.spawnedAt) / 400) * Math.min(1, _distToHatch / 16);
+          if (_a < 0.01) continue;
+          ctx.save(); ctx.globalAlpha *= _a;
+          const _dx = Math.round(c.x), _dy = Math.round(c.y);
+          const _col = c.type === 'fuel' ? 'rgba(240,175,70,0.95)' : c.type === 'inspect' ? 'rgba(120,195,255,0.95)' : c.type === 'repair' ? 'rgba(255,140,80,0.95)' : c.type === 'idle' ? 'rgba(180,200,180,0.85)' : 'rgba(255,225,70,0.95)';
+          if (c.type === 'fuel' && (c.state === 'at_post' || (c.state === 'walking' && c.wpIdx === c.hoseFwdWpIdx) || (c.state === 'returning' && c.wpIdx === 0))) {
+            ctx.strokeStyle = `rgba(255,160,40,${(0.7 + 0.2 * Math.sin(t * 0.005)).toFixed(2)})`; ctx.lineWidth = 0.3;
+            ctx.beginPath(); ctx.moveTo(_dx, _dy + 4); ctx.quadraticCurveTo((_dx + c.bumpX) / 2 + 7, (_dy + 4 + c.bumpY) / 2, c.bumpX, c.bumpY); ctx.stroke();
+          }
+          if (c.state === 'at_post') {
+            if (c.type === 'fuel') { const _by = _dy + Math.round(Math.sin(t * 0.0025) * 1); drawBmp(ctx, Math.floor(t / 1100) % 2 === 0 ? CREW_CROUCH : CREW_STAND_A, _dx, _by, _col, null, CREW_PX);
+            } else if (c.type === 'inspect') { const _raised = Math.sin(t * 0.0014) > 0.55; drawBmp(ctx, _raised ? CREW_REACH : CREW_STAND_A, _dx, _dy, _col, null, CREW_PX); if (_raised) { ctx.fillStyle = 'rgba(190,235,255,0.6)'; ctx.shadowColor = 'rgba(80,190,255,0.5)'; ctx.shadowBlur = 3; ctx.fillRect(_dx + 3, _dy - 5, 2, 4); ctx.shadowBlur = 0; }
+            } else if (c.type === 'repair') { drawBmp(ctx, CREW_CROUCH, _dx, _dy, _col, null, CREW_PX); if (Math.sin(t * 0.007) > 0.85) { ctx.fillStyle = 'rgba(255,220,80,0.9)'; ctx.shadowColor = 'rgba(255,200,40,0.8)'; ctx.shadowBlur = 5; ctx.fillRect(_dx + 2, _dy - 3, 2, 2); ctx.shadowBlur = 0; }
+            } else if (c.type === 'idle') { drawBmp(ctx, Math.floor(t / 2200) % 2 === 0 ? CREW_STAND_A : CREW_STAND_B, _dx, _dy, _col, null, CREW_PX);
+            } else { drawBmp(ctx, Math.floor(t / 700) % 2 === 0 ? CREW_REACH : CREW_STAND_A, _dx, _dy, _col, null, CREW_PX); }
+          } else { const _rate = c.state === 'fleeing' ? 110 : 260; drawBmp(ctx, Math.floor(t / _rate) % 2 === 0 ? CREW_STAND_A : CREW_STAND_B, _dx, _dy, _col, null, CREW_PX); }
+          ctx.restore();
+        }
+      }
       // Redraw hatch structure rows on top of crew so crew appears behind it
       drawBmp(ctx, CARRIER_BMP.slice(1, 3), ccx, ccy - 108, 'rgba(130,145,170,0.88)', 'rgba(100,120,160,0.28)', CARRIER_PX);
-      // Inactive ships drawn after crew — crew always appears underneath parked ships
+      // Inactive ships drawn after crew so crew always appears underneath parked ships
       for (let bi = 0; bi < CARRIER_SHIP_ORDER.length; bi++) {
         const bShip = CARRIER_SHIP_ORDER[bi];
+        if (bShip === currentShip || (twoPlayerMode !== 'off' && bShip === p2CurrentShip)) continue;
         const bx = ccx + CARRIER_BAY_DX[bi];
         const by = ccy + CARRIER_BAY_DY[bi];
-        if (bShip !== currentShip) {
-          drawBmp(ctx, _SHIP_CONFIGS[bShip].bmp, bx, by, _SHIP_CONFIGS[bShip].dimColor, null, PX);
-        }
+        drawBmp(ctx, _SHIP_CONFIGS[bShip].bmp, bx, by, _SHIP_CONFIGS[bShip].dimColor, null, PX);
+      }
+      // Bay trapdoor effects for P1 ship swap
+      if (warpState === 'out' && warpNextShip !== null) { _drawTrapDoor(warpNextShip, true, Math.min(1, (t - warpAt) / (WARP_OUT_DUR * 0.50)), ccx, ccy); }
+      if (warpState === 'in' && warpPrevShip !== null) { _drawTrapDoor(warpPrevShip, false, Math.min(1, (t - warpAt) / (WARP_IN_DUR * 0.45)), ccx, ccy); }
+      // Bay trapdoor effects for P2 ship swap (shared carrier in 2P mode)
+      if (twoPlayerMode !== 'off') {
+        if (p2WarpState === 'out' && p2WarpNextShip !== null) { _drawTrapDoor(p2WarpNextShip, true, Math.min(1, (t - p2WarpAt) / (WARP_OUT_DUR * 0.50)), ccx, ccy); }
+        if (p2WarpState === 'in' && p2WarpPrevShip !== null) { _drawTrapDoor(p2WarpPrevShip, false, Math.min(1, (t - p2WarpAt) / (WARP_IN_DUR * 0.45)), ccx, ccy); }
       }
 
       // Carrier propulsion jets
@@ -1169,6 +1702,157 @@
         ctx.save();
         ctx.scale(1, -1);
         for (const jdx of _jXOffs) drawEngineFlare(ccx + jdx, -_jBase, _jft, _js, _js * 1.6);
+        ctx.restore();
+      }
+      ctx.restore();
+    }
+
+    // ── P2 Carrier ship (1P mode only — in 2P mode P2 shares the centered main carrier) ───
+    if (p2CarrierState !== 'none' && twoPlayerMode === 'off') {
+      const _p2ccx = Math.round(_p2CarrierSmoothX);
+      const _p2ccy = Math.round(p2CarrierY);
+      const _p2cFade = p2CarrierState === 'arriving'
+        ? Math.min(1, (t - p2CarrierArrivingAt) / 700)
+        : p2CarrierState === 'leaving'
+        ? Math.max(0, 1 - (t - p2CarrierLeavingAt) / 550)
+        : 1;
+      ctx.save();
+      ctx.globalAlpha = _p2cFade;
+      { const _iOx = Math.round(_p2ccx - 75 * CARRIER_PX / 2) + 2 * CARRIER_PX;
+        const _iOy = Math.round(_p2ccy - CARRIER_BMP.length * CARRIER_PX / 2) + 1 * CARRIER_PX;
+        ctx.fillStyle = 'rgba(25, 65, 140, 0.07)';
+        ctx.fillRect(_iOx, _iOy, 71 * CARRIER_PX, (CARRIER_BMP.length - 2) * CARRIER_PX); }
+      drawBmp(ctx, CARRIER_BMP, _p2ccx, _p2ccy, 'rgba(130,145,170,0.88)', 'rgba(100,120,160,0.28)', CARRIER_PX);
+      for (let _li = 0; _li < CARRIER_LIGHT_OFFSETS.length; _li++) {
+        const _lo = CARRIER_LIGHT_OFFSETS[_li];
+        const _lb = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * 0.003 + _li * 0.47));
+        ctx.fillStyle = `rgba(255,155,30,${_lb.toFixed(3)})`;
+        ctx.shadowColor = 'rgba(255,120,10,0.9)'; ctx.shadowBlur = 12;
+        ctx.fillRect(_p2ccx + _lo.dx - 2, _p2ccy + _lo.dy - 2, 5, 5);
+      }
+      ctx.shadowBlur = 0;
+      // Ground crew for P2 ship
+      {
+        const _p2HatchX = _p2ccx, _p2HatchY = _p2ccy - 111;
+        const _p2TopRail = _p2ccy - 90, _p2MidCY = _p2ccy + 6, _p2BotRail = _p2ccy + 102;
+        const _p2GapDXs = [-90, 0, 90, 90, -90, 0, 90];
+        const _p2CrewEligible = p2CarrierState === 'present' && p2BlockingEnabled === false && t - p2BlockingOffSince >= 30000;
+        const _p2MakeFleePath = c => {
+          const fx = c.fleeX, fy = c.fleeViaY, pts = [];
+          if (c.y <= fy) {
+            if (Math.abs(c.x - _p2HatchX) > 6) pts.push({ x: _p2HatchX, y: c.y });
+            pts.push({ x: _p2HatchX, y: _p2HatchY });
+          } else {
+            if (Math.abs(c.x - fx) > 10) pts.push({ x: fx, y: c.y });
+            pts.push({ x: fx, y: fy });
+            if (Math.abs(fx - _p2HatchX) > 6) pts.push({ x: _p2HatchX, y: fy });
+            pts.push({ x: _p2HatchX, y: _p2HatchY });
+          }
+          return pts;
+        };
+        if (p2StartupAt > 0) {
+          for (const c of p2CrewMembers) {
+            if (c.state !== 'fleeing') { c.state = 'fleeing'; c.stateAt = t; c.wpIdx = 0; c.fromX = c.x; c.fromY = c.y; c.returnPath = _p2MakeFleePath(c); c.fleepathReady = true; }
+          }
+        }
+        for (const c of p2CrewMembers) {
+          if (c.state === 'fleeing' && !c.fleepathReady) { c.fromX = c.x; c.fromY = c.y; c.returnPath = _p2MakeFleePath(c); c.fleepathReady = true; }
+        }
+        for (const c of p2CrewMembers) {
+          const _dt = (t - c.stateAt) / 1000;
+          if (c.state === 'walking' || c.state === 'returning' || c.state === 'fleeing') {
+            const _path = c.state === 'walking' ? c.waypoints : c.returnPath;
+            const _speed = c.state === 'fleeing' ? 85 : 28;
+            if (c.wpIdx >= _path.length) { if (c.state === 'walking') { c.state = 'at_post'; c.stateAt = t; } continue; }
+            const _wp = _path[c.wpIdx];
+            const _dist = Math.hypot(_wp.x - c.fromX, _wp.y - c.fromY);
+            const _p = _dist > 0 ? Math.min(1, _dt * _speed / _dist) : 1;
+            c.x = c.fromX + (_wp.x - c.fromX) * _p; c.y = c.fromY + (_wp.y - c.fromY) * _p;
+            if (_p >= 1) { c.x = _wp.x; c.y = _wp.y; c.wpIdx++; c.fromX = c.x; c.fromY = c.y; c.stateAt = t; if (c.wpIdx >= _path.length && c.state === 'walking') { c.state = 'at_post'; c.stateAt = t; } }
+          } else if (c.state === 'at_post') {
+            if (t - c.stateAt >= c.lifetime) { c.state = 'returning'; c.stateAt = t; c.wpIdx = 0; c.fromX = c.x; c.fromY = c.y; if (c.type === 'fuel') p2LastFuelAt = t; }
+          }
+        }
+        p2CrewMembers = p2CrewMembers.filter(c => (c.state !== 'returning' && c.state !== 'fleeing') || Math.hypot(c.x - _p2HatchX, c.y - _p2HatchY) > 5);
+        if (_p2CrewEligible && t > p2CrewNextSpawn && p2CrewMembers.length < 3 && CARRIER_SHIP_ORDER.indexOf(p2CurrentShip) >= 0) {
+          const _hasFuel = p2CrewMembers.some(c => c.type === 'fuel');
+          const _fuelOk = !_hasFuel && t - p2LastFuelAt >= 300000;
+          const _firstCrew = p2CrewMembers.length === 0 && p2LastFuelAt === 0;
+          const _type = (_firstCrew || _fuelOk) && !_hasFuel ? 'fuel' : ['inspect', 'signal', 'repair', 'idle'][Math.floor(Math.random() * 4)];
+          const _p2SI = CARRIER_SHIP_ORDER.indexOf(p2CurrentShip);
+          const _p2BayX = _p2ccx + CARRIER_BAY_DX[_p2SI], _p2BayDY = CARRIER_BAY_DY[_p2SI];
+          const _p2GapX = _p2ccx + _p2GapDXs[_p2SI], _p2IsRow1 = _p2BayDY < 0;
+          const _p2RowTopCY = _p2IsRow1 ? _p2TopRail : _p2MidCY;
+          const _p2BumpX = _p2ccx + CARRIER_BUMP_DX[_p2SI], _p2BumpY = _p2ccy + CARRIER_BUMP_DY[_p2SI];
+          let _p2Wp, _p2Ret, _p2FleeX, _p2FleeViaY;
+          if (_type === 'fuel') {
+            const _p2ShipBackY = _p2ccy + _p2BayDY + Math.ceil(bmpH(_SHIP_CONFIGS[p2CurrentShip].bmp) * PX / 2) - (p2CurrentShip === 'enterprise' ? 9 : 0) + (p2CurrentShip === 'swordfish' ? 4 : 0) - (p2CurrentShip === 'protector' ? 9 : 0) + (p2CurrentShip === 'falcon' ? 2 : 0);
+            if (_p2IsRow1) {
+              _p2FleeX = _p2GapX; _p2FleeViaY = _p2TopRail;
+              _p2Wp  = [{ x: _p2HatchX, y: _p2TopRail }, { x: _p2GapX, y: _p2TopRail }, { x: _p2GapX, y: _p2BumpY }, { x: _p2BumpX, y: _p2BumpY }, { x: _p2BayX, y: _p2ShipBackY }];
+              _p2Ret = [{ x: _p2BumpX, y: _p2BumpY }, { x: _p2GapX, y: _p2BumpY }, { x: _p2GapX, y: _p2TopRail }, { x: _p2HatchX, y: _p2TopRail }, { x: _p2HatchX, y: _p2HatchY }];
+            } else {
+              _p2FleeX = _p2GapX; _p2FleeViaY = _p2MidCY;
+              _p2Wp  = [{ x: _p2HatchX, y: _p2MidCY }, { x: _p2GapX, y: _p2MidCY }, { x: _p2GapX, y: _p2BotRail }, { x: _p2BumpX, y: _p2BumpY - 4 }, { x: _p2BayX, y: _p2ShipBackY }];
+              _p2Ret = [{ x: _p2BumpX, y: _p2BumpY - 4 }, { x: _p2GapX, y: _p2BotRail }, { x: _p2GapX, y: _p2MidCY }, { x: _p2HatchX, y: _p2MidCY }, { x: _p2HatchX, y: _p2HatchY }];
+            }
+          } else {
+            const _taken = p2CrewMembers.filter(c => c.type !== 'fuel' && c.waypoints).map(c => c.waypoints[c.waypoints.length - 1]);
+            if (Math.random() < 0.4) {
+              _p2FleeX = _p2GapX; _p2FleeViaY = _p2RowTopCY;
+              let _sy, _sa = 0; do { _sy = _p2ccy + _p2BayDY + Math.round((Math.random() - 0.5) * 48); _sa++; } while (_sa < 20 && _taken.some(s => Math.abs(s.x - _p2GapX) < 5 && Math.abs(s.y - _sy) < 14));
+              _p2Wp  = [{ x: _p2HatchX, y: _p2RowTopCY }, { x: _p2GapX, y: _p2RowTopCY }, { x: _p2GapX, y: _sy }];
+              _p2Ret = [{ x: _p2GapX, y: _p2RowTopCY }, { x: _p2HatchX, y: _p2RowTopCY }, { x: _p2HatchX, y: _p2HatchY }];
+            } else {
+              _p2FleeX = _p2HatchX; _p2FleeViaY = _p2RowTopCY;
+              let _wx, _wa = 0; do { _wx = _p2BayX + Math.round((Math.random() - 0.5) * 40); _wa++; } while (_wa < 20 && _taken.some(s => Math.abs(s.y - _p2RowTopCY) < 5 && Math.abs(s.x - _wx) < 14));
+              _p2Wp  = [{ x: _p2HatchX, y: _p2RowTopCY }, { x: _wx, y: _p2RowTopCY }];
+              _p2Ret = [{ x: _p2HatchX, y: _p2RowTopCY }, { x: _p2HatchX, y: _p2HatchY }];
+            }
+          }
+          p2CrewMembers.push({ type: _type, x: _p2HatchX, y: _p2HatchY, fromX: _p2HatchX, fromY: _p2HatchY, state: 'walking', stateAt: t, wpIdx: 0, waypoints: _p2Wp, returnPath: _p2Ret, bumpX: _p2BumpX, bumpY: _p2BumpY, fleeX: _p2FleeX, fleeViaY: _p2FleeViaY, hoseFwdWpIdx: _p2Wp.length - 1, spawnedAt: t, lifetime: 18000 + Math.random() * 14000 });
+          p2CrewNextSpawn = t + 5000 + Math.random() * 8000;
+        }
+        for (const c of p2CrewMembers) {
+          const _distToHatch = Math.hypot(c.x - _p2HatchX, c.y - _p2HatchY);
+          const _a = Math.min(1, (t - c.spawnedAt) / 400) * Math.min(1, _distToHatch / 16);
+          if (_a < 0.01) continue;
+          ctx.save(); ctx.globalAlpha *= _a;
+          const _dx = Math.round(c.x), _dy = Math.round(c.y);
+          const _col = c.type === 'fuel' ? 'rgba(240,175,70,0.95)' : c.type === 'inspect' ? 'rgba(120,195,255,0.95)' : c.type === 'repair' ? 'rgba(255,140,80,0.95)' : c.type === 'idle' ? 'rgba(180,200,180,0.85)' : 'rgba(255,225,70,0.95)';
+          if (c.type === 'fuel' && (c.state === 'at_post' || (c.state === 'walking' && c.wpIdx === c.hoseFwdWpIdx) || (c.state === 'returning' && c.wpIdx === 0))) {
+            ctx.strokeStyle = `rgba(255,160,40,${(0.7 + 0.2 * Math.sin(t * 0.005)).toFixed(2)})`; ctx.lineWidth = 0.3;
+            ctx.beginPath(); ctx.moveTo(_dx, _dy + 4); ctx.quadraticCurveTo((_dx + c.bumpX) / 2 + 7, (_dy + 4 + c.bumpY) / 2, c.bumpX, c.bumpY); ctx.stroke();
+          }
+          if (c.state === 'at_post') {
+            if (c.type === 'fuel') { const _by = _dy + Math.round(Math.sin(t * 0.0025) * 1); drawBmp(ctx, Math.floor(t / 1100) % 2 === 0 ? CREW_CROUCH : CREW_STAND_A, _dx, _by, _col, null, CREW_PX);
+            } else if (c.type === 'inspect') { const _raised = Math.sin(t * 0.0014) > 0.55; drawBmp(ctx, _raised ? CREW_REACH : CREW_STAND_A, _dx, _dy, _col, null, CREW_PX); if (_raised) { ctx.fillStyle = 'rgba(190,235,255,0.6)'; ctx.shadowColor = 'rgba(80,190,255,0.5)'; ctx.shadowBlur = 3; ctx.fillRect(_dx + 3, _dy - 5, 2, 4); ctx.shadowBlur = 0; }
+            } else if (c.type === 'repair') { drawBmp(ctx, CREW_CROUCH, _dx, _dy, _col, null, CREW_PX); if (Math.sin(t * 0.007) > 0.85) { ctx.fillStyle = 'rgba(255,220,80,0.9)'; ctx.shadowColor = 'rgba(255,200,40,0.8)'; ctx.shadowBlur = 5; ctx.fillRect(_dx + 2, _dy - 3, 2, 2); ctx.shadowBlur = 0; }
+            } else if (c.type === 'idle') { drawBmp(ctx, Math.floor(t / 2200) % 2 === 0 ? CREW_STAND_A : CREW_STAND_B, _dx, _dy, _col, null, CREW_PX);
+            } else { drawBmp(ctx, Math.floor(t / 700) % 2 === 0 ? CREW_REACH : CREW_STAND_A, _dx, _dy, _col, null, CREW_PX); }
+          } else { const _rate = c.state === 'fleeing' ? 110 : 260; drawBmp(ctx, Math.floor(t / _rate) % 2 === 0 ? CREW_STAND_A : CREW_STAND_B, _dx, _dy, _col, null, CREW_PX); }
+          ctx.restore();
+        }
+      }
+      // Redraw island on top of crew, then inactive ships on top of both
+      drawBmp(ctx, CARRIER_BMP.slice(1, 3), _p2ccx, _p2ccy - 108, 'rgba(130,145,170,0.88)', 'rgba(100,120,160,0.28)', CARRIER_PX);
+      for (let _bi2 = 0; _bi2 < CARRIER_SHIP_ORDER.length; _bi2++) {
+        const _bs2 = CARRIER_SHIP_ORDER[_bi2];
+        if (_bs2 !== p2CurrentShip) {
+          drawBmp(ctx, _SHIP_CONFIGS[_bs2].bmp, _p2ccx + CARRIER_BAY_DX[_bi2], _p2ccy + CARRIER_BAY_DY[_bi2], _SHIP_CONFIGS[_bs2].dimColor, null, PX);
+        }
+      }
+      const _p2jft = t * 0.005, _p2cHH = CARRIER_BMP.length * CARRIER_PX / 2;
+      const _p2jX = [-155, -55, 55, 155];
+      if (p2CarrierState === 'arriving') {
+        const _cp2 = Math.min(1, (t - p2CarrierArrivingAt) / CARRIER_ARRIVE_DUR);
+        const _js2 = (1 - _cp2 * 0.65) * 0.3;
+        for (const jdx of _p2jX) drawEngineFlare(_p2ccx + jdx, _p2ccy + _p2cHH, _p2jft, _js2, _js2 * 1.6);
+      } else if (p2CarrierState === 'leaving') {
+        const _lp2 = Math.min(1, (t - p2CarrierLeavingAt) / CARRIER_LEAVE_DUR);
+        const _js2 = (0.08 + _lp2 * 0.35) * 0.9;
+        ctx.save(); ctx.scale(1, -1);
+        for (const jdx of _p2jX) drawEngineFlare(_p2ccx + jdx, -(_p2ccy - _p2cHH), _p2jft, _js2, _js2 * 1.6);
         ctx.restore();
       }
       ctx.restore();
@@ -1218,7 +1902,7 @@
 
         const _sp = getCachedSprite(bmp, colFull, glow, EPX);
         ctx.globalAlpha = alpha * pulse;
-        ctx.drawImage(_sp.canvas, -_sp.w / 2, -_sp.h / 2);
+        ctx.drawImage(_sp.bitmap, -_sp.w / 2, -_sp.h / 2);
         ctx.globalAlpha = alpha;
 
         // Targeting reticle
@@ -1272,7 +1956,7 @@
         ctx.rotate(Math.atan2(e.vy, e.vx) + Math.PI / 2);
         const _sp = getCachedSprite(bmp, color, glow, EPX - 1);
         ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(_sp.canvas, -_sp.w / 2, -_sp.h / 2);
+        ctx.drawImage(_sp.bitmap, -_sp.w / 2, -_sp.h / 2);
         ctx.imageSmoothingEnabled = false;
         ctx.restore();
       }
@@ -1307,6 +1991,87 @@
         }
         ctx.restore();
       }
+    }
+
+    // ── P2 entities (right half, cosmetic) ───────────────────────────
+    if (twoPlayerMode !== 'off' && p2Entities.length > 0) {
+      ctx.save();
+      // When carrier is present it's centered at W/2, so the right-half clip would cut through
+      // the carrier's center bay column. Lift the left edge to 0 so entities can reach any bay.
+      const _p2eClipX = carrierState !== 'none' ? 0 : W / 2;
+      ctx.beginPath(); ctx.rect(_p2eClipX, 0, W - _p2eClipX, H - hudSH - safeBottom); ctx.clip();
+      ctx.font = '12px "IBM Plex Mono", monospace';
+      ctx.textAlign = 'center';
+      ctx.imageSmoothingEnabled = false;
+      for (const e of p2Entities) {
+        const age = t - e.spawnTime;
+        const alpha = Math.min(1, (t - e.appearAt) / 400) * 0.80;
+        if (alpha < 0.02) continue;
+        const EPX = PX;
+        ctx.save();
+        ctx.globalAlpha = alpha;
+        if (e.type === 'blocked') {
+          const tier = Math.min(e.count, 3);
+          const bmp = tier >= 3 ? E3 : tier === 2 ? E2 : (e.design === 0 ? E0 : E1);
+          const pulse = 0.75 + 0.25 * Math.sin(age * 0.005);
+          const [colFull, glow] = tier >= 3
+            ? ['rgba(190,60,255,1)', 'rgba(190,60,255,0.35)']
+            : tier === 2
+            ? ['rgba(255,130,30,1)', 'rgba(255,130,30,0.35)']
+            : ['rgba(255,50,50,1)', 'rgba(255,60,40,0.35)'];
+          const _sp = getCachedSprite(bmp, colFull, glow, EPX);
+          ctx.globalAlpha = alpha * pulse;
+          ctx.save(); ctx.translate(e.x, e.y);
+          ctx.drawImage(_sp.bitmap, -_sp.w / 2, -_sp.h / 2);
+          ctx.restore();
+          ctx.globalAlpha = alpha;
+        } else {
+          const tier = Math.min(e.count, 3);
+          const bmp = tier >= 3 ? F4 : tier === 2 ? F3 : [F0, F1, F2][e.design % 3];
+          const [color, glow] = tier >= 3
+            ? ['rgba(205,170,75,0.72)', 'rgba(205,170,75,0.2)']
+            : tier === 2
+            ? ['rgba(100,220,255,0.72)', 'rgba(100,220,255,0.2)']
+            : [['rgba(50,215,120,0.72)','rgba(80,175,255,0.72)','rgba(175,220,70,0.72)'][e.design % 3],
+               ['rgba(50,215,120,0.2)','rgba(80,175,255,0.2)','rgba(175,220,70,0.2)'][e.design % 3]];
+          ctx.save();
+          ctx.translate(e.x, e.y);
+          ctx.rotate(Math.atan2(e.vy, e.vx) + Math.PI / 2);
+          const _sp = getCachedSprite(bmp, color, glow, EPX - 1);
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(_sp.bitmap, -_sp.w / 2, -_sp.h / 2);
+          ctx.imageSmoothingEnabled = false;
+          ctx.restore();
+        }
+        ctx.restore();
+        const la = e.type === 'blocked' ? alpha : e.labelAlpha * alpha;
+        if (la > 0.02 && (showDomain || showClient)) {
+          const tier = Math.min(e.count, 3);
+          const lbmp = e.type === 'blocked'
+            ? (tier >= 3 ? E3 : tier === 2 ? E2 : (e.design === 0 ? E0 : E1))
+            : (tier >= 3 ? F4 : tier === 2 ? F3 : [F0, F1, F2][e.design % 3]);
+          const baseY = e.y + (bmpH(lbmp) * EPX / 2) + 13;
+          const both = showDomain && showClient;
+          ctx.save(); ctx.globalAlpha = la * 0.85;
+          if (showClient && e.client) {
+            ctx.fillStyle = 'rgba(55,210,185,0.78)';
+            const cli = e.client.length > 32 ? '…' + e.client.slice(-30) : e.client;
+            ctx.fillText(cli, e.x, baseY);
+          }
+          if (showDomain) {
+            const domY = both && showClient && e.client ? baseY + 14 : baseY;
+            if (e.type === 'blocked') {
+              ctx.fillStyle = tier >= 3 ? 'rgba(200,100,255,1)' : tier === 2 ? 'rgba(255,160,60,1)' : 'rgba(255,120,100,1)';
+            } else {
+              ctx.fillStyle = 'rgba(150,230,175,0.72)';
+            }
+            const dom = e.domain.length > 26 ? '…' + e.domain.slice(-24) : e.domain;
+            ctx.fillText(dom, e.x, domY);
+          }
+          ctx.restore();
+        }
+      }
+      ctx.restore();
     }
 
     // Explosions
@@ -1369,6 +2134,7 @@
     const gtp = shipGunTipPos(currentShip, cx, cy);
 
     // Laser lines - before ship so hull covers the origin end
+    if (twoPlayerMode !== 'off') { ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W / 2, H); ctx.clip(); }
     for (const l of lasers) {
       if (l.style === 'seeker') {
         const age = t - l.born;
@@ -1449,6 +2215,79 @@
         ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(l.x1, l.y1); ctx.stroke();
         ctx.restore();
       }
+    }
+    if (twoPlayerMode !== 'off') ctx.restore();
+
+    // P2 laser lines (right half, clipped)
+    if (twoPlayerMode !== 'off' && p2Lasers.length > 0) {
+      const _p2cx_l = Math.round(p2ShipX);
+      const _p2cy_l = Math.round(p2ShipY + 2.5 * Math.sin(t * 0.00055 + Math.PI));
+      const gtp2 = shipGunTipPos(p2CurrentShip, _p2cx_l, _p2cy_l);
+      ctx.save(); ctx.beginPath(); ctx.rect(W / 2, 0, W / 2, H); ctx.clip();
+      for (const l of p2Lasers) {
+        if (l.style === 'seeker') {
+          const age = t - l.born;
+          if (age < 0 || age > l.dur + 60) continue;
+          const prog = Math.min(1, age / l.dur);
+          const inv = 1 - prog;
+          const odx = gtp2.nx - l.x0, ody = gtp2.ny - l.y0;
+          const ox = l.x0 + odx, oy = l.y0 + ody;
+          const cpx = l.cpx + odx, cpy = l.cpy + ody;
+          const ex1 = l.target && l.target.state === 'seeker-incoming' ? l.target.x : l.x1;
+          const ey1 = l.target && l.target.state === 'seeker-incoming' ? l.target.y : l.y1;
+          const bx = inv*inv*ox + 2*inv*prog*cpx + prog*prog*ex1;
+          const by = inv*inv*oy + 2*inv*prog*cpy + prog*prog*ey1;
+          const tp = Math.max(0, prog - 0.28);
+          const tinv = 1 - tp;
+          const trx = tinv*tinv*ox + 2*tinv*tp*cpx + tp*tp*ex1;
+          const trY = tinv*tinv*oy + 2*tinv*tp*cpy + tp*tp*ey1;
+          const inFlight = age <= l.dur;
+          const alpha = Math.min(1, age / (l.dur * 0.12));
+          const impactF = inFlight ? 0 : Math.max(0, 1 - (age - l.dur) / 55);
+          const approachF = inFlight ? Math.max(0, (prog - 0.80) / 0.20) : 1;
+          const headR = 5 + approachF * 7;
+          ctx.save();
+          ctx.globalAlpha = alpha;
+          if (inFlight) {
+            ctx.strokeStyle = 'rgba(255,180,20,0.45)'; ctx.lineWidth = 5;
+            ctx.shadowColor = 'rgba(255,160,0,0.6)'; ctx.shadowBlur = 18;
+            ctx.beginPath(); ctx.moveTo(trx, trY); ctx.lineTo(bx, by); ctx.stroke();
+            ctx.strokeStyle = '#ffee66'; ctx.lineWidth = 2;
+            ctx.shadowColor = 'rgba(255,220,60,0.9)'; ctx.shadowBlur = 10;
+            ctx.beginPath(); ctx.moveTo(trx, trY); ctx.lineTo(bx, by); ctx.stroke();
+          }
+          ctx.globalAlpha = inFlight ? alpha : impactF;
+          ctx.fillStyle = 'rgba(255,200,60,0.85)';
+          ctx.shadowColor = 'rgba(255,180,0,0.9)'; ctx.shadowBlur = 22 + approachF * 24;
+          ctx.beginPath(); ctx.arc(bx, by, headR, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = 'rgba(255,255,220,1)'; ctx.shadowBlur = 8;
+          ctx.beginPath(); ctx.arc(bx, by, inFlight ? 2.5 : 4, 0, Math.PI * 2); ctx.fill();
+          if (!inFlight) {
+            const ringR = 6 + (1 - impactF) * 26;
+            ctx.strokeStyle = 'rgba(255,230,100,0.9)'; ctx.lineWidth = 1.5;
+            ctx.shadowColor = 'rgba(255,200,40,0.8)'; ctx.shadowBlur = 12;
+            ctx.globalAlpha = impactF * 0.85;
+            ctx.beginPath(); ctx.arc(bx, by, ringR, 0, Math.PI * 2); ctx.stroke();
+          }
+          ctx.restore();
+        } else {
+          const a = Math.max(0, 1 - (t - l.born) / 300);
+          const sx = l.side === 2 ? gtp2.nx : l.side === 1 ? gtp2.rx : gtp2.lx;
+          const sy = l.side === 2 ? gtp2.ny : gtp2.gy;
+          const [lCol, lGlow] = l.tier >= 3
+            ? ['#ffdd44', 'rgba(255,200,40,0.8)']
+            : l.tier === 2
+            ? ['#00ddff', 'rgba(0,200,255,0.8)']
+            : ['#4fffaa', 'rgba(80,255,160,0.8)'];
+          ctx.save();
+          ctx.globalAlpha = a;
+          ctx.strokeStyle = lCol; ctx.lineWidth = 2;
+          ctx.shadowColor = lGlow; ctx.shadowBlur = 10;
+          ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(l.x1, l.y1); ctx.stroke();
+          ctx.restore();
+        }
+      }
+      ctx.restore();
     }
 
     // Drone missiles (traveling) and sprite (rotated toward target)
@@ -1608,8 +2447,18 @@
     const _shipBmp = _SCFG.bmp;
     const flareBase = cy + bmpH(_shipBmp) * PX / 2 - 5;
     const _shipHW = bmpW(_shipBmp) * PX / 2, _shipHH = bmpH(_shipBmp) * PX / 2;
-    shipBodyHitbox = warpState === 'none' ? { x: cx - _shipHW, y: cy - _shipHH, w: _shipHW * 2, h: _shipHH * 2 } : { x: 0, y: 0, w: 0, h: 0 };
+    shipBodyHitbox = (_p1ShipVisible || twoPlayerMode === 'off') && warpState === 'none' ? { x: cx - _shipHW, y: cy - _shipHH, w: _shipHW * 2, h: _shipHH * 2 } : { x: 0, y: 0, w: 0, h: 0 };
     const ft = t * 0.005;
+    if (!_p1ShipVisible && twoPlayerMode !== 'off') {
+      const _ca = 0.25 + 0.20 * Math.sin(t * 0.0025);
+      ctx.save(); ctx.globalAlpha = _ca;
+      ctx.font = '8px "Press Start 2P", monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = 'rgba(65,165,200,1)';
+      ctx.fillText('P1', W * 0.25, H * 0.44);
+      ctx.fillText('CONNECTING', W * 0.25, H * 0.44 + 18);
+      ctx.restore();
+    } else {
 
     // Descent streak (landing) and launch streak (departing)
     if (carrierState !== 'none' && warpState === 'none') {
@@ -1630,7 +2479,7 @@
           }
         }
       }
-      if (carrierState === 'leaving' && t - launchAt < LAUNCH_BOOST_DUR) {
+      if (launchAt > 0 && t - launchAt < LAUNCH_BOOST_DUR) {
         const _lp = (t - launchAt) / LAUNCH_BOOST_DUR;
         const _la = Math.pow(1 - _lp, 0.7);
         for (let si = 1; si <= 4; si++) {
@@ -1645,7 +2494,7 @@
     if (warpState !== 'none') {
       // ── Warp animation ────────────────────────────────────
       const wdur = warpState === 'out' ? WARP_OUT_DUR : WARP_IN_DUR;
-      const wp = Math.min(1, (t - warpAt) / wdur);
+      const wp = Math.max(0, Math.min(1, (t - warpAt) / wdur));
       ctx.save();
       ctx.translate(cx, cy);
       if (warpState === 'out') {
@@ -1761,7 +2610,7 @@
       ctx.save(); ctx.globalAlpha = sp < 0.20 ? sp / 0.20 : Math.min(1, flicker); for (const f of _SCFG.flares) { const fbW = 1 + burstBase * (f.burstWScale ?? (f.burstScale ?? 1)); const fbL = 1 + burstBase * (f.burstScale ?? 1); drawEngineFlare(cx + f.xOff, flareBase + f.yOff, ft, f.size * fbW, (f.len ?? f.size) * fbL, (f.taper ?? 0.6), (f.shape ?? 'arch'), (f.wobble ?? 1), (f.col ?? null)); } ctx.restore();
       if (_SCFG.flareSplitRow != null) drawBmp(ctx, _shipBmp, cx, cy, suCol, suGlow, PX, false, _sr);
     } else {
-      const _launchBoost = (carrierState === 'leaving' && t - launchAt < LAUNCH_BOOST_DUR)
+      const _launchBoost = (launchAt > 0 && t - launchAt < LAUNCH_BOOST_DUR)
         ? Math.pow(1 - (t - launchAt) / LAUNCH_BOOST_DUR, 0.6) : 0;
       const idleWScale      = (1 - idleBlend * 0.50);
       const idleEngineAlpha = Math.min(1, (1 - idleBlend * (0.45 - 0.12 * Math.abs(Math.sin(t * 0.0018)))) + _launchBoost * 0.4);
@@ -1825,6 +2674,278 @@
         ctx.restore();
       }
     }
+    } // end P1 ship visible
+
+    // ── P2 ship + status (right half) ────────────────────────
+    if (twoPlayerMode !== 'off') {
+      const _p2cx = Math.round(p2ShipX);
+      const _p2InCarrierNow = twoPlayerMode !== 'off'
+        ? (p2BlockingEnabled === false || p2StartupAt > 0 || (p2LaunchAt > 0 && t - p2LaunchAt < CARRIER_LEAVE_DUR))
+        : p2CarrierState !== 'none';
+      const _p2cy = Math.round(p2ShipY + (_p2InCarrierNow ? 0 : 2.5 * Math.sin(t * 0.00055 + Math.PI)));
+      const _p2cfg = _SHIP_CONFIGS[p2CurrentShip] || _SHIP_CONFIGS.protector;
+      const _p2base = _p2cy + bmpH(_p2cfg.bmp) * PX / 2 - 5;
+      const _p2HW = bmpW(_p2cfg.bmp) * PX / 2, _p2HH = bmpH(_p2cfg.bmp) * PX / 2;
+      p2ShipBodyHitbox = (_p2ShipVisible && p2WarpState === 'none') ? { x: _p2cx - _p2HW, y: _p2cy - _p2HH, w: _p2HW * 2, h: _p2HH * 2 } : { x: 0, y: 0, w: 0, h: 0 };
+      const _ripAge = _p2ShipRipInAt > 0 ? t - _p2ShipRipInAt : 99999;
+
+      if (!_p2ShipVisible && !_p2FastDepart && twoPlayerMode === 'local') {
+        // P2 connecting in local mode
+        const _ca = 0.25 + 0.20 * Math.sin(t * 0.0025);
+        ctx.save(); ctx.globalAlpha = _ca;
+        ctx.font = '8px "Press Start 2P", monospace';
+        ctx.textAlign = 'center';
+        ctx.fillStyle = 'rgba(65,165,200,1)';
+        ctx.fillText('P2', W * 0.75, H * 0.44);
+        ctx.fillText('CONNECTING', W * 0.75, H * 0.44 + 18);
+        ctx.restore();
+      }
+
+      if (p2ShipY > -250) {
+        // Descent streak during rip-in
+        if (_ripAge < 700) {
+          const _rp = _ripAge / 700;
+          for (let si = 1; si <= 5; si++) {
+            ctx.save();
+            ctx.globalAlpha = (1 - _rp) * (1 - si / 6) * 0.45;
+            drawBmp(ctx, _p2cfg.bmp, _p2cx, _p2cy - si * 15 * (1 - _rp), _p2cfg.dimColor, null, PX);
+            ctx.restore();
+          }
+        }
+
+        if (p2WarpState !== 'none') {
+          const _p2wdur = p2WarpState === 'out' ? WARP_OUT_DUR : WARP_IN_DUR;
+          const _p2wp  = Math.max(0, Math.min(1, (t - p2WarpAt) / _p2wdur));
+          ctx.save();
+          ctx.beginPath(); ctx.rect(W / 2, 0, W / 2, H); ctx.clip();
+          ctx.translate(_p2cx, _p2cy);
+          if (p2WarpState === 'out') {
+            const _w1 = Math.min(1, _p2wp / 0.45);
+            const _w2 = Math.max(0, (_p2wp - 0.40) / 0.60);
+            const _scX = Math.max(0.07, 1 - _w1 * 0.93);
+            const _oY  = -_w2 * (H + 300);
+            if (_p2wp < 0.35) {
+              const fp = 1 - _p2wp / 0.35;
+              const fr = 18 + _p2wp * 560;
+              const fg = ctx.createRadialGradient(0, 0, 0, 0, 0, fr);
+              fg.addColorStop(0, `rgba(255,255,255,${fp.toFixed(2)})`);
+              fg.addColorStop(0.12, `rgba(210,228,255,${(fp * 0.85).toFixed(2)})`);
+              fg.addColorStop(0.4,  `rgba(195,208,240,${(fp * 0.35).toFixed(2)})`);
+              fg.addColorStop(1,   'rgba(195,208,240,0)');
+              ctx.fillStyle = fg; ctx.beginPath(); ctx.arc(0, 0, fr, 0, Math.PI * 2); ctx.fill();
+            }
+            if (_p2wp < 0.55) {
+              const rp = _p2wp / 0.55;
+              const rr = 10 + rp * 260;
+              const ra = Math.max(0, 1 - rp);
+              ctx.save();
+              ctx.strokeStyle = `rgba(185,212,255,${(ra * 0.9).toFixed(2)})`;
+              ctx.lineWidth = Math.max(0.5, 2.5 - rp * 2);
+              ctx.shadowColor = 'rgba(160,200,255,0.9)'; ctx.shadowBlur = 10;
+              ctx.beginPath(); ctx.arc(0, 0, rr, 0, Math.PI * 2); ctx.stroke();
+              ctx.restore();
+            }
+            if (_w1 > 0.25) {
+              const tlen = 80 + _w1 * 340;
+              const top  = _w1 * 0.88;
+              const sg0 = ctx.createLinearGradient(0, _oY, 0, _oY + tlen);
+              sg0.addColorStop(0, `rgba(195,208,240,${(top * 0.42).toFixed(2)})`); sg0.addColorStop(1, 'rgba(195,208,240,0)');
+              ctx.fillStyle = sg0; ctx.fillRect(-16, _oY, 32, tlen);
+              const sg1 = ctx.createLinearGradient(0, _oY, 0, _oY + tlen);
+              sg1.addColorStop(0, `rgba(215,228,255,${(top * 0.68).toFixed(2)})`); sg1.addColorStop(1, 'rgba(215,225,248,0)');
+              ctx.fillStyle = sg1; ctx.fillRect(-6, _oY, 12, tlen);
+              const sg2 = ctx.createLinearGradient(0, _oY, 0, _oY + tlen);
+              sg2.addColorStop(0, `rgba(245,248,255,${top.toFixed(2)})`); sg2.addColorStop(1, 'rgba(240,244,255,0)');
+              ctx.fillStyle = sg2; ctx.fillRect(-2, _oY, 4, tlen);
+            }
+            ctx.save();
+            ctx.translate(0, _oY); ctx.scale(_scX, 1 + _w1 * 7.5);
+            const _wa = _w2 > 0.3 ? Math.max(0, 1 - (_w2 - 0.3) / 0.7) : 1;
+            drawBmp(ctx, _p2cfg.bmp, 0, 0, _p2cfg.color.replace(/[\d.]+\)$/, `${(_wa * 0.72).toFixed(2)})`), _p2cfg.glow, PX);
+            ctx.restore();
+          } else {
+            const _w1 = Math.min(1, _p2wp / 0.50);
+            const _w2 = Math.max(0, (_p2wp - 0.40) / 0.55);
+            if (_w1 < 1) {
+              const streakY = (1 - _w1) * (H + 250);
+              const tlen = 80 + _w1 * 80;
+              const sg = ctx.createLinearGradient(0, streakY, 0, streakY + tlen);
+              sg.addColorStop(0, `rgba(195,208,240,${(0.5 + _w1 * 0.4).toFixed(2)})`);
+              sg.addColorStop(1, 'rgba(170,190,235,0)');
+              ctx.fillStyle = sg; ctx.fillRect(-2, streakY, 4, tlen);
+            }
+            if (_w2 > 0) {
+              const wa2 = (Math.min(1, _w2 * 1.4) * 0.72).toFixed(2);
+              ctx.save();
+              ctx.scale(Math.max(0.08, Math.min(1, _w2 / 0.55)), Math.max(1, 4 - _w2 * 4.5));
+              drawBmp(ctx, _p2cfg.bmp, 0, 0, _p2cfg.color.replace(/[\d.]+\)$/, `${wa2})`), _p2cfg.glow, PX);
+              ctx.restore();
+            }
+          }
+          ctx.restore();
+        } else {
+          const _p2powered = p2BlockingEnabled !== false;
+          const _p2RipAlpha = (_ripAge < 400 ? Math.min(1, _ripAge / 180) : 1) * 0.72;
+          const _p2LaunchBoost = (p2LaunchAt > 0 && t - p2LaunchAt < LAUNCH_BOOST_DUR)
+            ? Math.pow(1 - (t - p2LaunchAt) / LAUNCH_BOOST_DUR, 0.6) : 0;
+          const _p2IdleWS = 1 - p2IdleBlend * 0.50;
+          const _p2IdleEA = Math.min(1, (1 - p2IdleBlend * (0.45 - 0.12 * Math.abs(Math.sin(t * 0.0018 + Math.PI)))) + _p2LaunchBoost * 0.4);
+          const _p2sr = _p2cfg.flareSplitRow ?? bmpH(_p2cfg.bmp);
+          if (p2StartupAt > 0) {
+            const _p2sp = Math.min(1, (t - p2StartupAt) / STARTUP_DUR);
+            const _p2burstBase = _p2sp < 0.20 ? 2.5 * (1 - _p2sp / 0.20) : 0;
+            const _p2flicker = (_p2sp > 0.20 && _p2sp < 0.48) ? Math.abs(Math.sin(t * 0.045)) * Math.abs(Math.sin(t * 0.011 + 1.3)) : 1;
+            const _p2sa = 0.55 + _p2sp * 0.40;
+            const _p2suCol = _p2cfg.color.replace(/[\d.]+\)$/, `${_p2sa.toFixed(3)})`);
+            const _p2suGlow = _p2sp > 0.35 ? _p2cfg.glow : null;
+            ctx.save(); ctx.globalAlpha = _p2RipAlpha;
+            drawBmp(ctx, _p2cfg.bmp, _p2cx, _p2cy, _p2suCol, _p2suGlow, PX, false, 0, _p2sr);
+            ctx.restore();
+            ctx.save(); ctx.globalAlpha = _p2sp < 0.20 ? _p2RipAlpha * _p2sp / 0.20 : _p2RipAlpha * Math.min(1, _p2flicker);
+            for (const f of _p2cfg.flares) {
+              const _fbW = 1 + _p2burstBase * (f.burstWScale ?? (f.burstScale ?? 1));
+              const _fbL = 1 + _p2burstBase * (f.burstScale ?? 1);
+              drawEngineFlare(_p2cx + f.xOff, _p2base + f.yOff, t * 0.005, f.size * _fbW, (f.len ?? f.size) * _fbL, (f.taper ?? 0.6), (f.shape ?? 'arch'), (f.wobble ?? 1), (f.col ?? null));
+            }
+            ctx.restore();
+            if (_p2cfg.flareSplitRow != null) {
+              ctx.save(); ctx.globalAlpha = _p2RipAlpha;
+              drawBmp(ctx, _p2cfg.bmp, _p2cx, _p2cy, _p2suCol, _p2suGlow, PX, false, _p2sr);
+              ctx.restore();
+            }
+          } else {
+            if (_p2powered && _p2LaunchBoost > 0) {
+              const _p2pl = _p2LaunchBoost * 95;
+              const _p2pw = _p2LaunchBoost * 28;
+              const _p2blastBase = _p2base + (_p2cfg.launchBlastYOff ?? 0);
+              const _p2srcHW = _p2cfg.launchBlastSourceHW ?? _p2pw * 0.3;
+              const _p2pg = ctx.createLinearGradient(_p2cx, _p2blastBase, _p2cx, _p2blastBase + _p2pl);
+              _p2pg.addColorStop(0, `rgba(160,200,255,${(_p2LaunchBoost * 0.75).toFixed(2)})`);
+              _p2pg.addColorStop(0.25, `rgba(100,150,255,${(_p2LaunchBoost * 0.45).toFixed(2)})`);
+              _p2pg.addColorStop(1, 'rgba(60,100,220,0)');
+              ctx.save(); ctx.globalAlpha = _p2RipAlpha; ctx.fillStyle = _p2pg;
+              ctx.beginPath();
+              ctx.moveTo(_p2cx - _p2srcHW, _p2blastBase);
+              ctx.quadraticCurveTo(_p2cx - _p2pw, _p2blastBase + _p2pl * 0.6, _p2cx - _p2pw * 0.5, _p2blastBase + _p2pl);
+              ctx.quadraticCurveTo(_p2cx, _p2blastBase + _p2pl * 1.05, _p2cx + _p2pw * 0.5, _p2blastBase + _p2pl);
+              ctx.quadraticCurveTo(_p2cx + _p2pw, _p2blastBase + _p2pl * 0.6, _p2cx + _p2srcHW, _p2blastBase);
+              ctx.closePath(); ctx.fill(); ctx.restore();
+            }
+            ctx.save(); ctx.globalAlpha = _p2RipAlpha;
+            drawBmp(ctx, _p2cfg.bmp, _p2cx, _p2cy, _p2powered ? _p2cfg.color : _p2cfg.dimColor, _p2powered ? _p2cfg.glow : null, PX, false, 0, _p2sr);
+            ctx.restore();
+            if (_p2powered) {
+              ctx.save(); ctx.globalAlpha = _p2RipAlpha * _p2IdleEA;
+              for (const f of _p2cfg.flares) {
+                const _p2fes = _p2IdleWS * (1 + _p2LaunchBoost * 2.8 * (f.burstScale ?? 1));
+                drawEngineFlare(_p2cx + f.xOff, _p2base + f.yOff, t * 0.005, f.size * _p2IdleWS, (f.len ?? f.size) * _p2fes, (f.taper ?? 0.6), (f.shape ?? 'arch'), (f.wobble ?? 1), (f.col ?? null));
+              }
+              ctx.restore();
+              if (_p2cfg.flareSplitRow != null) {
+                ctx.save(); ctx.globalAlpha = _p2RipAlpha;
+                drawBmp(ctx, _p2cfg.bmp, _p2cx, _p2cy, _p2cfg.color, _p2cfg.glow, PX, false, _p2sr);
+                ctx.restore();
+              }
+            }
+          }
+        }
+
+        // P2 gun check rings on launch
+        if (p2GunCheckFiredAt[0] > 0 || p2GunCheckFiredAt[1] > 0) {
+          const _gctp2 = shipGunTipPos(p2CurrentShip, _p2cx, _p2cy);
+          for (let gi = 0; gi < 2; gi++) {
+            const at = p2GunCheckFiredAt[gi]; if (at <= 0) continue;
+            const age = t - at; if (age < 0 || age > GUN_CHECK_DUR) continue;
+            const a = Math.max(0, 1 - age / GUN_CHECK_DUR);
+            const gx = gi === 0 ? _gctp2.lx : _gctp2.rx;
+            const r = 4 + 8 * (1 - a);
+            ctx.save();
+            ctx.globalAlpha = a * 0.9;
+            ctx.strokeStyle = 'rgba(100,255,175,1)'; ctx.lineWidth = 1.5;
+            ctx.shadowColor = 'rgba(80,255,160,0.8)'; ctx.shadowBlur = 14;
+            ctx.beginPath(); ctx.arc(gx, _gctp2.gy, r, 0, Math.PI * 2); ctx.stroke();
+            ctx.fillStyle = 'rgba(180,255,220,0.95)'; ctx.shadowBlur = 6;
+            ctx.beginPath(); ctx.arc(gx, _gctp2.gy, 2.5, 0, Math.PI * 2); ctx.fill();
+            ctx.restore();
+          }
+        }
+
+        // "P2 ONLINE" label fades in after arrival, persists briefly
+        if (_p2ShipRipInAt > 0 && _ripAge > 350 && _ripAge < 2200) {
+          const _fa = _ripAge < 500 ? (_ripAge - 350) / 150 : Math.max(0, 1 - (_ripAge - 1800) / 400);
+          ctx.save(); ctx.globalAlpha = _fa * 0.90;
+          ctx.font = '8px "Press Start 2P", monospace';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgba(50,215,120,1)';
+          ctx.shadowColor = 'rgba(50,215,120,0.55)'; ctx.shadowBlur = 10;
+          ctx.fillText('P2 ONLINE', _p2cx, _p2cy - bmpH(_p2cfg.bmp) * PX / 2 - 16);
+          ctx.shadowBlur = 0; ctx.restore();
+        }
+      }
+
+      // Arrival chain ring
+      if (_p2ShipRipInAt > 0 && _ripAge > 380 && _ripAge < 780) {
+        const _rp = (_ripAge - 380) / 400;
+        ctx.save(); ctx.globalAlpha = Math.max(0, (1 - _rp) * 0.75);
+        ctx.strokeStyle = 'rgba(50,215,120,1)';
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = 'rgba(50,215,120,0.7)'; ctx.shadowBlur = 14;
+        ctx.beginPath(); ctx.arc(_p2cx, _p2cy, 12 + _rp * 70, 0, Math.PI * 2); ctx.stroke();
+        ctx.shadowBlur = 0; ctx.restore();
+      }
+
+      // P2 ship easter-egg speech bubble
+      if (p2ShipQuote) {
+        const _q2Age = t - p2ShipQuote.shownAt;
+        const _q2Total = 3500, _q2FadeIn = 100, _q2FadeStart = 3000;
+        if (_q2Age > _q2Total) {
+          p2ShipQuote = null;
+          p2ShipQuoteCooldown = performance.now() + 800;
+        } else {
+          const _q2A = _q2Age < _q2FadeIn ? _q2Age / _q2FadeIn : _q2Age > _q2FadeStart ? 1 - (_q2Age - _q2FadeStart) / (_q2Total - _q2FadeStart) : 1;
+          ctx.save();
+          ctx.globalAlpha = _q2A;
+          const _q2Font = 10;
+          ctx.font = `${_q2Font}px "Press Start 2P", monospace`;
+          const _q2MaxW = Math.min(200, W / 2 - 20);
+          const _q2Words = p2ShipQuote.text.split(' ');
+          const _q2Lines = [];
+          let _q2Cur = '';
+          for (const _q2W of _q2Words) {
+            const _q2Test = _q2Cur ? _q2Cur + ' ' + _q2W : _q2W;
+            if (ctx.measureText(_q2Test).width > _q2MaxW && _q2Cur) { _q2Lines.push(_q2Cur); _q2Cur = _q2W; }
+            else _q2Cur = _q2Test;
+          }
+          if (_q2Cur) _q2Lines.push(_q2Cur);
+          const _q2LineH = _q2Font + 8;
+          const _q2BY = _p2cy - _p2HH - 14;
+          ctx.fillStyle = 'rgba(215,225,248,0.95)';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.shadowColor = 'rgba(0,0,0,0.8)';
+          ctx.shadowBlur = 6;
+          for (let _q2i = 0; _q2i < _q2Lines.length; _q2i++) {
+            ctx.fillText(_q2Lines[_q2i], _p2cx, _q2BY - (_q2Lines.length - 1 - _q2i) * _q2LineH);
+          }
+          ctx.restore();
+        }
+      }
+
+      // Full-width 2P activation banner (first 2.8s)
+      if (_2pBannerAt > 0) {
+        const _bAge = t - _2pBannerAt;
+        if (_bAge < 2800) {
+          const _ba = _bAge < 300 ? _bAge / 300 : _bAge > 2200 ? Math.max(0, 1 - (_bAge - 2200) / 600) : 1;
+          ctx.save(); ctx.globalAlpha = _ba * 0.92;
+          ctx.font = '10px "Press Start 2P", monospace';
+          ctx.textAlign = 'center';
+          ctx.fillStyle = 'rgba(50,215,120,1)';
+          ctx.shadowColor = 'rgba(50,215,120,0.55)'; ctx.shadowBlur = 14;
+          ctx.fillText('2-PLAYER MODE', W / 2, H * 0.28);
+          ctx.shadowBlur = 0; ctx.restore();
+        }
+      }
+    }
 
     // ── HUD Strip ────────────────────────────────────────────
     ctx.save();
@@ -1832,7 +2953,13 @@
     ctx.globalAlpha = 0.62;
 
     // Responsive layout: panel widths scale with viewport, STATS gets the remainder
-    const SH = hudSH;
+    let _animSH = hudSH;
+    if (_hudSlideAt > 0) {
+      const _sp = Math.min(1, (t - _hudSlideAt) / HUD_SLIDE_DUR);
+      _animSH = _hudSlideFrom + (_hudSlideTo - _hudSlideFrom) * (1 - Math.pow(1 - _sp, 3));
+      if (_sp >= 1) _hudSlideAt = 0;
+    }
+    const SH = _animSH;
     const SY = H - SH - safeBottom;
     const INT_W  = Math.min(240, Math.max(150, Math.round(W * 0.30)));
     const OPT_W  = W < 480 ? 0   : Math.min(140, Math.max(95,  Math.round(W * 0.16)));
@@ -1848,10 +2975,25 @@
     const _fLabel = _fs < 1 ? 8 : 10;
     const _fShip  = Math.max(8,  Math.round(12 * _fs));
 
-    // Scaled Y anchors (proportional to strip height)
-    const _yLabel = SY + Math.round(SH * 0.185);
-    const _yVal   = SY + Math.round(SH * 0.574);
-    const _ySub   = SY + Math.round(SH * 0.745);
+    // In 2P mode the strip is two rows; _rowH is the height of each row
+    const _isP2 = twoPlayerMode !== 'off';
+    const _rowH = _isP2 ? (W < 480 ? 66 : W < 660 ? 76 : 86) : SH;
+    const _p2RowSY = SY + _rowH + 1;
+
+    // Scaled Y anchors (proportional to row height)
+    // _yLabel uses the 1P row height so the top-label distance from the HUD edge is consistent in both modes
+    const _1pSH = W < 480 ? 84 : W < 660 ? 94 : 108;
+    const _yLabel = SY + Math.round(_1pSH * 0.185);
+    const _yVal   = SY + Math.round(_rowH * 0.574);
+    const _ySub   = SY + Math.round(_rowH * 0.745);
+    const _yLabel2 = _p2RowSY + Math.round(_rowH * 0.185);
+    const _yVal2   = _p2RowSY + Math.round(_rowH * 0.574);
+    const _ySub2   = _p2RowSY + Math.round(_rowH * 0.745);
+    // In 2P mode, column sublabels (total/blocked/etc.) slide to sit on the row centerline
+    const _ySubLabel = _isP2 ? SY + _rowH + Math.round(_fLabel * 0.45) : _ySub;
+    // Extra clip height to let centerline labels render in 2P mode
+    const _lbExtra = _isP2 ? Math.round(_fLabel * 1.1) : 0;
+
 
     // Background
     ctx.fillStyle = 'rgba(8,11,16,0.80)';
@@ -1886,10 +3028,16 @@
 
     ctx.globalAlpha = 1;
 
+
     const _modLabel = (text, x, align = 'left') => {
       ctx.font = `${_fLabel}px "Press Start 2P", monospace`;
       ctx.textAlign = align; ctx.fillStyle = 'rgba(65,165,200,0.38)';
       ctx.fillText(text, x, _yLabel);
+    };
+    const _p2ModLabel = (text, x, align = 'left') => {
+      ctx.font = `${_fLabel}px "Press Start 2P", monospace`;
+      ctx.textAlign = align; ctx.fillStyle = 'rgba(55,190,170,0.40)';
+      ctx.fillText(text, x, _yLabel2);
     };
     const _fmtN = n => n == null ? '—' : n >= 1e6 ? (n/1e6).toFixed(2)+'M' : n >= 1e4 ? (n/1e3).toFixed(2)+'K' : String(n);
     const _fmtGravity = n => {
@@ -1904,8 +3052,13 @@
 
     // ── INTERCEPT ──────────────────────────────────────────
     ctx.save();
-    ctx.beginPath(); ctx.rect(0, SY, INT_W, SH); ctx.clip();
+    ctx.beginPath(); ctx.rect(0, SY, INT_W, _rowH); ctx.clip();
     _modLabel('INTERCEPT', INT_W / 2, 'center');
+    if (_isP2 && blockingEnabled !== null && shipPowerState !== 'powerdown' && shipPowerState !== 'startup') {
+      ctx.font = `${_fSub + 2}px "Press Start 2P", monospace`;
+      ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(100,155,220,0.50)';
+      ctx.fillText('P1', 26, _yVal);
+    }
     let shieldStr, shieldColor, shieldGlowColor = null;
     if (blockingEnabled === null) {
       shieldStr = 'STANDBY'; shieldColor = 'rgba(150,150,150,0.35)';
@@ -1949,10 +3102,10 @@
       ctx.fillText(`${mins}:${String(secs).padStart(2,'0')}`, INT_W / 2, _ySub);
     }
     {
-      const _pad = 10;
-      const _hbW = _shieldTW + _pad * 2;
-      const _hbH = _hasTimer ? Math.round(SH * 0.39) : Math.round(SH * 0.24);
-      shieldHitbox = { x: INT_W / 2 - _hbW / 2, y: SY + Math.round(SH * 0.42), w: _hbW, h: _hbH };
+      const _hbPad = 10;
+      const _hbTop = _yVal - Math.round(_fVal * 0.95);
+      const _hbH = _hasTimer ? Math.round(_fVal * 0.95 + _fSub * 2.2) : Math.round(_fVal * 1.35);
+      shieldHitbox = { x: INT_W / 2 - _shieldTW / 2 - _hbPad, y: _hbTop, w: _shieldTW + _hbPad * 2, h: _hbH };
     }
     ctx.restore();
 
@@ -2000,7 +3153,8 @@
         { key: 'domain',     label: 'DOMAIN',     state: showDomain },
       ];
       const smw = 186, smItemH = 28, smPad = 10, smDivH = 10, smPhRowH = 34;
-      const smh = smPad + smItemH + smDivH + smItemH * 2 + smDivH + smPhRowH + smPad;
+      const _has2P = window.TWO_PLAYER_ENABLED !== false;
+      const smh = smPad + smItemH + smDivH + smItemH * 2 + (_has2P ? smDivH + smItemH : 0) + smDivH + smPhRowH + (twoPlayerMode === 'local' && window.P2_DASHBOARD ? smPhRowH : 0) + smPad;
       const smX = 6, smY = SY - smh - 6;
       settingsMenuPopupBox = { x: smX, y: smY, w: smw, h: smh };
       ctx.fillStyle = 'rgba(8,11,16,0.92)';
@@ -2052,6 +3206,32 @@
           siy += smDivH;
         }
       }
+      if (_has2P) {
+        // Divider before 2P MODE row
+        ctx.strokeStyle = 'rgba(140,160,175,0.14)'; ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(smX + 10, siy + smDivH / 2); ctx.lineTo(smX + smw - 10, siy + smDivH / 2);
+        ctx.stroke();
+        siy += smDivH;
+        // 2P MODE row
+        {
+          const tpHb = { x: smX, y: siy, w: smw, h: smItemH };
+          const tpHov = mouseX >= tpHb.x && mouseX <= tpHb.x + tpHb.w && mouseY >= tpHb.y && mouseY <= tpHb.y + tpHb.h;
+          if (tpHov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(tpHb.x, tpHb.y, tpHb.w, tpHb.h); }
+          ctx.textAlign = 'left';
+          ctx.font = `${_fSub}px "Press Start 2P", monospace`;
+          ctx.fillStyle = tpHov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
+          ctx.fillText('2-PLAYER MODE', smX + 12, siy + 19);
+          const _tpAx = smX + smw - 14, _tpAy = siy + smItemH / 2;
+          ctx.strokeStyle = tpHov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
+          ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(_tpAx - 4, _tpAy - 4); ctx.lineTo(_tpAx + 4, _tpAy); ctx.lineTo(_tpAx - 4, _tpAy + 4);
+          ctx.stroke();
+          settingsMenuItems.push({ key: '2p-mode', hitbox: tpHb });
+          siy += smItemH;
+        }
+      }
       // Divider before pihole row
       ctx.strokeStyle = 'rgba(140,160,175,0.14)'; ctx.lineWidth = 1;
       ctx.beginPath();
@@ -2077,7 +3257,7 @@
         ctx.textAlign = 'left';
         ctx.font = `${_fSub}px "Press Start 2P", monospace`;
         ctx.fillStyle = phHov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
-        ctx.fillText(PROVIDER === 'adguard' ? 'ADGUARD' : 'PI-HOLE', iconX + iconW + 12, siy + smPhRowH / 2 + 6);
+        ctx.fillText(PROVIDER === 'adguard' ? (_isP2 ? 'ADGUARD 1' : 'ADGUARD') : (_isP2 ? 'PI-HOLE 1' : 'PI-HOLE'), iconX + iconW + 12, siy + smPhRowH / 2 + 6);
         // External link arrow drawn with lines
         const _ax = smX + smw - 14, _ay = siy + smPhRowH / 2;
         ctx.strokeStyle = phHov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
@@ -2087,6 +3267,34 @@
         ctx.moveTo(_ax - 1, _ay - 4); ctx.lineTo(_ax + 4, _ay - 4); ctx.lineTo(_ax + 4, _ay + 1);
         ctx.stroke();
         settingsMenuItems.push({ key: 'pihole-link', hitbox: phHb });
+        siy += smPhRowH;
+        // PI-HOLE 2 admin link (local 2P mode only)
+        if (twoPlayerMode === 'local' && window.P2_DASHBOARD) {
+          const ph2Hb = { x: smX, y: siy, w: smw, h: smPhRowH };
+          const ph2Hov = !phHov && mouseX >= ph2Hb.x && mouseX <= ph2Hb.x + ph2Hb.w && mouseY >= ph2Hb.y && mouseY <= ph2Hb.y + ph2Hb.h;
+          ctx.strokeStyle = 'rgba(140,160,175,0.10)'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.moveTo(smX + 30, siy + 0.5); ctx.lineTo(smX + smw - 10, siy + 0.5); ctx.stroke();
+          if (ph2Hov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(ph2Hb.x, ph2Hb.y, ph2Hb.w, ph2Hb.h); }
+          const _icon2H = smPhRowH - 8, _icon2W = Math.round(_icon2H * (PROVIDER === 'adguard' ? 1.0 : (90 / 130)));
+          const _icon2X = smX + 12, _icon2Y = siy + (smPhRowH - _icon2H) / 2;
+          if (_phIcon.complete && _phIcon.naturalWidth > 0) {
+            ctx.save(); ctx.globalAlpha = ph2Hov ? 0.88 : 0.45;
+            ctx.drawImage(_phIcon, _icon2X, _icon2Y, _icon2W, _icon2H);
+            ctx.restore();
+          }
+          ctx.textAlign = 'left';
+          ctx.font = `${_fSub}px "Press Start 2P", monospace`;
+          ctx.fillStyle = ph2Hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
+          ctx.fillText(PROVIDER === 'adguard' ? 'ADGUARD 2' : 'PI-HOLE 2', _icon2X + _icon2W + 12, siy + smPhRowH / 2 + 6);
+          const _a2x = smX + smw - 14, _a2y = siy + smPhRowH / 2;
+          ctx.strokeStyle = ph2Hov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
+          ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(_a2x - 5, _a2y + 4); ctx.lineTo(_a2x + 4, _a2y - 4);
+          ctx.moveTo(_a2x - 1, _a2y - 4); ctx.lineTo(_a2x + 4, _a2y - 4); ctx.lineTo(_a2x + 4, _a2y + 1);
+          ctx.stroke();
+          settingsMenuItems.push({ key: 'pihole-link-2', hitbox: ph2Hb });
+        }
       }
     } else {
       settingsMenuItems = [];
@@ -2107,7 +3315,7 @@
       const _pctVal = pct != null ? pct.toFixed(1)+'%' : '—';
       const intelCols = INTEL_W >= _i4Min
         ? [
-            { val: _fmtN(hsTotal),   label: 'total',     color: 'rgba(100,155,220,0.80)' },
+            { val: _fmtN(hsTotal),   label: 'total',     color: 'rgba(130,185,255,0.90)' },
             { val: _fmtN(hsBlocked), label: 'blocked',   color: 'rgba(255,70,60,0.90)'   },
             { val: _fmtN(hsAllowed), label: 'allowed',   color: 'rgba(50,215,120,0.90)'  },
             { val: _pctVal,          label: 'intercept', color: _pctColor },
@@ -2122,7 +3330,7 @@
           ];
       if (INTEL_W >= _i4Min) _modLabel('STATS', INTEL_X + INTEL_W / 2, 'center');
       ctx.save();
-      ctx.beginPath(); ctx.rect(INTEL_X, SY, INTEL_W, SH); ctx.clip();
+      ctx.beginPath(); ctx.rect(INTEL_X, SY, INTEL_W, _rowH + _lbExtra); ctx.clip();
       const cellW = INTEL_W / intelCols.length;
       intelCols.forEach(({ val, label, color }, i) => {
         const icx = INTEL_X + cellW * i + cellW / 2;
@@ -2130,18 +3338,18 @@
         ctx.font = `${_fVal}px "Press Start 2P", monospace`;
         ctx.fillStyle = color;
         ctx.fillText(val, icx, _yVal);
-        ctx.font = `${_fSub}px "Press Start 2P", monospace`;
+        ctx.font = `${_fLabel}px "Press Start 2P", monospace`;
         ctx.fillStyle = 'rgba(70,130,165,0.45)';
-        ctx.fillText(label, icx, _ySub);
+        ctx.fillText(label, icx, _ySubLabel);
       });
       ctx.restore();
     }
 
     // ── GRAVITY / FILTER ───────────────────────────────────
     ctx.save();
-    ctx.beginPath(); ctx.rect(TDB_X, SY, TDB_W, SH); ctx.clip();
+    ctx.beginPath(); ctx.rect(TDB_X, SY, TDB_W, _rowH + _lbExtra); ctx.clip();
     _modLabel(PROVIDER === 'adguard' ? 'FILTER' : 'GRAVITY', TDB_X + TDB_W / 2, 'center');
-    let sigsStr, sigsColor = 'rgba(100,160,210,0.65)';
+    let sigsStr, sigsColor = 'rgba(95,200,230,0.82)';
     if (gravityState === 'updating') {
       sigsStr = 'UPDATING';
       sigsColor = `rgba(255,190,50,${(0.65 + 0.35 * Math.sin(t * 0.006)).toFixed(2)})`;
@@ -2158,13 +3366,13 @@
     ctx.font = `${_fVal}px "Press Start 2P", monospace`;
     ctx.fillStyle = sigsColor;
     ctx.fillText(sigsStr, TDB_X + TDB_W / 2, _yVal);
-    ctx.font = `${_fSub}px "Press Start 2P", monospace`;
+    ctx.font = `${_fLabel}px "Press Start 2P", monospace`;
     ctx.fillStyle = 'rgba(70,130,165,0.45)';
-    ctx.fillText('known threats', TDB_X + TDB_W / 2, _ySub);
+    ctx.fillText('known threats', TDB_X + TDB_W / 2, _ySubLabel);
     // Update arrow - left side of section
     const _aW = bmpW(ARROW_DOWN_BMP) * ARROW_PX;
-    const _aX = TDB_X + Math.round(30 * SH / 108), _aY = SY + Math.round(SH * 0.48);
-    let arrowCol = arrowHovered ? 'rgba(255,190,50,0.95)' : 'rgba(100,160,210,0.55)';
+    const _aX = TDB_X + Math.round(30 * _fs), _aY = SY + Math.round(_rowH * 0.48);
+    let arrowCol = arrowHovered ? 'rgba(255,190,50,0.95)' : 'rgba(95,200,230,0.55)';
     let arrowGlw = arrowHovered ? 'rgba(255,190,50,0.50)' : null;
     if (gravityState === 'updating') {
       const p = (0.65 + 0.35 * Math.sin(t * 0.008)).toFixed(2);
@@ -2185,16 +3393,22 @@
     const _shipLabels = { protector: 'PROTECTOR', falcon: 'FALCON', swordfish: 'SWORDFISH', enterprise: 'ENTERPRISE', serenity: 'SERENITY', normandy: 'NORMANDY', pes: 'PES', inbound: 'MISSINGNO.' };
     if (OPT_W > 0) {
       ctx.save();
-      ctx.beginPath(); ctx.rect(OPT_X, SY, OPT_W, SH); ctx.clip();
+      ctx.beginPath(); ctx.rect(OPT_X, SY, OPT_W, _rowH + _lbExtra); ctx.clip();
       _modLabel('SHIP', OPT_X + OPT_W / 2, 'center');
       ctx.textAlign = 'center';
       ctx.font = `${_fShip}px "Press Start 2P", monospace`;
       ctx.fillStyle = shipMenuHovered && _canSelectShip ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.65)';
       ctx.fillText(_shipLabels[currentShip], OPT_X + OPT_W / 2, _yVal);
-      ctx.font = `${Math.max(6, _fLabel - 2)}px "Press Start 2P", monospace`;
+      const _shipTW = ctx.measureText(_shipLabels[currentShip]).width;
+      ctx.font = `${_fLabel}px "Press Start 2P", monospace`;
       ctx.fillStyle = _canSelectShip ? 'rgba(175,200,238,0.32)' : 'rgba(80,80,80,0.28)';
-      ctx.fillText(_canSelectShip ? 'SELECT' : '—', OPT_X + OPT_W / 2, _ySub);
-      shipMenuHitbox = { x: OPT_X, y: SY, w: OPT_W, h: SH };
+      ctx.fillText(_canSelectShip ? 'SELECT' : '—', OPT_X + OPT_W / 2, _ySubLabel);
+      {
+        const _hbPad = 12;
+        const _hbTop = _yVal - Math.round(_fShip * 1.05);
+        const _hbH = Math.round(_fShip * 1.55);
+        shipMenuHitbox = { x: OPT_X + OPT_W / 2 - _shipTW / 2 - _hbPad, y: _hbTop, w: _shipTW + _hbPad * 2, h: _hbH };
+      }
       ctx.restore();
     } else {
       shipMenuHitbox = { x: 0, y: 0, w: 0, h: 0 };
@@ -2242,15 +3456,16 @@
         const _sCX = _sX + _slotW / 2;
         const _isActive = s === currentShip;
         const _isLocked = s === 'inbound';
+        const _isTaken = _isP2 && !_isActive && s === p2CurrentShip;
         const hb = { x: _sX, y: _sY, w: _slotW, h: _slotH };
         const _shipCY = _sY + _slotH / 2 - 8;
         const _labelY = _sY + _slotH - 11;
-        const hov = !_anyHov && !_isActive && !_isLocked && mouseX >= hb.x && mouseX < hb.x + hb.w && mouseY >= hb.y && mouseY < hb.y + hb.h;
+        const hov = !_anyHov && !_isActive && !_isLocked && !_isTaken && mouseX >= hb.x && mouseX < hb.x + hb.w && mouseY >= hb.y && mouseY < hb.y + hb.h;
         if (hov) _anyHov = true;
         if (hov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(hb.x, hb.y, hb.w, hb.h); }
         const _glitching = _isLocked && missingnoGlitchAt > 0 && (t - missingnoGlitchAt) < 1400;
         ctx.save();
-        ctx.globalAlpha = _isLocked ? 0.60 : (_isActive ? 0.28 : (hov ? 1.0 : 0.70));
+        ctx.globalAlpha = _isLocked || _isTaken ? 0.35 : (_isActive ? 0.28 : (hov ? 1.0 : 0.70));
         if (_glitching) {
           // Draw only existing 1-pixels, each randomly toggled off using a per-pixel sin hash
           const _gAge = t - missingnoGlitchAt;
@@ -2277,34 +3492,317 @@
         // Flash the label when glitching (toggle every 400ms)
         const _labelVisible = !_glitching || Math.floor((t - missingnoGlitchAt) / 400) % 2 === 1;
         if (_labelVisible) {
-          ctx.fillStyle = _isLocked ? 'rgba(130,135,145,0.70)' : _isActive ? 'rgba(80,80,80,0.50)' : hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.65)';
-          ctx.fillText(_isActive ? 'ACTIVE' : _shipLabels[s], _sCX, _labelY);
+          ctx.fillStyle = (_isLocked || _isTaken) ? 'rgba(130,135,145,0.55)' : _isActive ? 'rgba(80,80,80,0.50)' : hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.65)';
+          ctx.fillText(_isActive ? 'ACTIVE' : _isTaken ? 'P2' : _shipLabels[s], _sCX, _labelY);
         }
-        return { ship: s, hitbox: hb, active: _isActive, locked: _isLocked };
+        return { ship: s, hitbox: hb, active: _isActive, locked: _isLocked || _isTaken, taken: _isTaken };
       });
     } else {
       shipMenuItems = [];
       shipMenuPopupBox = null;
     }
 
-    // Intercept-off vignette (gradient cached; alpha drives the pulse)
-    if (blockingEnabled === false && shipPowerState === 'down') {
-      if (_vigGradW !== W || _vigGradH !== H) {
+    // ── P2 HUD ROW ─────────────────────────────────────────────────────
+    if (_isP2) {
+      const _fmtP2 = n => n == null ? '—' : n >= 1e6 ? (n/1e6).toFixed(2)+'M' : n >= 1e4 ? (n/1e3).toFixed(2)+'K' : String(n);
+      const _canSelectP2Ship = p2BlockingEnabled === true && p2WarpState === 'none' && _p2ShipVisible;
+
+      // ── P2 INTERCEPT ───────────────────────────────────────
+      ctx.save();
+      ctx.beginPath(); ctx.rect(0, _p2RowSY, INT_W, _rowH); ctx.clip();
+      const _p2LabelVisible = p2BlockingEnabled !== null && p2StartupAt === 0 && !(p2BlockingEnabled === false && p2PowerdownAt > 0 && t - p2PowerdownAt < POWERDOWN_DUR);
+      if (_p2LabelVisible) {
+        ctx.font = `${_fSub + 2}px "Press Start 2P", monospace`;
+        ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(100,155,220,0.50)';
+        ctx.fillText('P2', 26, _yVal2);
+      }
+      let _p2ShieldStr, _p2ShieldColor, _p2ShieldGlow = null;
+      if (p2BlockingEnabled === null) {
+        _p2ShieldStr = 'STANDBY'; _p2ShieldColor = 'rgba(150,150,150,0.35)';
+      } else if (p2BlockingEnabled === false && p2PowerdownAt > 0 && t - p2PowerdownAt < POWERDOWN_DUR) {
+        const _p2sp = Math.max(0, 1 - (t - p2PowerdownAt) / POWERDOWN_DUR);
+        const _p2pf = 0.5 + 0.5 * Math.abs(Math.sin(t * 0.012));
+        _p2ShieldStr = 'POWERING DOWN'; _p2ShieldColor = `rgba(255,160,50,${(0.45 + 0.4 * _p2sp * _p2pf).toFixed(2)})`;
+      } else if (p2BlockingEnabled === false) {
+        _p2ShieldStr = 'OFFLINE'; _p2ShieldColor = 'rgba(255,80,60,0.90)'; _p2ShieldGlow = 'rgba(255,80,60,0.35)';
+      } else if (p2StartupAt > 0) {
+        const _p2sp = (t - p2StartupAt) / STARTUP_DUR;
+        if (_p2sp > 0.72) {
+          const _p2sf = 0.6 + 0.4 * Math.abs(Math.sin(t * 0.016));
+          _p2ShieldStr = 'ONLINE'; _p2ShieldColor = `rgba(50,215,120,${(0.55 + 0.45 * _p2sf).toFixed(2)})`; _p2ShieldGlow = `rgba(50,215,120,${(_p2sf * 0.45).toFixed(2)})`;
+        } else {
+          _p2ShieldStr = 'STARTING...'; _p2ShieldColor = `rgba(210,200,70,${(0.4 + 0.3 * Math.abs(Math.sin(t * 0.009))).toFixed(2)})`;
+        }
+      } else {
+        _p2ShieldStr = 'ACTIVE';
+        _p2ShieldColor = p2ShieldHovered ? 'rgba(50,215,120,0.95)' : 'rgba(50,215,120,0.75)';
+        _p2ShieldGlow = p2ShieldHovered ? 'rgba(50,215,120,0.35)' : null;
+      }
+      ctx.textAlign = 'center';
+      ctx.font = `${_fVal}px "Press Start 2P", monospace`;
+      if (_p2ShieldGlow) { ctx.shadowColor = _p2ShieldGlow; ctx.shadowBlur = 8; }
+      ctx.fillStyle = _p2ShieldColor;
+      ctx.fillText(_p2ShieldStr, INT_W / 2, _yVal2);
+      const _p2ShieldTW = ctx.measureText(_p2ShieldStr).width;
+      ctx.shadowBlur = 0;
+      const _p2HasTimer = p2BlockingEnabled === false && p2BlockingDuration > 0;
+      if (_p2HasTimer) {
+        const _p2remSec = Math.max(0, Math.ceil((p2BlockingDuration - (t - p2BlockingOffAt)) / 1000));
+        const _p2mins = Math.floor(_p2remSec / 60), _p2secs = _p2remSec % 60;
+        ctx.font = `${_fSub}px "Press Start 2P", monospace`;
+        ctx.fillStyle = 'rgba(255,100,80,0.65)';
+        ctx.fillText(`${_p2mins}:${String(_p2secs).padStart(2,'0')}`, INT_W / 2, _ySub2);
+      }
+      if (_p2ShipVisible) {
+        const _p2hbPad = 10;
+        const _p2hbTop = _yVal2 - Math.round(_fVal * 0.95);
+        const _p2hbH = _p2HasTimer ? Math.round(_fVal * 0.95 + _fSub * 2.2) : Math.round(_fVal * 1.35);
+        p2ShieldHitbox = { x: INT_W / 2 - _p2ShieldTW / 2 - _p2hbPad, y: _p2hbTop, w: _p2ShieldTW + _p2hbPad * 2, h: _p2hbH };
+      } else {
+        p2ShieldHitbox = { x: 0, y: 0, w: 0, h: 0 };
+      }
+      ctx.restore();
+
+      // P2 shield (disable) menu
+      if (p2ShieldMenuOpen) {
+        const _p2mw = 150, _p2mItemH = 26, _p2mPad = 8;
+        const _p2mh = DISABLE_OPTIONS.length * _p2mItemH + _p2mPad * 2;
+        const _p2menuX = Math.max(0, Math.min(W - _p2mw, Math.round(INT_W / 2 - _p2mw / 2)));
+        const _p2menuY = SY - _p2mh - 6;
+        ctx.fillStyle = 'rgba(8,11,16,0.92)'; ctx.fillRect(_p2menuX, _p2menuY, _p2mw, _p2mh);
+        const _p2mGlow = ctx.createLinearGradient(0, _p2menuY, 0, _p2menuY + 24);
+        _p2mGlow.addColorStop(0, 'rgba(140,160,175,0.07)'); _p2mGlow.addColorStop(1, 'rgba(140,160,175,0)');
+        ctx.fillStyle = _p2mGlow; ctx.fillRect(_p2menuX, _p2menuY + 1, _p2mw, 24);
+        const _p2ma = 14;
+        ctx.strokeStyle = 'rgba(140,160,175,0.42)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(_p2menuX + _p2ma, _p2menuY);       ctx.lineTo(_p2menuX, _p2menuY);           ctx.lineTo(_p2menuX, _p2menuY + _p2ma);
+        ctx.moveTo(_p2menuX + _p2mw - _p2ma, _p2menuY); ctx.lineTo(_p2menuX + _p2mw, _p2menuY); ctx.lineTo(_p2menuX + _p2mw, _p2menuY + _p2ma);
+        ctx.moveTo(_p2menuX, _p2menuY + _p2mh - _p2ma); ctx.lineTo(_p2menuX, _p2menuY + _p2mh); ctx.lineTo(_p2menuX + _p2ma, _p2menuY + _p2mh);
+        ctx.moveTo(_p2menuX + _p2mw, _p2menuY + _p2mh - _p2ma); ctx.lineTo(_p2menuX + _p2mw, _p2menuY + _p2mh); ctx.lineTo(_p2menuX + _p2mw - _p2ma, _p2menuY + _p2mh);
+        ctx.stroke();
+        ctx.font = `${_fSub}px "Press Start 2P", monospace`;
+        p2ShieldMenuPopupBox = { x: _p2menuX, y: _p2menuY, w: _p2mw, h: _p2mh };
+        p2ShieldMenuItems = DISABLE_OPTIONS.map((opt, idx) => {
+          const iy = _p2menuY + _p2mPad + idx * _p2mItemH;
+          const hb = { x: _p2menuX, y: iy, w: _p2mw, h: _p2mItemH };
+          const hov = mouseX >= hb.x && mouseX < hb.x + hb.w && mouseY >= hb.y && mouseY < hb.y + hb.h;
+          if (hov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(hb.x, hb.y, hb.w, hb.h); }
+          ctx.textAlign = 'left';
+          ctx.fillStyle = hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.65)';
+          ctx.fillText(opt.label, _p2menuX + 14, iy + 18);
+          const timer = opt.timerFn ? opt.timerFn() : opt.timer;
+          return { ...opt, timer, hitbox: hb };
+        });
+      } else {
+        p2ShieldMenuItems = []; p2ShieldMenuPopupBox = null;
+      }
+
+      // ── P2 STATS (INTEL) ───────────────────────────────────
+      if (INTEL_W >= 50) {
+        const _p2i2Min = 15 * _fSub, _p2i4Min = 33 * _fSub;
+        const _p2Blocked = p2HudStats.blocked;
+        const _p2Allowed = p2HudStats.queries != null && _p2Blocked != null ? p2HudStats.queries - _p2Blocked : null;
+        const _p2Total   = p2HudStats.queries;
+        const _p2Pct     = p2HudStats.percent;
+        const _p2PctColor = _p2Pct == null ? 'rgba(150,150,150,0.50)' : _p2Pct >= 60 ? 'rgba(50,215,120,0.85)' : _p2Pct >= 40 ? 'rgba(210,220,70,0.85)' : 'rgba(255,110,50,0.85)';
+        const _p2PctVal = _p2Pct != null ? _p2Pct.toFixed(1)+'%' : '—';
+        const _p2Cols = INTEL_W >= _p2i4Min
+          ? [
+              { val: _fmtP2(_p2Total),   label: 'total',     color: 'rgba(130,185,255,0.90)' },
+              { val: _fmtP2(_p2Blocked), label: 'blocked',   color: 'rgba(255,70,60,0.90)'   },
+              { val: _fmtP2(_p2Allowed), label: 'allowed',   color: 'rgba(50,215,120,0.90)'  },
+              { val: _p2PctVal,           label: 'intercept', color: _p2PctColor },
+            ]
+          : INTEL_W >= _p2i2Min
+          ? [
+              { val: _fmtP2(_p2Blocked), label: 'blocked',   color: 'rgba(255,70,60,0.90)'  },
+              { val: _p2PctVal,           label: 'intercept', color: _p2PctColor },
+            ]
+          : [{ val: _fmtP2(_p2Blocked), label: 'blocked', color: 'rgba(255,70,60,0.90)'  }];
+        ctx.save();
+        ctx.beginPath(); ctx.rect(INTEL_X, _p2RowSY, INTEL_W, _rowH); ctx.clip();
+        const _p2CellW = INTEL_W / _p2Cols.length;
+        _p2Cols.forEach(({ val, label, color }, i) => {
+          const icx = INTEL_X + _p2CellW * i + _p2CellW / 2;
+          ctx.textAlign = 'center';
+          ctx.font = `${_fVal}px "Press Start 2P", monospace`;
+          ctx.fillStyle = color; ctx.fillText(val, icx, _yVal2);
+        });
+        ctx.restore();
+      }
+
+      // ── P2 GRAVITY ─────────────────────────────────────────
+      ctx.save();
+      ctx.beginPath(); ctx.rect(TDB_X, _p2RowSY, TDB_W, _rowH); ctx.clip();
+      let _p2SigsStr, _p2SigsColor = 'rgba(95,200,230,0.82)';
+      if (p2GravityState === 'updating') {
+        _p2SigsStr = 'UPDATING';
+        _p2SigsColor = `rgba(255,190,50,${(0.65 + 0.35 * Math.sin(t * 0.006)).toFixed(2)})`;
+      } else {
+        _p2SigsStr = _fmtGravity(p2HudGravity);
+        if (p2GravityState === 'done') {
+          const _p2age = t - p2GravityDoneAt;
+          const _p2flash = Math.max(0, 1 - _p2age / 1200);
+          if (_p2flash > 0.01) _p2SigsColor = `rgba(50,215,120,${(0.65 + 0.35 * _p2flash).toFixed(2)})`;
+          if (_p2age > 1500) p2GravityState = 'idle';
+        }
+      }
+      ctx.textAlign = 'center';
+      ctx.font = `${_fVal}px "Press Start 2P", monospace`;
+      ctx.fillStyle = _p2SigsColor; ctx.fillText(_p2SigsStr, TDB_X + TDB_W / 2, _yVal2);
+      const _p2aW = bmpW(ARROW_DOWN_BMP) * ARROW_PX;
+      const _p2aX = TDB_X + Math.round(30 * _fs), _p2aY = _p2RowSY + Math.round(_rowH * 0.48);
+      let _p2ArrowCol = p2ArrowHovered ? 'rgba(255,190,50,0.95)' : 'rgba(95,200,230,0.55)';
+      let _p2ArrowGlw = p2ArrowHovered ? 'rgba(255,190,50,0.50)' : null;
+      if (p2GravityState === 'updating') {
+        const _p2ap = (0.65 + 0.35 * Math.sin(t * 0.008)).toFixed(2);
+        _p2ArrowCol = `rgba(255,190,50,${_p2ap})`; _p2ArrowGlw = 'rgba(255,190,50,0.35)';
+        drawBmp(ctx, ARROW_DOWN_BMP, _p2aX, _p2aY + Math.round(Math.max(0, Math.sin(t * 0.005)) * 3), _p2ArrowCol, _p2ArrowGlw, ARROW_PX);
+      } else {
+        if (p2GravityState === 'done') {
+          const _p2flash = Math.max(0, 1 - (t - p2GravityDoneAt) / 1200);
+          if (_p2flash > 0.01) { _p2ArrowCol = `rgba(50,215,120,${(0.5+0.5*_p2flash).toFixed(2)})`; _p2ArrowGlw = `rgba(50,215,120,${(_p2flash*0.4).toFixed(2)})`; }
+        }
+        drawBmp(ctx, ARROW_DOWN_BMP, _p2aX, _p2aY, _p2ArrowCol, _p2ArrowGlw, ARROW_PX);
+      }
+      p2ArrowHitbox = { x: _p2aX - _p2aW / 2 - 4, y: _p2aY - 14, w: _p2aW + 8, h: 28 };
+      ctx.restore();
+
+      // ── P2 SHIP ────────────────────────────────────────────
+      if (OPT_W > 0) {
+        ctx.save();
+        ctx.beginPath(); ctx.rect(OPT_X, _p2RowSY, OPT_W, _rowH); ctx.clip();
+        ctx.textAlign = 'center';
+        ctx.font = `${_fShip}px "Press Start 2P", monospace`;
+        ctx.fillStyle = p2ShipMenuHovered && _canSelectP2Ship ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.65)';
+        ctx.fillText(_shipLabels[p2CurrentShip], OPT_X + OPT_W / 2, _yVal2);
+        const _p2ShipTW = ctx.measureText(_shipLabels[p2CurrentShip]).width;
+        {
+          const _hbPad = 8;
+          const _hbTop = _yVal2 - Math.round(_fShip * 0.95);
+          const _hbH = Math.round(_fShip * 1.35);
+          p2ShipMenuHitbox = { x: OPT_X + OPT_W / 2 - _p2ShipTW / 2 - _hbPad, y: _hbTop, w: _p2ShipTW + _hbPad * 2, h: _hbH };
+        }
+        ctx.restore();
+      } else {
+        p2ShipMenuHitbox = { x: 0, y: 0, w: 0, h: 0 };
+      }
+
+      // P2 ship selector popup
+      if (p2ShipMenuOpen && _canSelectP2Ship && OPT_W > 0) {
+        const _p2ships = ['enterprise', 'falcon', 'normandy', 'pes', 'protector', 'serenity', 'swordfish', 'inbound'];
+        const _p2sBmps  = { enterprise: ENTERPRISE_BMP, falcon: FALCON_BMP, normandy: NORMANDY_BMP, pes: PES_BMP,
+                            protector: PROTECTOR_BMP, serenity: SERENITY_BMP, swordfish: SWORDFISH_BMP, inbound: INBOUND_BMP };
+        const _p2sCols  = { enterprise: 'rgba(195,208,240,0.85)', falcon: 'rgba(195,208,240,0.85)', normandy: 'rgba(195,208,240,0.85)', pes: 'rgba(89,223,139,0.85)',
+                            protector: 'rgba(195,208,240,0.85)', serenity: 'rgba(195,208,240,0.85)', swordfish: 'rgba(207,50,33,0.85)', inbound: 'rgba(150,155,165,0.85)' };
+        const _p2sGlows = { enterprise: 'rgba(170,190,235,0.32)', falcon: 'rgba(170,190,235,0.32)', normandy: 'rgba(170,190,235,0.32)', pes: 'rgba(89,223,139,0.32)',
+                            protector: 'rgba(170,190,235,0.32)', serenity: 'rgba(170,190,235,0.32)', swordfish: 'rgba(203,38,20,0.32)', inbound: null };
+        const _p2compact = W < 660;
+        const _p2cols = _p2compact ? 2 : 4;
+        const _p2rows = _p2compact ? 4 : 2;
+        const _p2slotW = _p2compact ? 85 : 90;
+        const _p2slotH = _p2compact ? 70 : 82;
+        const _p2mPad = 10;
+        const _p2mw = _p2cols * _p2slotW + _p2mPad * 2;
+        const _p2mh = _p2rows * _p2slotH + _p2mPad * 2;
+        const _p2mX = Math.max(4, Math.min(W - _p2mw - 4, OPT_X + OPT_W / 2 - _p2mw / 2));
+        const _p2mY = SY - _p2mh - 8;
+        ctx.fillStyle = 'rgba(8,11,16,0.92)'; ctx.fillRect(_p2mX, _p2mY, _p2mw, _p2mh);
+        const _p2smGlow = ctx.createLinearGradient(0, _p2mY, 0, _p2mY + 24);
+        _p2smGlow.addColorStop(0, 'rgba(140,160,175,0.07)'); _p2smGlow.addColorStop(1, 'rgba(140,160,175,0)');
+        ctx.fillStyle = _p2smGlow; ctx.fillRect(_p2mX, _p2mY + 1, _p2mw, 24);
+        const _p2sma = 14;
+        ctx.strokeStyle = 'rgba(140,160,175,0.42)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(_p2mX + _p2sma, _p2mY);       ctx.lineTo(_p2mX, _p2mY);       ctx.lineTo(_p2mX, _p2mY + _p2sma);
+        ctx.moveTo(_p2mX + _p2mw - _p2sma, _p2mY); ctx.lineTo(_p2mX + _p2mw, _p2mY); ctx.lineTo(_p2mX + _p2mw, _p2mY + _p2sma);
+        ctx.moveTo(_p2mX, _p2mY + _p2mh - _p2sma); ctx.lineTo(_p2mX, _p2mY + _p2mh); ctx.lineTo(_p2mX + _p2sma, _p2mY + _p2mh);
+        ctx.moveTo(_p2mX + _p2mw, _p2mY + _p2mh - _p2sma); ctx.lineTo(_p2mX + _p2mw, _p2mY + _p2mh); ctx.lineTo(_p2mX + _p2mw - _p2sma, _p2mY + _p2mh);
+        ctx.stroke();
+        p2ShipMenuPopupBox = { x: _p2mX, y: _p2mY, w: _p2mw, h: _p2mh };
+        let _p2anyHov = false;
+        p2ShipMenuItems = _p2ships.map((s, i) => {
+          const _p2col = i % _p2cols, _p2row = Math.floor(i / _p2cols);
+          const _p2sX  = _p2mX + _p2mPad + _p2col * _p2slotW;
+          const _p2sY  = _p2mY + _p2mPad + _p2row * _p2slotH;
+          const _p2sCX = _p2sX + _p2slotW / 2;
+          const _p2isActive = s === p2CurrentShip;
+          const _p2isLocked = s === 'inbound';
+          const _p2isTaken = !_p2isActive && s === currentShip;
+          const hb = { x: _p2sX, y: _p2sY, w: _p2slotW, h: _p2slotH };
+          const _p2shipCY = _p2sY + _p2slotH / 2 - 8;
+          const _p2labelY = _p2sY + _p2slotH - 11;
+          const hov = !_p2anyHov && !_p2isActive && !_p2isLocked && !_p2isTaken && mouseX >= hb.x && mouseX < hb.x + hb.w && mouseY >= hb.y && mouseY < hb.y + hb.h;
+          if (hov) _p2anyHov = true;
+          if (hov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(hb.x, hb.y, hb.w, hb.h); }
+          const _p2glitching = _p2isLocked && missingnoGlitchAt > 0 && (t - missingnoGlitchAt) < 1400;
+          ctx.save();
+          ctx.globalAlpha = _p2isLocked || _p2isTaken ? 0.35 : (_p2isActive ? 0.28 : (hov ? 1.0 : 0.70));
+          if (_p2glitching) {
+            const _gAge = t - missingnoGlitchAt;
+            const _gBmp = INBOUND_BMP, _gPx = 2;
+            const _gCols = bmpW(_gBmp), _gRows = bmpH(_gBmp);
+            const _gOx = Math.round(_p2sCX - (_gCols * _gPx) / 2);
+            const _gOy = Math.round(_p2shipCY - (_gRows * _gPx) / 2);
+            ctx.fillStyle = _p2sCols['inbound'];
+            for (let r = 0; r < _gRows; r++) for (let c = 0; c < _gCols; c++) {
+              if (!_gBmp[r][c]) continue;
+              const _seed = Math.sin(r * 127.1 + c * 311.7 + _gAge * 0.023) * 43758.5453;
+              if (_seed - Math.floor(_seed) > 0.30) ctx.fillRect(_gOx + c * _gPx, _gOy + r * _gPx, _gPx - 1, _gPx - 1);
+            }
+          } else {
+            drawBmp(ctx, _p2sBmps[s], _p2sCX, _p2shipCY, _p2sCols[s], hov ? _p2sGlows[s] : null, 2);
+          }
+          ctx.restore();
+          ctx.textAlign = 'center';
+          ctx.font = '8px "Press Start 2P", monospace';
+          const _p2labelVisible = !_p2glitching || Math.floor((t - missingnoGlitchAt) / 400) % 2 === 1;
+          if (_p2labelVisible) {
+            ctx.fillStyle = (_p2isLocked || _p2isTaken) ? 'rgba(130,135,145,0.55)' : _p2isActive ? 'rgba(80,80,80,0.50)' : hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.65)';
+            ctx.fillText(_p2isActive ? 'ACTIVE' : _p2isTaken ? 'P1' : _shipLabels[s], _p2sCX, _p2labelY);
+          }
+          return { ship: s, hitbox: hb, active: _p2isActive, locked: _p2isLocked || _p2isTaken, taken: _p2isTaken };
+        });
+      } else {
+        p2ShipMenuItems = []; p2ShipMenuPopupBox = null;
+      }
+    } // end _isP2 HUD row
+
+    // Intercept-off vignette -- full screen in 1P, per-half in 2P
+    const _p1Off = blockingEnabled === false && shipPowerState === 'down';
+    const _p2Off = _isP2 && p2BlockingEnabled === false;
+    if (_p1Off || _p2Off) {
+      if (_vigGradW !== W || _vigGradH !== H || _vigGradIs2P !== _isP2) {
+        _vigGradIs2P = _isP2;
         _vigGrad = ctx.createRadialGradient(W / 2, H / 2, H * 0.28, W / 2, H / 2, Math.hypot(W, H) * 0.62);
         _vigGrad.addColorStop(0, 'rgba(0,0,0,0)'); _vigGrad.addColorStop(1, 'rgba(210,25,25,1)');
+        _vigGradL = ctx.createRadialGradient(W / 4, H / 2, H * 0.28, W / 4, H / 2, Math.hypot(W / 2, H) * 0.62);
+        _vigGradL.addColorStop(0, 'rgba(0,0,0,0)'); _vigGradL.addColorStop(1, 'rgba(210,25,25,1)');
+        _vigGradR = ctx.createRadialGradient(W * 3 / 4, H / 2, H * 0.28, W * 3 / 4, H / 2, Math.hypot(W / 2, H) * 0.62);
+        _vigGradR.addColorStop(0, 'rgba(0,0,0,0)'); _vigGradR.addColorStop(1, 'rgba(210,25,25,1)');
         _vigGradW = W; _vigGradH = H;
       }
       const pulse = 0.5 + 0.5 * Math.sin(t * 0.0018);
-      ctx.save();
-      ctx.globalAlpha = 0.07 + 0.05 * pulse;
-      ctx.fillStyle = _vigGrad; ctx.fillRect(0, 0, W, H);
+      ctx.save(); ctx.globalAlpha = 0.07 + 0.05 * pulse;
+      if (!_isP2) {
+        ctx.fillStyle = _vigGrad; ctx.fillRect(0, 0, W, H);
+      } else {
+        if (_p1Off) {
+          ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W / 2, H); ctx.clip();
+          ctx.fillStyle = _vigGradL; ctx.fillRect(0, 0, W / 2, H);
+          ctx.restore();
+        }
+        if (_p2Off) {
+          ctx.save(); ctx.beginPath(); ctx.rect(W / 2, 0, W / 2, H); ctx.clip();
+          ctx.fillStyle = _vigGradR; ctx.fillRect(W / 2, 0, W / 2, H);
+          ctx.restore();
+        }
+      }
       ctx.restore();
     }
 
     ctx.restore();
-
-    // Close shake translate (if not already restored before entity drawing)
-    if (shakeOn) ctx.restore();
   }
 
   // ── SSE ───────────────────────────────────────────────────────────
@@ -2315,7 +3813,10 @@
     evtSource.onmessage = e => {
       try {
         const evts = JSON.parse(e.data);
-        if (Array.isArray(evts)) queue.push(...evts);
+        if (Array.isArray(evts)) {
+          queue.push(...evts);
+          if (queue.length > 200) queue.splice(0, queue.length - 200);
+        }
       } catch {}
     };
     evtSource.onerror = () => {
@@ -2325,15 +3826,191 @@
     };
   }
 
-  function resize() {
+  // ── 2P connection management ──────────────────────────────────────
+  function _p1Reveal() {
+    if (_p1ShipVisible) return;
+    _p1ShipVisible = true;
+  }
+
+  function _p2Reveal() {
+    if (_p2ShipVisible) return;
+    _p2ShipVisible = true;
+    if (_p2SnapReveal) {
+      _p2SnapReveal = false;
+      p2ShipY = (H - safeBottom) * 0.65;
+      _p2ShipRipInAt = 0;
+    } else {
+      _p2ShipRipInAt = _p2BottomEntry ? 0 : performance.now();
+    }
+    _p2BottomEntry = false;
+  }
+
+  function _disconnectP2() {
+    if (p2EvtSource) { p2EvtSource.close(); p2EvtSource = null; }
+    if (p2StatsPollTimer) { clearInterval(p2StatsPollTimer); p2StatsPollTimer = null; }
+    _p2FastDepart = p2ShipY > -100;
+    _p2BottomEntry = false;
+    _p2SnapReveal = false;
+    _p2ShipVisible = false;
+    _p2ShipRipInAt = 0;
+    p2Queue.length = 0;
+    p2Entities.length = 0;
+    p2Lasers.length = 0;
+    p2HudStats = { blocked: null, queries: null, percent: null };
+    p2BlockingEnabled = null;
+    p2CmdExpected = null; p2CmdDeadline = 0;
+    p2WarpState = 'none'; p2WarpAt = 0; p2WarpNextShip = null; p2WarpPrevShip = null;
+    p2CarrierState = 'none'; p2CarrierY = 0; p2CarrierRestY = 0; p2CarrierArrivingAt = 0; p2CarrierLeavingAt = 0; p2LaunchAt = 0; p2StartupAt = 0; p2PowerdownAt = 0;
+    p2CrewMembers = []; p2CrewNextSpawn = 0; p2LastFuelAt = 0;
+    p2HudGravity = null; p2GravityState = 'idle'; p2GravityDoneAt = 0;
+    p2ShieldMenuOpen = false; p2ShieldMenuItems = []; p2ShieldMenuPopupBox = null;
+    p2ShipMenuOpen = false; p2ShipMenuItems = []; p2ShipMenuPopupBox = null;
+  }
+
+  function fetchP2Stats() {
+      fetch('/api/pihole2/stats', { signal: AbortSignal.timeout(1800) })
+        .then(r => r.json())
+        .then(d => {
+          if (d.blocked != null) p2HudStats.blocked = d.blocked;
+          if (d.queries != null) p2HudStats.queries = d.queries;
+          if (d.percent != null) p2HudStats.percent = d.percent;
+          // Reconciliation: while a locally-issued toggle is pending, a poll that
+          // still reflects the pre-toggle state is stale. Ignore it so it can't
+          // revert optimistic state or cancel the running startup/powerdown.
+          if (p2CmdExpected !== null && d.blocking != null) {
+            if (d.blocking === p2CmdExpected || performance.now() >= p2CmdDeadline) p2CmdExpected = null;
+            else d = { ...d, blocking: null };
+          }
+          if (d.blocking != null) {
+            const _pb = p2BlockingEnabled; p2BlockingEnabled = d.blocking;
+            // Stamp the off-transition once so the P2 crew timer runs even under a live countdown.
+            if (d.blocking === false && _pb !== false) p2BlockingOffSince = performance.now();
+            if (d.blocking === false && d.block_timer > 0) { p2BlockingOffAt = performance.now(); p2BlockingDuration = d.block_timer * 1000; }
+            else if (d.blocking === true) { p2BlockingDuration = 0; }
+            if (d.blocking === true && _pb === false && p2StartupAt === 0 && p2LaunchAt === 0) { const _now = performance.now(); p2StartupAt = _now; p2PowerdownAt = 0; p2GunCheckFiredAt[0] = 0; p2GunCheckFiredAt[1] = 0; if ((twoPlayerMode !== 'off' ? carrierState : p2CarrierState) === 'none') chainRings.push({ x: p2ShipX, y: p2ShipY, born: _now, dur: 380, maxR: 90, col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' }); }
+            // Only tear down startup on a genuine enabled->disabled transition; a
+            // stray poll reporting 'false' must not nuke a running startup.
+            // Clear p2LaunchAt too, else its stale value blocks the next enable's
+            // startup trigger (guarded by p2LaunchAt === 0).
+            if (d.blocking === false && _pb !== false) { p2StartupAt = 0; p2LaunchAt = 0; if (_pb === true) p2PowerdownAt = performance.now(); }
+            if (twoPlayerMode === 'off' && _pb !== false && d.blocking === false && _p2ShipVisible && p2CarrierState === 'none') { p2CarrierState = 'arriving'; p2CarrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; p2CarrierY = H + 240; p2CarrierArrivingAt = performance.now(); }
+            if (twoPlayerMode !== 'off' && _pb !== false && d.blocking === false && _p2ShipVisible && carrierState === 'none') { carrierState = 'arriving'; carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; carrierY = H + 240; carrierArrivingAt = performance.now(); }
+          }
+          if (d.gravity != null && p2GravityState === 'idle') p2HudGravity = d.gravity;
+          if (!_p2ShipVisible && (d.blocked != null || d.queries != null)) _p2Reveal();
+        }).catch(() => {});
+  }
+
+  function _connectP2Local(snapReveal) {
+    _disconnectP2();
+    p2ShipX = W * 3 / 4;
+    if (snapReveal) {
+      p2ShipY = (H - safeBottom) * 0.65;
+      _p2SnapReveal = true;
+      _p2BottomEntry = false;
+    } else {
+      p2ShipY = H + 100;
+      _p2BottomEntry = true;
+    }
+    fetchP2Stats();
+    p2StatsPollTimer = setInterval(fetchP2Stats, 1000);
+    p2EvtSource = new EventSource('/api/pihole2/events');
+    p2EvtSource.onmessage = e => {
+      try {
+        const evts = JSON.parse(e.data);
+        if (Array.isArray(evts)) {
+          p2Queue.push(...evts);
+          if (p2Queue.length > 200) p2Queue.splice(0, p2Queue.length - 200);
+          if (!_p2ShipVisible) _p2Reveal();
+        }
+      } catch {}
+    };
+    p2EvtSource.onerror = () => {};
+  }
+
+  async function _init2P(isInitialLoad) {
+    try {
+      const s = await fetch('/api/2p/status', { signal: AbortSignal.timeout(1800) }).then(r => r.json());
+      const newMode = s.mode === 'local' ? 'local' : 'off';
+      const wasOff = twoPlayerMode === 'off';
+      const modeChanged = newMode !== twoPlayerMode;
+      const _prevHudSH = hudSH;
+      twoPlayerMode = newMode;
+      resize(modeChanged && active && !isInitialLoad);
+      if (modeChanged && active && !isInitialLoad) {
+        _hudSlideFrom = _prevHudSH;
+        _hudSlideTo = hudSH;
+        _hudSlideAt = performance.now();
+      }
+      if (newMode === 'local') {
+        _connectP2Local(isInitialLoad);
+        p2ShipX = W * 3 / 4;
+        if (wasOff && !isInitialLoad) { _2pBannerAt = performance.now(); }
+      }
+    } catch {}
+  }
+
+  function resize(skipShipSnap) {
     safeBottom = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--sab')) || 0;
-    W = canvas.width = window.innerWidth; H = canvas.height = window.innerHeight;
-    shipX = W / 2; shipY = (H - safeBottom) * 0.65;
-    hudSH = W < 480 ? 84 : W < 660 ? 94 : 108;
+    // Render the backing store at physical-pixel resolution so fractional OS/browser
+    // scaling (e.g. Windows 150% => devicePixelRatio 1.5) stays crisp instead of the
+    // browser nearest-neighbor upscaling a CSS-resolution canvas into uneven blocks.
+    // At devicePixelRatio 1 (100% scaling) this is a no-op: _dpr=1, transform=identity.
+    // Cap at 3 to bound the backing-store size on very high-DPR displays.
+    _dpr = Math.min(window.devicePixelRatio || 1, 3);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W * _dpr); canvas.height = Math.round(H * _dpr);
+    canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+    // All game coordinates stay in CSS pixels; the transform maps them to device pixels.
+    ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
+    _carrierSmoothX = twoPlayerMode !== 'off' ? W * 0.50 : W * 0.40;
+    _p2CarrierSmoothX = W * 0.80;
+    const _2pH = twoPlayerMode !== 'off' ? (W < 480 ? 66 : W < 660 ? 76 : 86) : 0;
+    hudSH = _2pH > 0 ? _2pH * 2 + 1 : (W < 480 ? 84 : W < 660 ? 94 : 108);
+    // Carrier rest Y for the new viewport; docked-ship bay offsets hang off this.
+    const _restY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10;
+
+    // A docked ship must be snapped onto its bay on the re-centered carrier, not
+    // reset to the free-flight position, or it lands off the carrier after a resize.
+    const _p1Docked = (carrierState === 'arriving' || carrierState === 'present') && (shipPowerState === 'down' || shipPowerState === 'startup');
+    if (_p1Docked) {
+      carrierRestY = _restY;
+      if (carrierState === 'present') carrierY = _restY;
+      const _bi = CARRIER_SHIP_ORDER.indexOf(currentShip);
+      shipX = _carrierSmoothX + (_bi >= 0 ? CARRIER_BAY_DX[_bi] : 0);
+      shipY = _restY + (_bi >= 0 ? CARRIER_BAY_DY[_bi] : 0);
+    } else {
+      if (!skipShipSnap) shipX = twoPlayerMode !== 'off' ? W / 4 : W / 2;
+      shipY = (H - safeBottom) * 0.65;
+    }
+
+    // P2 shares the main carrier in 2P, has its own in 1P.
+    const _p2Own = twoPlayerMode === 'off';
+    if (_p2Own) p2CarrierRestY = _restY;
+    const _p2CarrierSt = _p2Own ? p2CarrierState : carrierState;
+    const _p2Docked = _p2ShipVisible && p2BlockingEnabled === false && (_p2CarrierSt === 'arriving' || _p2CarrierSt === 'present');
+    if (_p2Docked) {
+      if (_p2Own && _p2CarrierSt === 'present') p2CarrierY = _restY;
+      const _p2cx = _p2Own ? _p2CarrierSmoothX : _carrierSmoothX;
+      const _p2bi = CARRIER_SHIP_ORDER.indexOf(p2CurrentShip);
+      p2ShipX = _p2cx + (_p2bi >= 0 ? CARRIER_BAY_DX[_p2bi] : 0);
+      p2ShipY = _restY + (_p2bi >= 0 ? CARRIER_BAY_DY[_p2bi] : 0);
+    } else {
+      p2ShipX = W * 3 / 4;
+      if (_p2ShipVisible && p2CarrierState === 'none') p2ShipY = (H - safeBottom) * 0.65;
+    }
+
+    // Crew coordinates are anchored to the old carrier position; drop them so they
+    // re-emerge cleanly at the new hatch instead of floating off the carrier.
+    crewMembers = []; crewNextSpawn = 0; lastFuelAt = 0;
+    p2CrewMembers = []; p2CrewNextSpawn = 0; p2LastFuelAt = 0;
+
+    // Settings button centered on the full HUD strip
     if (settingsBtnEl) settingsBtnEl.style.bottom = Math.round(hudSH / 2 - 10 + safeBottom) + 'px';
   }
   window.addEventListener('resize', () => { if (active) resize(); });
   document.addEventListener('dragstart', e => e.preventDefault());
+  document.addEventListener('contextmenu', e => e.preventDefault());
 
   // ── Public API ────────────────────────────────────────────────────
   window.enterPiholeMode = function() {
@@ -2348,6 +4025,7 @@
     document.body.classList.add('pihole-mode');
     if (window._startZenFade) window._startZenFade(true);
     entities.length = 0; lasers.length = 0; explosions.length = 0; queue.length = 0;
+    p2Entities.length = 0; p2Lasers.length = 0; p2Queue.length = 0;
     domainFragments.length = 0; debris.length = 0; chainRings.length = 0;
     drone.state = 'docked'; drone.x = 0; drone.y = 0; drone.lastFire = 0;
     drone.side = 0; drone.angle = 0; drone.targetX = null; drone.targetY = null;
@@ -2359,18 +4037,25 @@
     drone2Missiles.length = 0;
     hudGravity = null;
     hudStats = { blocked: null, queries: null, percent: null };
+    _p1ShipVisible = false;
     if (hudStatsPollTimer) { clearInterval(hudStatsPollTimer); hudStatsPollTimer = null; }
     gravityState = 'idle'; gravityDoneAt = 0;
     if (gravityPollTimer) { clearTimeout(gravityPollTimer); gravityPollTimer = null; }
     blockingEnabled = null; // preserve blockingOffAt/blockingDuration so active timers survive exit/re-enter
+    blockingCmdExpected = null; blockingCmdDeadline = 0;
     shipPowerState = 'up'; startupAt = 0; lastEnemyAt = 0;
     gunCheckState = 0; gunCheckFiredAt = [0, 0];
     carrierState = 'none'; carrierY = 0; carrierRestY = 0; carrierArrivingAt = 0; carrierLeavingAt = 0; launchAt = 0;
     shieldMenuOpen = false; shieldMenuItems = []; shieldHovered = false;
     shipMenuOpen = false; shipMenuItems = []; shipMenuHovered = false;
     settingsMenuOpen = false; settingsMenuItems = [];
+    p2HudGravity = null; p2GravityState = 'idle'; p2GravityDoneAt = 0;
+    p2ShieldMenuOpen = false; p2ShieldMenuItems = []; p2ShieldHovered = false; p2ShieldMenuPopupBox = null;
+    p2ShipMenuOpen = false; p2ShipMenuItems = []; p2ShipMenuHovered = false; p2ShipMenuPopupBox = null;
+    p2ArrowHovered = false;
+    { const _s2 = localStorage.getItem('ph_p2_ship'); p2CurrentShip = (_s2 && _SHIP_CONFIGS[_s2]) ? _s2 : 'falcon'; }
     if (settingsBtnEl) { settingsBtnEl.style.display = 'block'; settingsBtnEl.classList.remove('menu-open'); }
-    { const _s = sessionStorage.getItem('ph_ship'); currentShip = (_s && _SHIP_CONFIGS[_s]) ? _s : 'protector'; } warpState = 'none'; warpAt = 0; warpNextShip = null;
+    { const _s = localStorage.getItem('ph_ship'); currentShip = (_s && _SHIP_CONFIGS[_s]) ? _s : 'protector'; } warpState = 'none'; warpAt = 0; warpNextShip = null; warpPrevShip = null;
     shakeAt = 0; shakeDur = 0; shakeAmp = 0;
     mouseX = -1; mouseY = -1;
     // Restore timed-block state that may have been set before navigating away
@@ -2383,10 +4068,10 @@
         blockingDuration = _saved.duration;
         shipPowerState = 'down';
         // Blocking was already off before we arrived - snap carrier/ship to docked state
-        carrierRestY = H * 0.78;
+        carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10;
         carrierY = carrierRestY;
         carrierState = 'present';
-        { const _bi = CARRIER_SHIP_ORDER.indexOf(currentShip); shipX = W * 0.40 + (_bi >= 0 ? CARRIER_BAY_DX[_bi] : 0); shipY = carrierRestY + (_bi >= 0 ? CARRIER_BAY_DY[_bi] : 0); }
+        { const _bi = CARRIER_SHIP_ORDER.indexOf(currentShip); shipX = _carrierSmoothX + (_bi >= 0 ? CARRIER_BAY_DX[_bi] : 0); shipY = carrierRestY + (_bi >= 0 ? CARRIER_BAY_DY[_bi] : 0); }
         _firstEnterFetch = false;
       } else {
         sessionStorage.removeItem('ph_block_timer');
@@ -2395,11 +4080,21 @@
     function fetchPiholeStats() {
       fetch('/api/pihole/stats', { signal: AbortSignal.timeout(1800) }).then(r => r.json()).then(d => {
         if (d.gravity != null) hudGravity = d.gravity;
+        // Reconciliation: while a local toggle is pending, a poll still reflecting
+        // the pre-toggle state is stale. Ignore it until the backend catches up
+        // (or the deadline lapses) so it can't spuriously flip shipPowerState.
+        if (blockingCmdExpected !== null && d.blocking != null) {
+          if (d.blocking === blockingCmdExpected || performance.now() >= blockingCmdDeadline) blockingCmdExpected = null;
+          else d = { ...d, blocking: null };
+        }
         if (d.blocking != null) {
           const _wasFirst = _firstEnterFetch;
           if (_firstEnterFetch) _firstEnterFetch = false;
           const _prev = blockingEnabled;
           blockingEnabled = d.blocking;
+          // Stamp the off-transition once (not every poll) so the crew timer runs.
+          // Already-off on first load: backdate so crew can emerge promptly.
+          if (!d.blocking && _prev !== false) blockingOffSince = _wasFirst ? performance.now() - 30000 : performance.now();
           if (!d.blocking && !_wasFirst && _prev !== false) {
             shieldMenuOpen = false;
             shipMenuOpen = false; shipMenuItems = [];
@@ -2416,10 +4111,10 @@
               // Blocking was already off when we arrived - snap to docked, skip animation
               shipPowerState = 'down';
               if (shipQuote) shipQuote.shownAt = performance.now() - 3000;
-              carrierRestY = H * 0.78;
+              carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10;
               carrierY = carrierRestY;
               carrierState = 'present';
-              { const _bi = CARRIER_SHIP_ORDER.indexOf(currentShip); shipX = W * 0.40 + (_bi >= 0 ? CARRIER_BAY_DX[_bi] : 0); shipY = carrierRestY + (_bi >= 0 ? CARRIER_BAY_DY[_bi] : 0); }
+              { const _bi = CARRIER_SHIP_ORDER.indexOf(currentShip); shipX = _carrierSmoothX + (_bi >= 0 ? CARRIER_BAY_DX[_bi] : 0); shipY = carrierRestY + (_bi >= 0 ? CARRIER_BAY_DY[_bi] : 0); }
             } else if (!_wasFirst && shipPowerState === 'up') {
               shipPowerState = 'down';
               if (shipQuote) shipQuote.shownAt = performance.now() - 3000;
@@ -2440,6 +4135,7 @@
         if (d.blocked != null) hudStats.blocked = d.blocked;
         if (d.queries != null) hudStats.queries = d.queries;
         if (d.percent != null) hudStats.percent = d.percent;
+        if (!_p1ShipVisible && (d.blocking != null || d.blocked != null || d.queries != null)) _p1Reveal();
       }).catch(() => {});
     }
     if (settingsBtnEl) settingsBtnEl.style.display = 'block';
@@ -2451,10 +4147,9 @@
       clearSpriteCache();
       fetchPiholeStats();
       if (!evtSource) connect();
-      // reset interval so next tick is exactly 1s from now, not 0–999ms
       if (hudStatsPollTimer) { clearInterval(hudStatsPollTimer); }
       hudStatsPollTimer = setInterval(fetchPiholeStats, 1000);
-      // Revive rAF loop if the browser froze/dropped the pending callback
+      if (p2StatsPollTimer) { fetchP2Stats(); clearInterval(p2StatsPollTimer); p2StatsPollTimer = setInterval(fetchP2Stats, 1000); }
       if (active) { if (_rafId !== null) cancelAnimationFrame(_rafId); _rafId = requestAnimationFrame(tick); }
     };
     document.addEventListener('visibilitychange', _onVisible);
@@ -2462,22 +4157,37 @@
     // skipping visibilitychange entirely, yet the browser can still reclaim GPU-backed
     // canvas memory. Focus fires when the user returns and is cheap to handle.
     if (_onFocus) window.removeEventListener('focus', _onFocus);
-    _onFocus = () => clearSpriteCache();
+    _onFocus = () => {
+      clearSpriteCache();
+      fetchPiholeStats();
+      if (!evtSource) connect();
+      if (hudStatsPollTimer) clearInterval(hudStatsPollTimer);
+      hudStatsPollTimer = setInterval(fetchPiholeStats, 1000);
+      if (p2StatsPollTimer) { fetchP2Stats(); clearInterval(p2StatsPollTimer); p2StatsPollTimer = setInterval(fetchP2Stats, 1000); }
+      if (active) { if (_rafId !== null) cancelAnimationFrame(_rafId); _rafId = requestAnimationFrame(tick); }
+    };
     window.addEventListener('focus', _onFocus);
     // Sleep/wake detection: neither visibilitychange nor focus fires when the machine
     // sleeps while the tab stays focused. A timer that fires significantly late means
-    // the machine woke from sleep -- rebuild the sprite cache and revive the RAF loop.
+    // the machine woke from sleep -- rebuild the sprite cache, revive the RAF loop,
+    // and restart SSE + stats polling which may have dropped during the sleep.
     if (_sleepCheckTimer) clearInterval(_sleepCheckTimer);
     let _sleepCheckLast = Date.now();
     _sleepCheckTimer = setInterval(() => {
       const now = Date.now();
       if (now - _sleepCheckLast > 12000) {
         clearSpriteCache();
+        fetchPiholeStats();
+        if (!evtSource) connect();
+        if (hudStatsPollTimer) clearInterval(hudStatsPollTimer);
+        hudStatsPollTimer = setInterval(fetchPiholeStats, 1000);
+        if (p2StatsPollTimer) { fetchP2Stats(); clearInterval(p2StatsPollTimer); p2StatsPollTimer = setInterval(fetchP2Stats, 1000); }
         if (active) { if (_rafId !== null) cancelAnimationFrame(_rafId); _rafId = requestAnimationFrame(tick); }
       }
       _sleepCheckLast = now;
     }, 4000);
     connect();
+    if (window.TWO_PLAYER_ENABLED !== false) _init2P(true);
     requestAnimationFrame(t => {
       lastT = t; lastSpawn = t;
       canvas.style.opacity = '1';  // triggers the 0.6s transition after first paint
@@ -2487,6 +4197,9 @@
 
   window.exitPiholeMode = function() {
     if (!active) return;
+    if (window.close2PModal) window.close2PModal();
+    _disconnectP2();
+    twoPlayerMode = 'off'; _2pBannerAt = 0;
     canvas.style.opacity = '0';
     canvas.style.zIndex = '1';    // drop below dashboard so it fades under, not over
     document.body.classList.remove('pihole-mode');
@@ -2497,6 +4210,7 @@
     shieldMenuOpen = false; shieldHovered = false; shieldMenuItems = [];
     shipMenuOpen = false; shipMenuHovered = false; shipMenuItems = [];
     settingsMenuOpen = false; settingsMenuItems = [];
+    p2ShieldMenuOpen = false; p2ShieldMenuItems = []; p2ShipMenuOpen = false; p2ShipMenuItems = [];
     if (settingsBtnEl) { settingsBtnEl.style.display = 'none'; settingsBtnEl.classList.remove('menu-open'); }
     warpState = 'none'; warpNextShip = null;
     blockingEnabled = null; // preserve blockingOffAt/blockingDuration so active timers survive exit/re-enter
@@ -2512,6 +4226,7 @@
       shipPowerState = 'up'; gunCheckState = 0; lastEnemyAt = 0;
       carrierState = 'none'; carrierY = 0; carrierRestY = 0;
       entities.length = 0; lasers.length = 0; explosions.length = 0; queue.length = 0;
+      p2Entities.length = 0; p2Lasers.length = 0; p2Queue.length = 0;
       domainFragments.length = 0; debris.length = 0; chainRings.length = 0;
       drone.state = 'docked'; drone.angle = 0; drone.targetX = null; drone.targetY = null;
       drone.deployedAt = 0; drone.recallAt = 0;
@@ -2526,9 +4241,13 @@
   // ── Blocking toggle ───────────────────────────────────────────────
   function setBlocking(enable, timerSec = null) {
     blockingEnabled = enable;
+    // Arm the reconciliation guard: suppress stale polls until the backend
+    // reports this value (or the 4s deadline lapses if the toggle silently failed).
+    blockingCmdExpected = enable; blockingCmdDeadline = performance.now() + 4000;
     shieldMenuOpen = false;
     if (!enable) {
       blockingOffAt = performance.now();
+      blockingOffSince = performance.now();
       blockingDuration = timerSec ? timerSec * 1000 : 0;
       if (blockingDuration > 0)
         sessionStorage.setItem('ph_block_timer', JSON.stringify({ wallOffAt: Date.now(), duration: blockingDuration }));
@@ -2541,7 +4260,7 @@
       sessionStorage.removeItem('ph_block_timer');
       gunCheckState = 0; gunCheckFiredAt = [0, 0];
       shipPowerState = 'startup'; startupAt = performance.now();
-      if (carrierState === 'arriving') {
+      if (carrierState === 'arriving' && (twoPlayerMode === 'off' || p2BlockingEnabled !== false)) {
         carrierState = 'leaving'; carrierLeavingAt = performance.now(); launchAt = performance.now();
       }
     }
@@ -2551,6 +4270,9 @@
       body: JSON.stringify({ enable, timer: timerSec }),
     }).then(r => r.json()).then(d => {
       if ('blocking' in d) {
+        // Server disagrees with the request (rejected/failed) -> drop the guard and
+        // let reality win; agrees -> keep it armed until a poll confirms.
+        if (d.blocking !== blockingCmdExpected) blockingCmdExpected = null;
         blockingEnabled = d.blocking;
         if (!blockingEnabled && shipPowerState === 'startup') shipPowerState = 'down';
       }
@@ -2591,6 +4313,88 @@
       .catch(() => { gravityState = 'idle'; });
   }
 
+  function setP2Blocking(enable, timerSec = null) {
+    const _prevP2 = p2BlockingEnabled;
+    // Arm the reconciliation guard: suppress stale polls until the backend reports
+    // this value (or the deadline lapses if the toggle silently failed).
+    p2CmdExpected = enable; p2CmdDeadline = performance.now() + 4000;
+    p2BlockingEnabled = enable;
+    if (enable === false && _prevP2 !== false) p2BlockingOffSince = performance.now();
+    if (enable === false && timerSec > 0) { p2BlockingOffAt = performance.now(); p2BlockingDuration = timerSec * 1000; }
+    else if (enable === true) { p2BlockingDuration = 0; }
+    if (enable === true && _prevP2 === false) { const _now = performance.now(); p2StartupAt = _now; p2PowerdownAt = 0; p2GunCheckFiredAt[0] = 0; p2GunCheckFiredAt[1] = 0; const _p2rc = twoPlayerMode !== 'off' ? carrierState : p2CarrierState; if (_p2rc === 'none') chainRings.push({ x: p2ShipX, y: p2ShipY, born: _now, dur: 380, maxR: 90, col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' }); }
+    if (enable === false) { p2StartupAt = 0; p2LaunchAt = 0; if (_prevP2 === true) p2PowerdownAt = performance.now(); }
+    if (twoPlayerMode === 'off' && _prevP2 !== false && enable === false && _p2ShipVisible && p2CarrierState === 'none') {
+      p2CarrierState = 'arriving'; p2CarrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10;
+      p2CarrierY = H + 240; p2CarrierArrivingAt = performance.now();
+    }
+    if (twoPlayerMode !== 'off' && _prevP2 !== false && enable === false && _p2ShipVisible && carrierState === 'none') {
+      carrierState = 'arriving'; carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10;
+      carrierY = H + 240; carrierArrivingAt = performance.now();
+    }
+    p2ShieldMenuOpen = false;
+    fetch('/api/pihole2/toggle', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enable, timer: timerSec }),
+    }).then(r => r.json()).then(d => {
+      if ('blocking' in d) {
+        // If the server disagrees with what we asked (toggle rejected/failed),
+        // the command didn't take: drop the guard and let reality win. If it
+        // agrees, keep the guard armed until a stats poll confirms, covering the
+        // Pi-hole propagation window.
+        if (d.blocking !== p2CmdExpected) p2CmdExpected = null;
+        const _pb2 = p2BlockingEnabled; p2BlockingEnabled = d.blocking;
+        if (d.blocking === true && _pb2 === false && p2StartupAt === 0 && p2LaunchAt === 0) { const _now = performance.now(); p2StartupAt = _now; p2PowerdownAt = 0; p2GunCheckFiredAt[0] = 0; p2GunCheckFiredAt[1] = 0; const _p2rc = twoPlayerMode !== 'off' ? carrierState : p2CarrierState; if (_p2rc === 'none') chainRings.push({ x: p2ShipX, y: p2ShipY, born: _now, dur: 380, maxR: 90, col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' }); }
+        if (d.blocking === false && _pb2 !== false) { p2StartupAt = 0; p2LaunchAt = 0; if (_pb2 === true) p2PowerdownAt = performance.now(); }
+        if (twoPlayerMode === 'off' && _pb2 !== false && d.blocking === false && _p2ShipVisible && p2CarrierState === 'none') { p2CarrierState = 'arriving'; p2CarrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; p2CarrierY = H + 240; p2CarrierArrivingAt = performance.now(); }
+        if (twoPlayerMode !== 'off' && _pb2 !== false && d.blocking === false && _p2ShipVisible && carrierState === 'none') { carrierState = 'arriving'; carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; carrierY = H + 240; carrierArrivingAt = performance.now(); }
+      }
+    }).catch(() => {});
+  }
+
+  function triggerP2GravityUpdate() {
+    const prevGravity = p2HudGravity;
+    const triggeredAt = performance.now();
+    p2GravityState = 'updating';
+    fetch('/api/pihole2/gravity-update', { method: 'POST' })
+      .then(r => r.json())
+      .then(d => {
+        if (d.error || !d.ok) { p2GravityState = 'idle'; return; }
+        let polls = 0;
+        function poll() {
+          if (!active || p2GravityState !== 'updating') return;
+          if (polls++ > 40) { p2GravityState = 'idle'; return; }
+          fetch('/api/pihole2/stats', { signal: AbortSignal.timeout(4000) })
+            .then(r => r.json())
+            .then(d => {
+              const elapsed = performance.now() - triggeredAt;
+              const countChanged = d.gravity != null && d.gravity !== prevGravity;
+              if (countChanged || (d.gravity != null && elapsed > 25000)) {
+                if (d.gravity != null) p2HudGravity = d.gravity;
+                p2GravityState = 'done'; p2GravityDoneAt = performance.now();
+              } else {
+                setTimeout(poll, 3000);
+              }
+            })
+            .catch(() => { setTimeout(poll, 5000); });
+        }
+        setTimeout(poll, 4000);
+      })
+      .catch(() => { p2GravityState = 'idle'; });
+  }
+
+  function initP2WarpOut(nextShip) {
+    p2WarpPrevShip = null;
+    p2WarpNextShip = nextShip;
+    p2WarpState = 'out';
+    p2WarpAt = performance.now();
+    shakeAt = p2WarpAt; shakeDur = 500; shakeAmp = 16;
+    p2ShipMenuOpen = false;
+    p2ShipQuote = null; p2ShipQuoteCooldown = 0; p2ShipQuoteDeck = []; p2ShipQuoteDeckFor = null; p2ShipQuoteLastShown = null;
+    p2Lasers.length = 0;
+  }
+
   function _inBox(mx, my, box) {
     return mx >= box.x && mx <= box.x + box.w && my >= box.y && my <= box.y + box.h;
   }
@@ -2610,6 +4414,7 @@
     if (!active) return;
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const _isP2Active = twoPlayerMode !== 'off' && _p2ShipVisible;
 
     // Settings menu open - click toggles a setting or dismisses
     if (settingsMenuOpen) {
@@ -2619,9 +4424,20 @@
           if      (item.key === 'friendlies')  { showFriendlies = !showFriendlies; _saveDisplaySettings(); }
           else if (item.key === 'domain')      { showDomain     = !showDomain;     _saveDisplaySettings(); }
           else if (item.key === 'client')      { showClient     = !showClient;     _saveDisplaySettings(); }
+          else if (item.key === '2p-mode') {
+            settingsMenuOpen = false;
+            _closeSettingsBtnAnimated();
+            if (window.open2PModal) window.open2PModal();
+          }
           else if (item.key === 'pihole-link') {
             const url = phLinkEl ? phLinkEl.dataset.href : null;
             if (url && /^https?:\/\//i.test(url)) window.open(url, '_blank', 'noopener,noreferrer');
+            settingsMenuOpen = false;
+            _closeSettingsBtnAnimated();
+          }
+          else if (item.key === 'pihole-link-2') {
+            const url2 = window.P2_DASHBOARD;
+            if (url2 && /^https?:\/\//i.test(url2)) window.open(url2, '_blank', 'noopener,noreferrer');
             settingsMenuOpen = false;
             _closeSettingsBtnAnimated();
           }
@@ -2634,13 +4450,39 @@
       // fall through; let the click reach shield/ship hitboxes
     }
 
+    // P2 ship menu open
+    if (p2ShipMenuOpen) {
+      e.stopPropagation();
+      for (const item of p2ShipMenuItems) {
+        if (_inBox(mx, my, item.hitbox)) {
+          if (!item.active && !item.locked) initP2WarpOut(item.ship);
+          if (item.locked && !item.taken && performance.now() >= missingnoGlitchCooldown) { missingnoGlitchAt = performance.now(); missingnoGlitchCooldown = missingnoGlitchAt + 2200; }
+          return;
+        }
+      }
+      if (p2ShipMenuPopupBox && _inBox(mx, my, p2ShipMenuPopupBox)) return;
+      p2ShipMenuOpen = false;
+      if (_inBox(mx, my, p2ShipMenuHitbox)) return;
+    }
+
+    // P2 shield menu open
+    if (p2ShieldMenuOpen) {
+      e.stopPropagation();
+      for (const item of p2ShieldMenuItems) {
+        if (_inBox(mx, my, item.hitbox)) { setP2Blocking(false, item.timer); return; }
+      }
+      if (p2ShieldMenuPopupBox && _inBox(mx, my, p2ShieldMenuPopupBox)) return;
+      p2ShieldMenuOpen = false;
+      if (_inBox(mx, my, p2ShieldHitbox)) return;
+    }
+
     // Ship menu open - click selects or dismisses; fall through to activate other targets
     if (shipMenuOpen) {
       e.stopPropagation();
       for (const item of shipMenuItems) {
         if (_inBox(mx, my, item.hitbox)) {
           if (!item.active && !item.locked) initWarpOut(item.ship);
-          if (item.locked && performance.now() >= missingnoGlitchCooldown) { missingnoGlitchAt = performance.now(); missingnoGlitchCooldown = missingnoGlitchAt + 2200; }
+          if (item.locked && !item.taken && performance.now() >= missingnoGlitchCooldown) { missingnoGlitchAt = performance.now(); missingnoGlitchCooldown = missingnoGlitchAt + 2200; }
           return;
         }
       }
@@ -2692,6 +4534,31 @@
       return;
     }
 
+    // P2 ship body easter egg
+    if (_p2ShipVisible && _inBox(mx, my, p2ShipBodyHitbox) && p2WarpState === 'none' && p2BlockingEnabled !== false) {
+      e.stopPropagation();
+      if (!p2ShipQuote && performance.now() >= p2ShipQuoteCooldown) {
+        const _p2q = p2CurrentShip || 'protector';
+        if (p2ShipQuoteDeck.length === 0 || p2ShipQuoteDeckFor !== _p2q) {
+          const _src = [...(SHIP_QUOTES[_p2q] || SHIP_QUOTES.protector)];
+          for (let _i = _src.length - 1; _i > 0; _i--) {
+            const _j = Math.floor(Math.random() * (_i + 1));
+            [_src[_i], _src[_j]] = [_src[_j], _src[_i]];
+          }
+          if (_src.length > 1 && p2ShipQuoteDeckFor === _p2q && _src[0] === p2ShipQuoteLastShown) {
+            const _sw = 1 + Math.floor(Math.random() * (_src.length - 1));
+            [_src[0], _src[_sw]] = [_src[_sw], _src[0]];
+          }
+          p2ShipQuoteDeck = _src;
+          p2ShipQuoteDeckFor = _p2q;
+        }
+        const _chosen = p2ShipQuoteDeck.shift();
+        p2ShipQuoteLastShown = _chosen;
+        p2ShipQuote = { text: _chosen, shownAt: performance.now() };
+      }
+      return;
+    }
+
     // Shield toggle - also closes settings menu
     if (_inBox(mx, my, shieldHitbox)) {
       e.stopPropagation();
@@ -2706,20 +4573,48 @@
     if (gravityState === 'idle' && _inBox(mx, my, arrowHitbox)) {
       e.stopPropagation();
       triggerGravityUpdate();
+      return;
+    }
+
+    // P2 ship selector toggle
+    if (_isP2Active && _inBox(mx, my, p2ShipMenuHitbox) && p2BlockingEnabled === true && p2WarpState === 'none') {
+      e.stopPropagation();
+      p2ShipMenuOpen = !p2ShipMenuOpen;
+      return;
+    }
+
+    // P2 shield toggle
+    if (_isP2Active && _inBox(mx, my, p2ShieldHitbox)) {
+      e.stopPropagation();
+      if (p2BlockingEnabled === false) setP2Blocking(true);
+      else if (p2BlockingEnabled === true) p2ShieldMenuOpen = true;
+      return;
+    }
+
+    // P2 gravity arrow
+    if (_isP2Active && p2GravityState === 'idle' && _inBox(mx, my, p2ArrowHitbox)) {
+      e.stopPropagation();
+      triggerP2GravityUpdate();
     }
   });
 
   canvas.addEventListener('mousemove', e => {
-    if (!active) { arrowHovered = false; shieldHovered = false; shipMenuHovered = false; canvas.style.cursor = ''; return; }
+    if (!active) { arrowHovered = false; shieldHovered = false; shipMenuHovered = false; p2ArrowHovered = false; p2ShieldHovered = false; p2ShipMenuHovered = false; canvas.style.cursor = ''; return; }
     const rect = canvas.getBoundingClientRect();
     mouseX = e.clientX - rect.left; mouseY = e.clientY - rect.top;
+    const _p2mv = twoPlayerMode !== 'off' && _p2ShipVisible;
     arrowHovered = gravityState === 'idle' && _inBox(mouseX, mouseY, arrowHitbox);
     shieldHovered = _inBox(mouseX, mouseY, shieldHitbox);
     shipMenuHovered = _inBox(mouseX, mouseY, shipMenuHitbox) && blockingEnabled === true && shipPowerState === 'up' && warpState === 'none';
+    p2ArrowHovered = _p2mv && p2GravityState === 'idle' && _inBox(mouseX, mouseY, p2ArrowHitbox);
+    p2ShieldHovered = _p2mv && _inBox(mouseX, mouseY, p2ShieldHitbox);
+    p2ShipMenuHovered = _p2mv && _inBox(mouseX, mouseY, p2ShipMenuHitbox) && p2BlockingEnabled === true && p2WarpState === 'none';
     const overShieldMenu   = shieldMenuOpen   && shieldMenuItems.some(item => _inBox(mouseX, mouseY, item.hitbox));
     const overShipMenu     = shipMenuOpen     && shipMenuItems.some(item => !item.active && !item.locked && _inBox(mouseX, mouseY, item.hitbox));
     const overSettingsMenu = settingsMenuOpen && settingsMenuItems.some(item => _inBox(mouseX, mouseY, item.hitbox));
-    canvas.style.cursor = (arrowHovered || shieldHovered || overShieldMenu || shipMenuHovered || overShipMenu || overSettingsMenu) ? 'pointer' : '';
+    const overP2ShieldMenu = p2ShieldMenuOpen && p2ShieldMenuItems.some(item => _inBox(mouseX, mouseY, item.hitbox));
+    const overP2ShipMenu   = p2ShipMenuOpen   && p2ShipMenuItems.some(item => !item.active && !item.locked && _inBox(mouseX, mouseY, item.hitbox));
+    canvas.style.cursor = (arrowHovered || shieldHovered || overShieldMenu || shipMenuHovered || overShipMenu || overSettingsMenu || p2ArrowHovered || p2ShieldHovered || overP2ShieldMenu || p2ShipMenuHovered || overP2ShipMenu) ? 'pointer' : '';
   });
 
   // The settings button sits above the canvas (z-index 16) and captures pointer events,
@@ -2727,6 +4622,7 @@
   if (phLinkEl) {
     phLinkEl.addEventListener('mouseenter', () => {
       arrowHovered = false; shieldHovered = false; shipMenuHovered = false;
+      p2ArrowHovered = false; p2ShieldHovered = false; p2ShipMenuHovered = false;
       canvas.style.cursor = '';
     });
     phLinkEl.addEventListener('click', () => {
@@ -2737,6 +4633,7 @@
   if (settingsBtnEl) {
     settingsBtnEl.addEventListener('mouseenter', () => {
       arrowHovered = false; shieldHovered = false; shipMenuHovered = false;
+      p2ArrowHovered = false; p2ShieldHovered = false; p2ShipMenuHovered = false;
       canvas.style.cursor = '';
     });
     settingsBtnEl.addEventListener('click', e => {
@@ -2748,6 +4645,8 @@
       if (settingsMenuOpen) {
         shieldMenuOpen = false;
         shipMenuOpen = false;
+        p2ShieldMenuOpen = false;
+        p2ShipMenuOpen = false;
       }
     });
   }
@@ -2777,4 +4676,39 @@
     if (gravityPollTimer) { clearTimeout(gravityPollTimer); gravityPollTimer = null; }
     window.enterPiholeMode();
   });
+
+  // Called by 2p.js when the modal closes, so mode changes take effect immediately
+  window._game2PReconnect = function() {
+    if (!active) return;
+    _disconnectP2();
+    setTimeout(() => { if (active) _init2P().catch(() => {}); }, 900);
+  };
+
+  // ── Test-only hook ─────────────────────────────────────────────────
+  // Opt-in (window.__PH_TEST must be set before load); never present in
+  // production. Exposes a read-only state snapshot plus direct drivers so the
+  // blocking/animation state machine can be exercised without canvas hit-testing.
+  if (window.__PH_TEST) {
+    window.__phTest = {
+      state: () => ({
+        blockingEnabled, shipPowerState, startupAt, launchAt, blockingCmdExpected,
+        p2BlockingEnabled, p2StartupAt, p2LaunchAt, p2PowerdownAt, p2CmdExpected,
+        carrierState, twoPlayerMode,
+        crewCount: crewMembers.length, p2CrewCount: p2CrewMembers.length,
+      }),
+      setBlocking: (e, t = null) => setBlocking(e, t),
+      setP2Blocking: (e, t = null) => setP2Blocking(e, t),
+      // Inject a dummy P2 crew member parked at post, to verify it is force-cleared
+      // when the shared carrier departs (rather than left orphaned).
+      // Placed far from the hatch so it cannot coincidentally reach the hatch and
+      // be filtered out within the carrier-leave window; only an explicit clear
+      // removes it.
+      addP2Crew: () => p2CrewMembers.push({
+        type: 'fuel', x: 9000, y: 9000, fromX: 9000, fromY: 9000, state: 'at_post',
+        stateAt: performance.now(), wpIdx: 0, waypoints: [], returnPath: [],
+        bumpX: 0, bumpY: 0, fleeX: 9000, fleeViaY: 9000, hoseFwdWpIdx: 0,
+        spawnedAt: performance.now(), lifetime: 9e9,
+      }),
+    };
+  }
 })();

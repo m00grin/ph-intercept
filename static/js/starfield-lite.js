@@ -16,10 +16,17 @@ let zoomLevel = 1;
 const canvas = document.getElementById('starfield');
 const ctx    = canvas.getContext('2d');
 let w = 0, h = 0;
+let _dpr = 1;   // device pixel ratio the backing store is sized for (read by dso-render.js)
 
 function resize() {
-  w = canvas.width  = window.innerWidth;
-  h = canvas.height = window.innerHeight;
+  // Match the game canvas: render at physical-pixel resolution so fractional OS/browser
+  // scaling stays crisp. w/h stay in CSS pixels; the transform maps them to device pixels.
+  // At devicePixelRatio 1 this is a no-op (transform = identity).
+  _dpr = Math.min(window.devicePixelRatio || 1, 3);
+  w = window.innerWidth; h = window.innerHeight;
+  canvas.width = Math.round(w * _dpr); canvas.height = Math.round(h * _dpr);
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
   bgDirty = true;   // defined in dso-render.js
 }
 window.addEventListener('resize', resize);
@@ -51,8 +58,12 @@ function draw(t) {
     buildBg(t);
     lastBgUpdate = t;
   }
-  ctx.clearRect(0, 0, w, h);
+  // bgCanvas is sized to device pixels (see buildBg), so blit it 1:1 at identity,
+  // then restore the DPR transform for the transients drawn below in CSS coords.
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.drawImage(bgCanvas, 0, 0);
+  ctx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
 
   // Transients
   if (t - lastSatSpawn > nextSatDelay) {

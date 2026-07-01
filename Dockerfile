@@ -9,7 +9,7 @@ COPY core/      core/
 COPY static/    static/
 COPY templates/ templates/
 COPY app.py     .
-RUN adduser -u 1000 -D -H -s /sbin/nologin app && chown -R app:app /app
+RUN adduser -u 1000 -D -H -s /sbin/nologin app && mkdir -p /app/data && chown -R app:app /app
 USER app
 EXPOSE 4653
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4653"]

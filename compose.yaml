@@ -44,9 +44,17 @@ services:
       # Optional: comma-separated regex patterns. Matching domains spawn no ships. Case-insensitive.
       # PIHOLE_IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
+      # 2-player local mode: set the URL (and password if the second Pi-hole has one)
+      # to enable a second Pi-hole ship on the right half
+      # PIHOLE2_URL: "http://192.168.1.3:8053/api"
+      # PIHOLE2_PASSWORD: ${PIHOLE2_PASSWORD}
+      # PIHOLE2_VERIFY_SSL: "true"
+
     volumes:
       # Portainer Web users: This will resolve to /data/compose/<stack-id>/bg/
       - ./bg:/app/static/bg
+      # Persists 2-player mode state across container restarts
+      - data:/app/data
 
     cap_drop:
       - ALL
@@ -77,3 +85,6 @@ services:
 # networks:
 #   dns_net:
 #     external: true
+
+volumes:
+  data:

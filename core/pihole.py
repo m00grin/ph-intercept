@@ -5,7 +5,7 @@ import os
 
 import httpx
 
-from .config import PIHOLE_BASE, IGNORE_DOMAIN_PATTERNS
+from .config import PIHOLE_BASE, PIHOLE2_URL, IGNORE_DOMAIN_PATTERNS
 
 logger = logging.getLogger(__name__)
 
@@ -126,6 +126,47 @@ async def trigger_gravity_update(http_client: httpx.AsyncClient) -> dict:
         return {"error": "internal error"}
 
 
+async def toggle_p2_blocking(http_client: httpx.AsyncClient, enable: bool, timer: int | None = None) -> dict:
+    try:
+        if not await _p2_ensure_auth(http_client):
+            return {"error": "auth failed"}
+        resp = await http_client.post(
+            f"{PIHOLE2_URL}/dns/blocking",
+            content=json.dumps({"blocking": enable, "timer": timer}),
+            headers={**( {"X-FTL-SID": _p2_pihole_sid} if _p2_pihole_sid else {} ), "Content-Type": "application/json"},
+        )
+        if resp.status_code == 401:
+            await _p2_drop_session(http_client)
+            return {"error": "session expired"}
+        data = resp.json()
+        return {"blocking": data["blocking"] == "enabled" if "blocking" in data else enable}
+    except Exception:
+        logger.exception("toggle_p2_blocking failed")
+        return {"error": "internal error"}
+
+
+async def trigger_p2_gravity_update(http_client: httpx.AsyncClient) -> dict:
+    try:
+        if not await _p2_ensure_auth(http_client):
+            return {"error": "auth failed"}
+        resp = await http_client.post(
+            f"{PIHOLE2_URL}/action/gravity",
+            headers={"X-FTL-SID": _p2_pihole_sid} if _p2_pihole_sid else {},
+            timeout=10.0,
+        )
+        if resp.status_code == 401:
+            await _p2_drop_session(http_client)
+            return {"error": "session expired"}
+        if resp.status_code not in (200, 202, 204):
+            return {"error": f"status {resp.status_code}"}
+        return {"ok": True}
+    except httpx.TimeoutException:
+        return {"error": "timeout"}
+    except Exception:
+        logger.exception("trigger_p2_gravity_update failed")
+        return {"error": "internal error"}
+
+
 async def _broadcast(events: list[dict]) -> None:
     if not events or not _pihole_ws_clients:
         return
@@ -228,3 +269,179 @@ async def query_poller(http_client: httpx.AsyncClient) -> None:
             raise
         except Exception:
             logger.debug("query_poller tick error", exc_info=True)
+
+
+# ── P2 local (second Pi-hole for local split-screen) ─────────────────────────
+
+_p2_pihole_sid: str | None = None
+_p2_pihole_auth_lock: asyncio.Lock = asyncio.Lock()
+_p2_pihole_ws_clients: set = set()
+_p2_pihole_last_q_time: float = 0.0
+
+
+async def _p2_ensure_auth(http_client: httpx.AsyncClient) -> bool:
+    global _p2_pihole_sid
+    if _p2_pihole_sid is not None:
+        return True
+    async with _p2_pihole_auth_lock:
+        if _p2_pihole_sid is not None:
+            return True
+        try:
+            resp = await http_client.post(
+                f"{PIHOLE2_URL}/auth",
+                content=json.dumps({"password": os.environ.get("PIHOLE2_PASSWORD", "")}),
+                headers={"Content-Type": "application/json"},
+            )
+            session = resp.json().get("session", {})
+            if session.get("valid"):
+                _p2_pihole_sid = session.get("sid") or ""
+                return True
+        except Exception:
+            pass
+        return False
+
+
+async def _p2_drop_session(http_client: httpx.AsyncClient) -> None:
+    global _p2_pihole_sid
+    sid, _p2_pihole_sid = _p2_pihole_sid, None
+    if not sid:
+        return
+    try:
+        await http_client.delete(
+            f"{PIHOLE2_URL}/auth",
+            headers={"X-FTL-SID": sid},
+            timeout=0.5,
+        )
+    except Exception:
+        pass
+
+
+async def get_p2_pihole_stats(http_client: httpx.AsyncClient) -> dict | None:
+    try:
+        if not await _p2_ensure_auth(http_client):
+            return None
+        headers = {"X-FTL-SID": _p2_pihole_sid} if _p2_pihole_sid else {}
+        summary, blocking_resp = await asyncio.gather(
+            http_client.get(f"{PIHOLE2_URL}/stats/summary", headers=headers),
+            http_client.get(f"{PIHOLE2_URL}/dns/blocking", headers=headers),
+        )
+        if summary.status_code == 401:
+            await _p2_drop_session(http_client)
+            return None
+        data = summary.json()
+        b = blocking_resp.json()
+        q = data.get("queries", {})
+        return {
+            "queries": q.get("total", 0),
+            "blocked": q.get("blocked", 0),
+            "percent": round(q.get("percent_blocked", 0), 1),
+            "gravity": data.get("gravity", {}).get("domains_being_blocked", 0),
+            "blocking": None if b.get("error") else (b.get("blocking") == "enabled"),
+            "block_timer": None if b.get("error") else b.get("timer"),
+        }
+    except Exception:
+        return None
+
+
+async def _p2_broadcast(events: list[dict]) -> None:
+    if not events or not _p2_pihole_ws_clients:
+        return
+    payload = json.dumps(events)
+    for q in list(_p2_pihole_ws_clients):
+        try:
+            q.put_nowait(payload)
+        except asyncio.QueueFull:
+            try:
+                q.put_nowait(None)
+            except asyncio.QueueFull:
+                pass
+            _p2_pihole_ws_clients.discard(q)
+
+
+def add_p2_ws_client(q: asyncio.Queue) -> None:
+    _p2_pihole_ws_clients.add(q)
+
+
+def remove_p2_ws_client(q: asyncio.Queue) -> None:
+    _p2_pihole_ws_clients.discard(q)
+
+
+async def drop_p2_session(http_client: httpx.AsyncClient) -> None:
+    await _p2_drop_session(http_client)
+
+
+def reset_p2_watermark() -> None:
+    global _p2_pihole_last_q_time
+    _p2_pihole_last_q_time = 0.0
+
+
+async def query_p2_poller(http_client: httpx.AsyncClient) -> None:
+    global _p2_pihole_last_q_time
+    while True:
+        await asyncio.sleep(0.5)
+        if not _p2_pihole_ws_clients:
+            continue
+        try:
+            if not await _p2_ensure_auth(http_client):
+                continue
+
+            resp = await http_client.get(
+                f"{PIHOLE2_URL}/queries?limit=50",
+                headers={"X-FTL-SID": _p2_pihole_sid} if _p2_pihole_sid else {},
+                timeout=1.5,
+            )
+            if resp.status_code == 401:
+                await _p2_drop_session(http_client)
+                continue
+            if resp.status_code != 200:
+                continue
+
+            body = resp.json()
+            queries = body.get("queries") or body.get("data") or []
+            if not queries:
+                continue
+
+            if _p2_pihole_last_q_time == 0.0:
+                _p2_pihole_last_q_time = max(qq.get("time", 0) for qq in queries)
+
+            new_qs = [qq for qq in queries if qq.get("time", 0) > _p2_pihole_last_q_time]
+            if not new_qs:
+                continue
+
+            _p2_pihole_last_q_time = max(qq.get("time", 0) for qq in new_qs)
+
+            events: list[dict] = []
+            for qq in new_qs[:20]:
+                domain = qq.get("domain") or qq.get("name", "unknown")
+                if IGNORE_DOMAIN_PATTERNS and any(p.search(domain) for p in IGNORE_DOMAIN_PATTERNS):
+                    continue
+                status_raw = qq.get("status")
+                if isinstance(status_raw, int):
+                    is_blocked = status_raw in _BLOCKED_STATUS_INT
+                else:
+                    is_blocked = any(kw in str(status_raw).upper() for kw in _BLOCKED_STATUS_STR)
+                client_raw = qq.get("client", {})
+                if isinstance(client_raw, dict):
+                    client_label = client_raw.get("name") or client_raw.get("ip") or ""
+                else:
+                    client_label = str(client_raw) if client_raw else ""
+                if not is_blocked:
+                    if isinstance(status_raw, int):
+                        is_cache = status_raw in _CACHE_STATUS_INT
+                    else:
+                        is_cache = any(kw in str(status_raw).upper() for kw in _CACHE_STATUS_STR)
+                    source = "cache" if is_cache else "upstream"
+                else:
+                    source = "blocked"
+                events.append({
+                    "domain": domain,
+                    "status": "blocked" if is_blocked else "allowed",
+                    "source": source,
+                    "client": client_label,
+                })
+            await _p2_broadcast(events)
+
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            logger.debug("query_p2_poller tick error", exc_info=True)

@@ -3,7 +3,10 @@ let bgCanvas = null, bgCtx = null, bgDirty = true, lastBgUpdate = 0;
 
 function buildBg(t) {
   if (!bgCanvas) { bgCanvas = document.createElement('canvas'); bgCtx = bgCanvas.getContext('2d'); }
-  if (bgDirty) { bgCanvas.width = w; bgCanvas.height = h; }
+  // Size the offscreen to device pixels so it blits 1:1 onto the device-resolution
+  // main canvas; the transform lets us keep drawing star positions in CSS pixels.
+  if (bgDirty) { bgCanvas.width = Math.round(w * _dpr); bgCanvas.height = Math.round(h * _dpr); }
+  bgCtx.setTransform(_dpr, 0, 0, _dpr, 0, 0);
   bgCtx.clearRect(0, 0, w, h);
   bgCtx.fillStyle = '#000';
   bgCtx.fillRect(0, 0, w, h);

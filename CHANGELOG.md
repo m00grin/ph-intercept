@@ -4,6 +4,28 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.4.0] - 2026-06-30
+
+### Added
+
+- **Local 2-player mode** -- two DNS instances side by side in split-screen, each with its own events, stats, and controls. Pairs two Pi-holes (`PIHOLE2_URL` / `PIHOLE2_PASSWORD`) or two AdGuard Home instances (`ADGUARD2_URL` / `ADGUARD2_USERNAME` / `ADGUARD2_PASSWORD`). Enable it from the in-game 2-player panel.
+
+### Changed
+
+- **Crisp rendering under fractional display scaling** -- canvases render at device-pixel resolution, so scaling like Windows 150% no longer looks blocky.
+
+### Fixed
+
+- **Ground crew during timed disables** -- the 30-second crew-emerge timer was reset by the live countdown, so crew never appeared for timed disables. Now tracked from when blocking turns off.
+- **Resize while docked** -- docked ships and crew stay on the carrier instead of drifting off when the window is resized.
+- **Ship-menu SELECT tap target** -- enlarged to match the visible control.
+
+### Infrastructure
+
+- Bumped `starlette` to 1.3.1 and `uvicorn` to 0.49.0.
+
+---
+
 ## [1.3.4] - 2026-05-27
 
 ### Security

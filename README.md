@@ -2,7 +2,7 @@
 
 A Pi-hole DNS dashboard that runs as a standalone Docker container. Streams live DNS query events from your Pi-hole v6 API and renders them as pixel-art friendlies and enemies. Blocked queries are destroyed by the ship, allowed queries fly through. Toggle blocking, set timed blocks, trigger gravity updates, and switch ships from the HUD.
 
-Designed to be dropped in alongside an existing Pi-hole v6 setup with no extra dependencies.
+Designed to be dropped in alongside an existing Pi-hole v6 setup with no extra dependencies. Two instances can run side by side in [local 2-player split-screen](#local-2-player-mode).
 
 <img width="1713" height="1254" alt="image" src="https://github.com/user-attachments/assets/791ba70f-c6cd-4495-8135-0e0d2286668e" />
 
@@ -71,9 +71,17 @@ services:
       # Optional: comma-separated regex patterns. Matching domains spawn no ships. Case-insensitive.
       # PIHOLE_IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
+      # 2-player local mode: set the URL (and password if the second Pi-hole has one)
+      # to enable a second Pi-hole ship on the right half
+      # PIHOLE2_URL: "http://192.168.1.3:8053/api"
+      # PIHOLE2_PASSWORD: ${PIHOLE2_PASSWORD}
+      # PIHOLE2_VERIFY_SSL: "true"
+
     volumes:
       # Portainer Web users: This will resolve to /data/compose/<stack-id>/bg/
       - ./bg:/app/static/bg
+      # Persists 2-player mode state across container restarts
+      - data:/app/data
 
     cap_drop:
       - ALL
@@ -104,6 +112,9 @@ services:
 # networks:
 #   dns_net:
 #     external: true
+
+volumes:
+  data:
 ```
 
 **3.** Start the container:
@@ -121,7 +132,7 @@ Open `http://your-host:4653`.
 | Tag | What it is |
 |-----|------------|
 | `:latest` | Latest stable release. |
-| `:X.Y.Z` | Pinned release (e.g. `1.2.0`). |
+| `:X.Y.Z` | Pinned release (e.g. `1.4.0`). |
 | `:develop` | Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
 
 ---
@@ -234,6 +245,29 @@ All configuration is via environment variables in `compose.yaml`.
 | `BG_IMAGE` | `""` | Image URL or `/bg/filename.jpg`. Overrides `BG_MODE` when set. |
 | `PIHOLE_VERIFY_SSL` | `true` | Set to `false` if Pi-hole uses HTTPS with a self-signed certificate. |
 | `PIHOLE_IGNORE_DOMAINS` | _(unset)_ | Comma-separated regex patterns. Domains that match spawn no ships. Case-insensitive; escape literal dots (`\.local$`). Example: `.*\.local$,.*\.internal$` |
+
+---
+
+## Local 2-Player Mode
+
+Two DNS instances can run side by side in split-screen. Player 1's ship occupies the left half of the canvas, Player 2's ship the right. Each instance streams its own query events, stats, blocking toggle, and gravity/filter updates independently.
+
+Add the second Pi-hole to your `compose.yaml` environment block:
+
+```yaml
+PIHOLE2_URL: "http://192.168.1.3:8053/api"
+PIHOLE2_PASSWORD: ${PIHOLE2_PASSWORD}
+```
+
+And add the password to your `.env` file:
+
+```env
+PIHOLE2_PASSWORD=your_second_pihole_password
+```
+
+`PIHOLE2_PASSWORD` can be omitted if the second Pi-hole has no app password set. Setting a valid `PIHOLE2_URL` is all that is required to make the mode available; turn it on from the in-game 2-player panel. On/off state is saved to the `data` volume, so it survives container restarts.
+
+> **AdGuard Home?** The second instance mirrors your primary provider, so an AdGuard setup pairs with a second AdGuard Home via `ADGUARD2_URL` / `ADGUARD2_USERNAME` / `ADGUARD2_PASSWORD`. See the [AdGuard 2-player setup](adguard/README.md#local-2-player-mode).
 
 ---
 

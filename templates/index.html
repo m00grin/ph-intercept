@@ -22,7 +22,7 @@
 
 <!-- BG config injected server-side so JS doesn't need a separate fetch -->
 <script type="application/json" id="bg-config">{{ bg_config | tojson }}</script>
-<script>window.PROVIDER = {{ provider | tojson }};</script>
+<script>window.PROVIDER = {{ provider | tojson }}; window.P2_DASHBOARD = {{ p2_dashboard | tojson }}; window.TWO_PLAYER_ENABLED = {{ two_player_enabled | tojson }};</script>
 
 <div id="bg-image"></div>
 
@@ -68,6 +68,7 @@ if (window.BG_CONFIG.bg_image) {
 <!-- Game -->
 <script src="/static/js/game-bitmaps.js"></script>
 <script src="/static/js/game.js"></script>
+<script src="/static/js/2p.js"></script>
 
 </body>
 </html>

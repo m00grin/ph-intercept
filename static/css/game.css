@@ -121,3 +121,181 @@ body.pihole-mode #pihole-canvas {
 
 /* Pi-hole dashboard link - hidden DOM element used only as a URL carrier */
 #pihole-link { display: none; }
+
+/* ── 2-player modal ──────────────────────────────────────────────── */
+#m2p-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  background: rgba(0, 0, 0, 0.68);
+  align-items: center;
+  justify-content: center;
+}
+#m2p-overlay.m2p-open { display: flex; }
+
+#m2p-box {
+  position: relative;
+  background: rgba(8, 11, 16, 0.97);
+  padding: 26px 30px 24px;
+  min-width: 340px;
+  max-width: 520px;
+  width: calc(100vw - 40px);
+  max-height: 90vh;
+  overflow-y: auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* Bracket corners -- 8 gradient slices: 2 per corner (horizontal + vertical arm) */
+#m2p-box::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+  background:
+    linear-gradient(rgba(140,160,175,0.42),rgba(140,160,175,0.42)) 0     0    /14px 2px  no-repeat,
+    linear-gradient(rgba(140,160,175,0.42),rgba(140,160,175,0.42)) 0     0    /2px  14px no-repeat,
+    linear-gradient(rgba(140,160,175,0.42),rgba(140,160,175,0.42)) 100%  0    /14px 2px  no-repeat,
+    linear-gradient(rgba(140,160,175,0.42),rgba(140,160,175,0.42)) 100%  0    /2px  14px no-repeat,
+    linear-gradient(rgba(140,160,175,0.42),rgba(140,160,175,0.42)) 0     100% /14px 2px  no-repeat,
+    linear-gradient(rgba(140,160,175,0.42),rgba(140,160,175,0.42)) 0     100% /2px  14px no-repeat,
+    linear-gradient(rgba(140,160,175,0.42),rgba(140,160,175,0.42)) 100%  100% /14px 2px  no-repeat,
+    linear-gradient(rgba(140,160,175,0.42),rgba(140,160,175,0.42)) 100%  100% /2px  14px no-repeat;
+}
+
+/* Inner top glow -- matches the HUD strip highlight */
+#m2p-box::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 36px;
+  pointer-events: none;
+  background: linear-gradient(rgba(140,160,175,0.07), rgba(140,160,175,0));
+}
+
+#m2p-title {
+  font-family: "Press Start 2P", monospace;
+  font-size: 10px;
+  color: rgba(175, 200, 238, 0.75);
+  letter-spacing: 0.06em;
+  margin-bottom: 18px;
+}
+
+.m2p-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 28px;
+}
+
+.m2p-label {
+  font-family: "Press Start 2P", monospace;
+  font-size: 10px;
+  color: rgba(175, 200, 238, 0.55);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.m2p-status-val {
+  font-family: "Press Start 2P", monospace;
+  font-size: 10px;
+  flex: 1;
+}
+.m2p-status-val.online  { color: rgba(50,  215, 120, 0.90); }
+.m2p-status-val.offline { color: rgba(255,  80,  60, 0.90); }
+
+/* Buttons */
+.m2p-btn {
+  font-family: "Press Start 2P", monospace;
+  font-size: 8px;
+  background: none;
+  border: 1px solid rgba(140, 160, 175, 0.22);
+  color: rgba(175, 200, 238, 0.60);
+  padding: 6px 10px;
+  cursor: pointer;
+  letter-spacing: 0.04em;
+  transition: color 120ms, border-color 120ms;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.m2p-btn:hover           { color: rgba(215,225,248,0.95); border-color: rgba(140,160,175,0.55); }
+.m2p-btn.active          { color: rgba(50,215,120,0.95);  border-color: rgba(50,215,120,0.50); }
+.m2p-btn.danger:hover    { color: rgba(255,100,80,0.95);  border-color: rgba(255,100,80,0.50); }
+.m2p-btn.dim             { opacity: 0.35; cursor: not-allowed; }
+.m2p-btn.flash           { color: rgba(50,215,120,0.95);  border-color: rgba(50,215,120,0.50); }
+
+/* Segmented mode buttons sit side by side */
+.m2p-seg { display: flex; gap: 6px; }
+
+/* Hash value display */
+/* Info text (local mode) */
+.m2p-info {
+  font-family: "Press Start 2P", monospace;
+  font-size: 8px;
+  color: rgba(175, 200, 238, 0.45);
+  letter-spacing: 0.04em;
+  margin: 4px 0;
+}
+.m2p-error {
+  font-family: "Press Start 2P", monospace;
+  font-size: 7px;
+  color: rgba(255, 100, 80, 0.90);
+  letter-spacing: 0.03em;
+  line-height: 1.8;
+  margin: 8px 0 2px;
+}
+
+
+/* Edit-fields pill toggle -- matches canvas settings pill exactly */
+.m2p-pill {
+  width: 36px;
+  height: 14px;
+  position: relative;
+  cursor: pointer;
+  background: rgba(30, 32, 40, 0.55);
+  border: 1px solid rgba(85, 88, 100, 0.50);
+  transition: background 120ms, border-color 120ms;
+  flex-shrink: 0;
+}
+.m2p-pill.on {
+  background: rgba(50, 215, 120, 0.22);
+  border-color: rgba(50, 215, 120, 0.60);
+}
+.m2p-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 10px;
+  height: 10px;
+  background: rgba(95, 100, 115, 0.75);
+  transition: left 120ms, background 120ms;
+}
+.m2p-pill.on .m2p-knob {
+  left: 24px;
+  background: rgba(50, 215, 120, 0.95);
+}
+
+/* Divider */
+.m2p-divider {
+  height: 1px;
+  background: rgba(140, 160, 175, 0.13);
+  margin: 13px 0;
+}
+
+/* Footer */
+.m2p-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* Error message under save */
+.m2p-error {
+  font-family: "Press Start 2P", monospace;
+  font-size: 8px;
+  color: rgba(255, 80, 60, 0.85);
+  letter-spacing: 0.03em;
+  margin-top: 6px;
+}

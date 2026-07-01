@@ -556,12 +556,16 @@ function drawBmp(ctx, bmp, cx, cy, color, glowColor, px, solid = false, rowFrom 
   }
 }
 
-// Sprite cache: pre-renders (bmp, color, glow, px) to an OffscreenCanvas once,
+// Sprite cache: pre-renders (bmp, color, glow, px) to an ImageBitmap once,
 // then game.js uses ctx.drawImage per entity instead of N shadow-blurred fillRects.
-// Off-screen canvas pixel data can be silently cleared by the browser on sleep/wake
-// (GPU resource reclaim on resume). clearSpriteCache() forces a full rebuild on next use.
+// ImageBitmap lives in system memory and cannot be silently reclaimed by the browser,
+// unlike HTMLCanvasElement backing stores which Chrome can zero when the window loses focus.
 const _spriteCache = new Map();
-function clearSpriteCache() { _spriteCache.clear(); }
+function clearSpriteCache() {
+  for (const inner of _spriteCache.values())
+    for (const entry of inner.values()) entry.bitmap.close();
+  _spriteCache.clear();
+}
 function getCachedSprite(bmp, color, glowColor, px) {
   let inner = _spriteCache.get(bmp);
   if (!inner) { inner = new Map(); _spriteCache.set(bmp, inner); }
@@ -570,10 +574,9 @@ function getCachedSprite(bmp, color, glowColor, px) {
   const cols = bmpW(bmp), rows = bmpH(bmp);
   const pad = 10; // room for shadowBlur bleed
   const w = cols * px + pad * 2, h = rows * px + pad * 2;
-  const oc = document.createElement('canvas');
-  oc.width = w; oc.height = h;
+  const oc = new OffscreenCanvas(w, h);
   drawBmp(oc.getContext('2d'), bmp, w / 2, h / 2, color, glowColor, px);
-  const entry = { canvas: oc, w, h };
+  const entry = { bitmap: oc.transferToImageBitmap(), w, h };
   inner.set(key, entry);
   return entry;
 }
