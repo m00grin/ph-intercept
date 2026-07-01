@@ -36,6 +36,11 @@
   const debris = [];
   const chainRings = [];
   let blockingEnabled = null; // null=unknown, true, false
+  // Reconciliation guard for the local blocking toggle: while a command is
+  // pending, ignore stale poll reads (which lag the toggle round-trip + Pi-hole
+  // propagation) so a delayed poll can't spuriously flip shipPowerState after a
+  // genuine toggle. null = none pending, else true/false.
+  let blockingCmdExpected = null, blockingCmdDeadline = 0;
   let _firstEnterFetch = false;
   let blockingOffAt = 0;
   let blockingDuration = 0;   // ms; 0 = indefinite
@@ -163,7 +168,7 @@
     swordfish:  ["Bang.", "Whatever happens, happens.", "I'm not going there to die. I'm going to find out if I'm really alive.", "I'm not a bounty hunter for the money.", "I love a man who can cook.", "Ed and Ein are hungry!"],
     enterprise: ["THERE ARE FOUR LIGHTS!", "Good tea, nice house.", "Shaka, when the walls fell.", "Will you.. Please... Sit down?", "Live long and prosper.", "The needs of the many outweigh the needs of the few, or the one.", "He's dead, Jim.", "Risk is our business.", "Fascinating."],
     serenity:   ["Time for some thrilling heroics.", "I am a leaf on the wind. Watch how I soar.", "Curse your sudden but inevitable betrayal!", "Also, I can kill you with my brain."],
-    normandy:   ["Just because I like you doesn't mean I won't kill you.", "I'm Commander Shepard, and this is my favorite store on the Citadel.", "I should go."],
+    normandy:   ["Just because I like you doesn't mean I won't kill you.", "I'm Commander Shepard, and this is my favorite store on the Citadel.", "I should go.", "You big stupid jellyfish!", "Does this unit have a soul?", "Emergency... Induction... Port.", "I've had enough of your snide insinuations!"],
     pes:        ["Good news everyone!", "I don't want to live on this planet anymore.", "Shut up and take my money!", "I did do the nasty in the pasty."],
     inbound:    ["[coming soon.]"],
   };
@@ -1059,6 +1064,7 @@
       if (carrierState === 'present' && (twoPlayerMode === 'off' || (p2BlockingEnabled !== false && p2StartupAt === 0))) {
         carrierState = 'leaving'; carrierLeavingAt = t;
         crewMembers = []; crewNextSpawn = 0; lastFuelAt = 0;
+        if (twoPlayerMode !== 'off') { p2CrewMembers = []; p2CrewNextSpawn = 0; p2LastFuelAt = 0; }
         chainRings.push({ x: shipX, y: shipY, born: t, dur: 380, maxR: 90,
           col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' });
       }
@@ -1104,11 +1110,15 @@
       carrierState = 'leaving'; carrierLeavingAt = t;
       if (twoPlayerMode === 'off') launchAt = t;
       crewMembers = []; crewNextSpawn = 0; lastFuelAt = 0;
+      if (twoPlayerMode !== 'off') { p2CrewMembers = []; p2CrewNextSpawn = 0; p2LastFuelAt = 0; }
     }
     if (carrierState === 'leaving') {
       const lp = Math.min(1, (t - carrierLeavingAt) / CARRIER_LEAVE_DUR);
       carrierY = carrierRestY + lp * lp * (H + 240 - carrierRestY);
-      if (lp >= 1) { carrierState = 'none'; carrierY = 0; carrierRestY = 0; }
+      // Carrier gone -> no ship docked, so no crew should remain. The P2 crew loop
+      // is gated on carrierState !== 'none', so any still-fleeing crew would freeze
+      // and reappear on the next arrival; force-clear them here as a catch-all.
+      if (lp >= 1) { carrierState = 'none'; carrierY = 0; carrierRestY = 0; if (twoPlayerMode !== 'off') { p2CrewMembers = []; p2CrewNextSpawn = 0; p2LastFuelAt = 0; } }
     }
 
     // P2 timed-block auto-re-enable
@@ -3869,7 +3879,9 @@
             if (d.blocking === true && _pb === false && p2StartupAt === 0 && p2LaunchAt === 0) { const _now = performance.now(); p2StartupAt = _now; p2PowerdownAt = 0; p2GunCheckFiredAt[0] = 0; p2GunCheckFiredAt[1] = 0; if ((twoPlayerMode !== 'off' ? carrierState : p2CarrierState) === 'none') chainRings.push({ x: p2ShipX, y: p2ShipY, born: _now, dur: 380, maxR: 90, col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' }); }
             // Only tear down startup on a genuine enabled->disabled transition; a
             // stray poll reporting 'false' must not nuke a running startup.
-            if (d.blocking === false && _pb !== false) { p2StartupAt = 0; if (_pb === true) p2PowerdownAt = performance.now(); }
+            // Clear p2LaunchAt too, else its stale value blocks the next enable's
+            // startup trigger (guarded by p2LaunchAt === 0).
+            if (d.blocking === false && _pb !== false) { p2StartupAt = 0; p2LaunchAt = 0; if (_pb === true) p2PowerdownAt = performance.now(); }
             if (twoPlayerMode === 'off' && _pb !== false && d.blocking === false && _p2ShipVisible && p2CarrierState === 'none') { p2CarrierState = 'arriving'; p2CarrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; p2CarrierY = H + 240; p2CarrierArrivingAt = performance.now(); }
             if (twoPlayerMode !== 'off' && _pb !== false && d.blocking === false && _p2ShipVisible && carrierState === 'none') { carrierState = 'arriving'; carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; carrierY = H + 240; carrierArrivingAt = performance.now(); }
           }
@@ -3985,6 +3997,7 @@
     gravityState = 'idle'; gravityDoneAt = 0;
     if (gravityPollTimer) { clearTimeout(gravityPollTimer); gravityPollTimer = null; }
     blockingEnabled = null; // preserve blockingOffAt/blockingDuration so active timers survive exit/re-enter
+    blockingCmdExpected = null; blockingCmdDeadline = 0;
     shipPowerState = 'up'; startupAt = 0; lastEnemyAt = 0;
     gunCheckState = 0; gunCheckFiredAt = [0, 0];
     carrierState = 'none'; carrierY = 0; carrierRestY = 0; carrierArrivingAt = 0; carrierLeavingAt = 0; launchAt = 0;
@@ -4022,6 +4035,13 @@
     function fetchPiholeStats() {
       fetch('/api/pihole/stats', { signal: AbortSignal.timeout(1800) }).then(r => r.json()).then(d => {
         if (d.gravity != null) hudGravity = d.gravity;
+        // Reconciliation: while a local toggle is pending, a poll still reflecting
+        // the pre-toggle state is stale. Ignore it until the backend catches up
+        // (or the deadline lapses) so it can't spuriously flip shipPowerState.
+        if (blockingCmdExpected !== null && d.blocking != null) {
+          if (d.blocking === blockingCmdExpected || performance.now() >= blockingCmdDeadline) blockingCmdExpected = null;
+          else d = { ...d, blocking: null };
+        }
         if (d.blocking != null) {
           const _wasFirst = _firstEnterFetch;
           if (_firstEnterFetch) _firstEnterFetch = false;
@@ -4173,6 +4193,9 @@
   // ── Blocking toggle ───────────────────────────────────────────────
   function setBlocking(enable, timerSec = null) {
     blockingEnabled = enable;
+    // Arm the reconciliation guard: suppress stale polls until the backend
+    // reports this value (or the 4s deadline lapses if the toggle silently failed).
+    blockingCmdExpected = enable; blockingCmdDeadline = performance.now() + 4000;
     shieldMenuOpen = false;
     if (!enable) {
       blockingOffAt = performance.now();
@@ -4198,6 +4221,9 @@
       body: JSON.stringify({ enable, timer: timerSec }),
     }).then(r => r.json()).then(d => {
       if ('blocking' in d) {
+        // Server disagrees with the request (rejected/failed) -> drop the guard and
+        // let reality win; agrees -> keep it armed until a poll confirms.
+        if (d.blocking !== blockingCmdExpected) blockingCmdExpected = null;
         blockingEnabled = d.blocking;
         if (!blockingEnabled && shipPowerState === 'startup') shipPowerState = 'down';
       }
@@ -4247,7 +4273,7 @@
     if (enable === false && timerSec > 0) { p2BlockingOffAt = performance.now(); p2BlockingDuration = timerSec * 1000; }
     else if (enable === true) { p2BlockingDuration = 0; }
     if (enable === true && _prevP2 === false) { const _now = performance.now(); p2StartupAt = _now; p2PowerdownAt = 0; p2GunCheckFiredAt[0] = 0; p2GunCheckFiredAt[1] = 0; const _p2rc = twoPlayerMode !== 'off' ? carrierState : p2CarrierState; if (_p2rc === 'none') chainRings.push({ x: p2ShipX, y: p2ShipY, born: _now, dur: 380, maxR: 90, col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' }); }
-    if (enable === false) { p2StartupAt = 0; if (_prevP2 === true) p2PowerdownAt = performance.now(); }
+    if (enable === false) { p2StartupAt = 0; p2LaunchAt = 0; if (_prevP2 === true) p2PowerdownAt = performance.now(); }
     if (twoPlayerMode === 'off' && _prevP2 !== false && enable === false && _p2ShipVisible && p2CarrierState === 'none') {
       p2CarrierState = 'arriving'; p2CarrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10;
       p2CarrierY = H + 240; p2CarrierArrivingAt = performance.now();
@@ -4270,7 +4296,7 @@
         if (d.blocking !== p2CmdExpected) p2CmdExpected = null;
         const _pb2 = p2BlockingEnabled; p2BlockingEnabled = d.blocking;
         if (d.blocking === true && _pb2 === false && p2StartupAt === 0 && p2LaunchAt === 0) { const _now = performance.now(); p2StartupAt = _now; p2PowerdownAt = 0; p2GunCheckFiredAt[0] = 0; p2GunCheckFiredAt[1] = 0; const _p2rc = twoPlayerMode !== 'off' ? carrierState : p2CarrierState; if (_p2rc === 'none') chainRings.push({ x: p2ShipX, y: p2ShipY, born: _now, dur: 380, maxR: 90, col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' }); }
-        if (d.blocking === false && _pb2 !== false) { p2StartupAt = 0; if (_pb2 === true) p2PowerdownAt = performance.now(); }
+        if (d.blocking === false && _pb2 !== false) { p2StartupAt = 0; p2LaunchAt = 0; if (_pb2 === true) p2PowerdownAt = performance.now(); }
         if (twoPlayerMode === 'off' && _pb2 !== false && d.blocking === false && _p2ShipVisible && p2CarrierState === 'none') { p2CarrierState = 'arriving'; p2CarrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; p2CarrierY = H + 240; p2CarrierArrivingAt = performance.now(); }
         if (twoPlayerMode !== 'off' && _pb2 !== false && d.blocking === false && _p2ShipVisible && carrierState === 'none') { carrierState = 'arriving'; carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; carrierY = H + 240; carrierArrivingAt = performance.now(); }
       }
@@ -4607,4 +4633,32 @@
     _disconnectP2();
     setTimeout(() => { if (active) _init2P().catch(() => {}); }, 900);
   };
+
+  // ── Test-only hook ─────────────────────────────────────────────────
+  // Opt-in (window.__PH_TEST must be set before load); never present in
+  // production. Exposes a read-only state snapshot plus direct drivers so the
+  // blocking/animation state machine can be exercised without canvas hit-testing.
+  if (window.__PH_TEST) {
+    window.__phTest = {
+      state: () => ({
+        blockingEnabled, shipPowerState, startupAt, launchAt, blockingCmdExpected,
+        p2BlockingEnabled, p2StartupAt, p2LaunchAt, p2PowerdownAt, p2CmdExpected,
+        carrierState, twoPlayerMode,
+        crewCount: crewMembers.length, p2CrewCount: p2CrewMembers.length,
+      }),
+      setBlocking: (e, t = null) => setBlocking(e, t),
+      setP2Blocking: (e, t = null) => setP2Blocking(e, t),
+      // Inject a dummy P2 crew member parked at post, to verify it is force-cleared
+      // when the shared carrier departs (rather than left orphaned).
+      // Placed far from the hatch so it cannot coincidentally reach the hatch and
+      // be filtered out within the carrier-leave window; only an explicit clear
+      // removes it.
+      addP2Crew: () => p2CrewMembers.push({
+        type: 'fuel', x: 9000, y: 9000, fromX: 9000, fromY: 9000, state: 'at_post',
+        stateAt: performance.now(), wpIdx: 0, waypoints: [], returnPath: [],
+        bumpX: 0, bumpY: 0, fleeX: 9000, fleeViaY: 9000, hoseFwdWpIdx: 0,
+        spawnedAt: performance.now(), lifetime: 9e9,
+      }),
+    };
+  }
 })();
