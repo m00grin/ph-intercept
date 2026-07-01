@@ -95,6 +95,11 @@
   let p2HudStats = { blocked: null, queries: null, percent: null };
   let p2BlockingEnabled = null;
   let p2BlockingOffAt = 0, p2BlockingDuration = 0, p2PowerdownAt = 0;
+  // Reconciliation guard for locally-issued remote toggles. While a command is
+  // pending, ignore stale poll reads (which lag the toggle round-trip + Pi-hole
+  // propagation) so they can't clobber optimistic state or kill the in-flight
+  // startup/powerdown animation. p2CmdExpected: null = none pending, else true/false.
+  let p2CmdExpected = null, p2CmdDeadline = 0;
   let p2GunCheckFiredAt = [0, 0];
   let p2EvtSource = null, p2StatsPollTimer = null;
   let _p1ShipVisible = false;       // true once P1 has live data (gated in 2P mode)
@@ -3834,6 +3839,7 @@
     p2Lasers.length = 0;
     p2HudStats = { blocked: null, queries: null, percent: null };
     p2BlockingEnabled = null;
+    p2CmdExpected = null; p2CmdDeadline = 0;
     p2WarpState = 'none'; p2WarpAt = 0; p2WarpNextShip = null; p2WarpPrevShip = null;
     p2CarrierState = 'none'; p2CarrierY = 0; p2CarrierRestY = 0; p2CarrierArrivingAt = 0; p2CarrierLeavingAt = 0; p2LaunchAt = 0; p2StartupAt = 0; p2PowerdownAt = 0;
     p2CrewMembers = []; p2CrewNextSpawn = 0; p2LastFuelAt = 0;
@@ -3849,12 +3855,21 @@
           if (d.blocked != null) p2HudStats.blocked = d.blocked;
           if (d.queries != null) p2HudStats.queries = d.queries;
           if (d.percent != null) p2HudStats.percent = d.percent;
+          // Reconciliation: while a locally-issued toggle is pending, a poll that
+          // still reflects the pre-toggle state is stale. Ignore it so it can't
+          // revert optimistic state or cancel the running startup/powerdown.
+          if (p2CmdExpected !== null && d.blocking != null) {
+            if (d.blocking === p2CmdExpected || performance.now() >= p2CmdDeadline) p2CmdExpected = null;
+            else d = { ...d, blocking: null };
+          }
           if (d.blocking != null) {
             const _pb = p2BlockingEnabled; p2BlockingEnabled = d.blocking;
             if (d.blocking === false && d.block_timer > 0) { p2BlockingOffAt = performance.now(); p2BlockingDuration = d.block_timer * 1000; }
             else if (d.blocking === true) { p2BlockingDuration = 0; }
             if (d.blocking === true && _pb === false && p2StartupAt === 0 && p2LaunchAt === 0) { const _now = performance.now(); p2StartupAt = _now; p2PowerdownAt = 0; p2GunCheckFiredAt[0] = 0; p2GunCheckFiredAt[1] = 0; if ((twoPlayerMode !== 'off' ? carrierState : p2CarrierState) === 'none') chainRings.push({ x: p2ShipX, y: p2ShipY, born: _now, dur: 380, maxR: 90, col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' }); }
-            if (d.blocking === false) { p2StartupAt = 0; if (_pb === true) p2PowerdownAt = performance.now(); }
+            // Only tear down startup on a genuine enabled->disabled transition; a
+            // stray poll reporting 'false' must not nuke a running startup.
+            if (d.blocking === false && _pb !== false) { p2StartupAt = 0; if (_pb === true) p2PowerdownAt = performance.now(); }
             if (twoPlayerMode === 'off' && _pb !== false && d.blocking === false && _p2ShipVisible && p2CarrierState === 'none') { p2CarrierState = 'arriving'; p2CarrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; p2CarrierY = H + 240; p2CarrierArrivingAt = performance.now(); }
             if (twoPlayerMode !== 'off' && _pb !== false && d.blocking === false && _p2ShipVisible && carrierState === 'none') { carrierState = 'arriving'; carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; carrierY = H + 240; carrierArrivingAt = performance.now(); }
           }
@@ -4225,6 +4240,9 @@
 
   function setP2Blocking(enable, timerSec = null) {
     const _prevP2 = p2BlockingEnabled;
+    // Arm the reconciliation guard: suppress stale polls until the backend reports
+    // this value (or the deadline lapses if the toggle silently failed).
+    p2CmdExpected = enable; p2CmdDeadline = performance.now() + 4000;
     p2BlockingEnabled = enable;
     if (enable === false && timerSec > 0) { p2BlockingOffAt = performance.now(); p2BlockingDuration = timerSec * 1000; }
     else if (enable === true) { p2BlockingDuration = 0; }
@@ -4245,9 +4263,14 @@
       body: JSON.stringify({ enable, timer: timerSec }),
     }).then(r => r.json()).then(d => {
       if ('blocking' in d) {
+        // If the server disagrees with what we asked (toggle rejected/failed),
+        // the command didn't take: drop the guard and let reality win. If it
+        // agrees, keep the guard armed until a stats poll confirms, covering the
+        // Pi-hole propagation window.
+        if (d.blocking !== p2CmdExpected) p2CmdExpected = null;
         const _pb2 = p2BlockingEnabled; p2BlockingEnabled = d.blocking;
         if (d.blocking === true && _pb2 === false && p2StartupAt === 0 && p2LaunchAt === 0) { const _now = performance.now(); p2StartupAt = _now; p2PowerdownAt = 0; p2GunCheckFiredAt[0] = 0; p2GunCheckFiredAt[1] = 0; const _p2rc = twoPlayerMode !== 'off' ? carrierState : p2CarrierState; if (_p2rc === 'none') chainRings.push({ x: p2ShipX, y: p2ShipY, born: _now, dur: 380, maxR: 90, col1: 'rgba(180,220,255,0.9)', colS: 'rgba(120,180,255,0.7)' }); }
-        if (d.blocking === false) { p2StartupAt = 0; if (_pb2 === true) p2PowerdownAt = performance.now(); }
+        if (d.blocking === false && _pb2 !== false) { p2StartupAt = 0; if (_pb2 === true) p2PowerdownAt = performance.now(); }
         if (twoPlayerMode === 'off' && _pb2 !== false && d.blocking === false && _p2ShipVisible && p2CarrierState === 'none') { p2CarrierState = 'arriving'; p2CarrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; p2CarrierY = H + 240; p2CarrierArrivingAt = performance.now(); }
         if (twoPlayerMode !== 'off' && _pb2 !== false && d.blocking === false && _p2ShipVisible && carrierState === 'none') { carrierState = 'arriving'; carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; carrierY = H + 240; carrierArrivingAt = performance.now(); }
       }
