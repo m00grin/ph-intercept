@@ -32,6 +32,8 @@ def _p2_url_valid(url: str) -> bool:
 # Pi-hole second instance
 PIHOLE2_URL = os.environ.get("PIHOLE2_URL", "").strip()
 PIHOLE2_PASSWORD = os.environ.get("PIHOLE2_PASSWORD", "")
+_pihole2_ssl_raw = os.environ.get("PIHOLE2_VERIFY_SSL", "true").strip().lower()
+PIHOLE2_VERIFY_SSL = _pihole2_ssl_raw not in ("false", "0", "no")
 PIHOLE2_DASHBOARD = PIHOLE2_URL.rstrip('/').removesuffix('/api') + '/admin' if PIHOLE2_URL else ""
 
 # AdGuard second instance
@@ -50,7 +52,7 @@ if PROVIDER == "adguard":
 else:
     P2_CONFIGURED = _p2_url_valid(PIHOLE2_URL)
     P2_DASHBOARD = PIHOLE2_DASHBOARD
-    P2_VERIFY_SSL = True  # Pi-hole 2 client has always used default verification
+    P2_VERIFY_SSL = PIHOLE2_VERIFY_SSL
 
 # Back-compat alias: existing imports and templates use this name
 TWO_PLAYER_LOCAL_CONFIGURED = P2_CONFIGURED
