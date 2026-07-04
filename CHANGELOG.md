@@ -4,7 +4,7 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
-## [Unreleased]
+## [1.5.0] - 2026-07-03
 
 ### Added
 
