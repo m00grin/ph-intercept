@@ -39,7 +39,9 @@ if (window.BG_CONFIG.bg_image) {
 <canvas id="starfield"></canvas>
 <canvas id="pihole-canvas"></canvas>
 
-<!-- Retro CRT filter; static GPU-composited layers, shown only when body.crt-on -->
+<!-- Retro CRT filter; layers shown only when body.crt-on. crt-glow = additive
+     phosphor glow (screen blend), crt-overlay = scanline/mask darkening (multiply). -->
+<div id="crt-glow" aria-hidden="true"></div>
 <div id="crt-overlay" aria-hidden="true"></div>
 
 <div id="settings-btn">

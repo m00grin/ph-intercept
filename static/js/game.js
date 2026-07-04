@@ -48,6 +48,8 @@
   let _hudPrevT = 0;           // previous render ts, for frame-rate-independent easing
   let _hudVisible = true;      // is the strip mostly shown (gates HUD interactions)
   let _lastPtrType = 'mouse';  // last pointer type seen (mouse hover keeps HUD alive; touch has no hover)
+  let _lastHudBandCss = -1;    // last --hud-h written (CRT HUD-easing band height), change-detected
+  let _lastCrtFloorCss = '';   // last --crt-floor written (CRT reduction over that band)
   const AUTOHIDE_MS = 4000;    // idle time before the HUD slides away
   const HUD_FADE_DUR = 240;    // slide time-constant (ms)
   const entities = [], lasers = [], explosions = [], queue = [];
@@ -3030,6 +3032,22 @@
     if (settingsBtnEl) {
       settingsBtnEl.style.transform = `translate(${shakeSx.toFixed(2)}px, ${(shakeSy + _hudSlideY).toFixed(2)}px)`;
       if (hudAutoHide && !_hudVisible && !settingsMenuOpen) settingsBtnEl.style.pointerEvents = 'none';
+    }
+
+    // Keep the CRT's HUD-easing in step with the auto-hide slide: the eased band
+    // shrinks as the strip slides off (--hud-h tracks the strip's on-screen top
+    // edge) and its reduction fades to full (--crt-floor -> 1), so the filter fills
+    // straight back in over the space the HUD vacated. Change-detected so the CSS
+    // var only rewrites during the slide, not every frame.
+    const _hudBandH = Math.max(0, Math.round(hudSH + safeBottom - _hudSlideY));
+    if (_hudBandH !== _lastHudBandCss) {
+      _lastHudBandCss = _hudBandH;
+      document.documentElement.style.setProperty('--hud-h', _hudBandH + 'px');
+    }
+    const _crtFloor = (0.58 + 0.42 * _hudHideT).toFixed(3);
+    if (_crtFloor !== _lastCrtFloorCss) {
+      _lastCrtFloorCss = _crtFloor;
+      document.documentElement.style.setProperty('--crt-floor', _crtFloor);
     }
 
     const INT_W  = Math.min(240, Math.max(150, Math.round(W * 0.30)));

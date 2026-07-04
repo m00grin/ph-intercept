@@ -31,81 +31,113 @@ body.pihole-mode #pihole-canvas {
   pointer-events: auto; cursor: default;
 }
 
-/* ── CRT filter overlay ────────────────────────────────────────────────
-   Opt-in retro look, built the way real-CRT shaders are described (soft
-   phosphor scanlines, a faint shadow mask, tube curvature via edge darkening,
-   a slow rolling refresh band, and a gentle flicker). Every base layer is a
-   static gradient painted once and GPU-composited; the only animations are
-   opacity + transform (both compositor-only), so there is no per-frame
-   CPU/canvas cost - safe on low-power boards (RPi). Sits above the game canvas
-   + HUD (z 15/16) but below the 2P modal (z 30); pointer-events:none. */
+/* ── CRT filter ────────────────────────────────────────────────────────
+   Opt-in retro look, modelled on how real-CRT shaders (VileR/FFmpeg, crt-lottes)
+   are built rather than a grid drawn on top:
+
+     1. The CONTENT gets a soft blur + brightness/contrast/saturation bump, so
+        pixels read as glowing phosphor and to pre-compensate for step 2's
+        darkening. This is half of what sells "CRT".
+     2. The overlay's scanlines + shadow mask are applied with mix-blend-mode:
+        multiply, so they darken lit pixels but leave black black - exactly like
+        a real tube, where dark areas emit no beam and show no scanline.
+
+   Unlike the earlier static version this does per-frame GPU compositing (a blend
+   layer + a canvas filter), so it is heavier - fine on a desktop, and it stays
+   opt-in so low-power boards (RPi) can leave it off. Sits above the game canvas
+   + HUD (z 15/16), below the 2P modal (z 30); pointer-events:none. */
+
+/* 1. Phosphor glow on the content itself. */
+body.crt-on #pihole-canvas,
+body.crt-on #starfield,
+body.crt-on #bg-image {
+  filter: saturate(1.18) contrast(1.05) brightness(1.22) blur(0.5px);
+}
+
+/* 2. Scanline + shadow-mask multiply layer. */
 #crt-overlay {
   position: fixed; inset: 0;
   z-index: 20;
   pointer-events: none;
   display: none;
-  /* Scanlines built to read on a mostly-black scene: each 5px line has a bright
-     phosphor centre (visible over dark space) AND a dark gap (visible over bright
-     ships/HUD), so the effect shows everywhere instead of vanishing on black.
-     Layered with a luminous RGB shadow mask for sub-pixel phosphor shimmer. */
+  /* Grayscale scanlines (dark gaps, phosphor-line centres pass at white) times a
+     near-white RGB shadow mask. background-blend-mode multiplies the two into one
+     opaque pattern; mix-blend-mode multiplies THAT onto the game behind it, so it
+     structures lit pixels and vanishes on black. */
   background:
     repeating-linear-gradient(
       to bottom,
-      rgba(255, 255, 255, 0.08) 0,
-      rgba(255, 255, 255, 0)    1.6px,
-      rgba(0, 0, 0, 0.45)       2.5px,
-      rgba(255, 255, 255, 0)    3.4px,
-      rgba(255, 255, 255, 0.08) 5px
+      rgb(135, 135, 135) 0,
+      rgb(255, 255, 255) 2.2px,
+      rgb(255, 255, 255) 2.9px,
+      rgb(135, 135, 135) 5px
     ),
     repeating-linear-gradient(
       to right,
-      rgba(255, 70, 70, 0.09) 0,   rgba(255, 70, 70, 0.09) 2px,
-      rgba(70, 255, 70, 0.09) 2px, rgba(70, 255, 70, 0.09) 4px,
-      rgba(70, 70, 255, 0.09) 4px, rgba(70, 70, 255, 0.09) 6px
+      rgb(255, 232, 232) 0,   rgb(255, 232, 232) 1px,
+      rgb(232, 255, 232) 1px, rgb(232, 255, 232) 2px,
+      rgb(232, 232, 255) 2px, rgb(232, 232, 255) 3px
     );
-  /* Tube curvature: soft inner darkening so the glass reads as convex */
-  box-shadow: inset 0 0 160px 44px rgba(0, 0, 0, 0.5);
+  background-blend-mode: multiply;
+  mix-blend-mode: multiply;
+  /* Tube edge darkening (multiplied -> a soft vignette / convex-glass read) */
+  box-shadow: inset 0 0 200px 60px rgba(0, 0, 0, 0.45);
+  /* Ease the effect down over the HUD strip so the readout stays legible; full
+     strength above it. The render loop drives both vars: --hud-h is the strip's
+     on-screen height (shrinks as auto-hide slides it away) and --crt-floor is the
+     reduction over that band (0.58 shown -> 1 hidden), so the filter fills back in
+     as the HUD leaves. Defaults (0px / 1) = full effect when JS hasn't run yet. */
+  -webkit-mask-image: linear-gradient(to top,
+    rgba(0, 0, 0, var(--crt-floor, 1)) 0,
+    rgba(0, 0, 0, var(--crt-floor, 1)) var(--hud-h, 0px),
+    #000 calc(var(--hud-h, 0px) + 64px));
+  mask-image: linear-gradient(to top,
+    rgba(0, 0, 0, var(--crt-floor, 1)) 0,
+    rgba(0, 0, 0, var(--crt-floor, 1)) var(--hud-h, 0px),
+    #000 calc(var(--hud-h, 0px) + 64px));
 }
 body.crt-on #crt-overlay { display: block; }
 
-/* Rolling refresh band: a faint bright bar drifting down the screen, the
-   camera-of-a-CRT beat that makes it feel alive. transform-only animation. */
-#crt-overlay::before {
-  content: '';
-  position: absolute; left: 0; right: 0;
-  top: 0; height: 22vh;
+/* 3. Additive phosphor glow so the effect still reads on near-black areas - a
+   real tube is never truly off-black; the phosphor rows glow and the glass
+   diffuses a little light. Screen blend lifts darks (a faint line of light on
+   each 5px row, aligned to the multiply scanlines) and barely touches pixels
+   that are already bright. This is what gives the dark space background CRT
+   presence without a fake grid painted over the black. */
+#crt-glow {
+  position: fixed; inset: 0;
+  z-index: 19;
   pointer-events: none;
-  background: linear-gradient(to bottom,
-    rgba(255, 255, 255, 0)    0,
-    rgba(255, 255, 255, 0.05) 50%,
-    rgba(255, 255, 255, 0)    100%);
-  transform: translateY(-30vh);
+  display: none;
+  mix-blend-mode: screen;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0)          0,
+      rgba(170, 190, 225, 0.07) 2.5px,
+      rgba(0, 0, 0, 0)          5px
+    ),
+    linear-gradient(rgba(120, 140, 180, 0.02), rgba(120, 140, 180, 0.02));
+  -webkit-mask-image: linear-gradient(to top,
+    rgba(0, 0, 0, var(--crt-floor, 1)) 0,
+    rgba(0, 0, 0, var(--crt-floor, 1)) var(--hud-h, 0px),
+    #000 calc(var(--hud-h, 0px) + 64px));
+  mask-image: linear-gradient(to top,
+    rgba(0, 0, 0, var(--crt-floor, 1)) 0,
+    rgba(0, 0, 0, var(--crt-floor, 1)) var(--hud-h, 0px),
+    #000 calc(var(--hud-h, 0px) + 64px));
 }
+body.crt-on #crt-glow { display: block; }
 
-/* Corner vignette on top of the curvature shadow */
-#crt-overlay::after {
-  content: '';
-  position: absolute; inset: 0;
-  pointer-events: none;
-  background: radial-gradient(ellipse 100% 100% at center,
-    rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.32) 100%);
-}
-
-/* Motion (roll + flicker) only for users who allow it; opacity/transform stay
-   GPU-composited so the cost is negligible even on a Pi. */
+/* Gentle brightness flicker (opacity modulates the multiply strength). */
 @media (prefers-reduced-motion: no-preference) {
-  body.crt-on #crt-overlay          { animation: crt-flicker 5s ease-in-out infinite; }
-  body.crt-on #crt-overlay::before  { animation: crt-roll 8s linear infinite; }
+  body.crt-on #crt-overlay { animation: crt-flicker 6s ease-in-out infinite; }
 }
 @keyframes crt-flicker {
   0%, 100% { opacity: 1; }
-  48%      { opacity: 0.97; }
+  48%      { opacity: 0.96; }
   50%      { opacity: 0.99; }
-  52%      { opacity: 0.96; }
-}
-@keyframes crt-roll {
-  from { transform: translateY(-30vh); }
-  to   { transform: translateY(130vh); }
+  52%      { opacity: 0.95; }
 }
 
 /* Settings burger button; bottom synced by JS on resize */
