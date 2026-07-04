@@ -46,6 +46,8 @@ if (window.BG_CONFIG.bg_image) {
 <div id="pihole-link" data-href="{{ pihole_dashboard | e }}">
   {% if provider == 'adguard' %}
   <img src="/static/icons/adguard.svg" alt="AdGuard" draggable="false">
+  {% elif provider == 'technitium' %}
+  <img src="/static/icons/technitium.svg" alt="Technitium" draggable="false">
   {% else %}
   <img src="/static/icons/pihole.svg" alt="Pi-hole" draggable="false">
   {% endif %}

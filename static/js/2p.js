@@ -53,7 +53,9 @@
     </div>`;
 
     if (!off) {
-      const _p2Name = window.PROVIDER === 'adguard' ? 'ADGUARD' : 'PI-HOLE';
+      const _p2Name = window.PROVIDER === 'adguard' ? 'ADGUARD'
+                    : window.PROVIDER === 'technitium' ? 'TECHNITIUM'
+                    : 'PI-HOLE';
       h += `<div class="m2p-divider"></div>
       <div class="m2p-info">SECOND ${_p2Name} CONNECTED</div>`;
     }

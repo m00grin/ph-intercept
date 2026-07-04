@@ -1,4 +1,4 @@
-"""ph-intercept - DNS game (Pi-hole and AdGuard Home)."""
+"""ph-intercept - DNS game (Pi-hole, AdGuard Home, and Technitium)."""
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -18,12 +18,19 @@ from core.config import (
     TWO_PLAYER_LOCAL_CONFIGURED, TWO_PLAYER_ENABLED, P2_DASHBOARD, P2_VERIFY_SSL,
     PIHOLE2_URL, PIHOLE2_PASSWORD,
     ADGUARD2_BASE, ADGUARD2_USERNAME, ADGUARD2_PASSWORD,
+    TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
 )
 from core.multiplayer import get_status as mp_status, set_mode as mp_set_mode
 
 if PROVIDER == "adguard":
     from core.config import ADGUARD_DASHBOARD as _DASHBOARD, ADGUARD_VERIFY_SSL as _VERIFY_SSL
     from core.adguard import (
+        add_ws_client, get_stats, query_poller, remove_ws_client,
+        reset_watermark, toggle_blocking, trigger_filter_update, drop_session,
+    )
+elif PROVIDER == "technitium":
+    from core.config import TECHNITIUM_DASHBOARD as _DASHBOARD, TECHNITIUM_VERIFY_SSL as _VERIFY_SSL
+    from core.technitium import (
         add_ws_client, get_stats, query_poller, remove_ws_client,
         reset_watermark, toggle_blocking, trigger_filter_update, drop_session,
     )
@@ -41,6 +48,13 @@ if TWO_PLAYER_LOCAL_CONFIGURED:
             add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark,
             get_p2_stats, drop_p2_session, query_p2_poller,
             toggle_p2_blocking, trigger_p2_gravity_update,
+        )
+    elif PROVIDER == "technitium":
+        from core.technitium import (
+            add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark,
+            get_p2_stats, drop_p2_session, query_p2_poller,
+            toggle_p2_blocking, trigger_p2_gravity_update,
+            probe_p2 as technitium_probe_p2,
         )
     else:
         from core.pihole import (
@@ -138,6 +152,7 @@ async def pihole_stats(_request: Request) -> JSONResponse:
         "percent":     data.get("percent"),
         "queries":     data.get("queries"),
         "blocked":     data.get("blocked"),
+        "no_error":    data.get("no_error"),
         "gravity":     data.get("gravity"),
         "blocking":    data.get("blocking"),
         "block_timer": data.get("block_timer"),
@@ -190,6 +205,19 @@ async def _p2_config_error() -> str | None:
                 return "Could not reach AdGuard 2. Check ADGUARD2_URL"
         return None
 
+    if PROVIDER == "technitium":
+        if not TECHNITIUM2_BASE:
+            return "TECHNITIUM2_URL is not set in your configuration"
+        if _P2_PLACEHOLDER in TECHNITIUM2_BASE:
+            return "TECHNITIUM2_URL still has the default placeholder value. Update it in your compose.yaml"
+        if not (TECHNITIUM2_BASE.startswith("http://") or TECHNITIUM2_BASE.startswith("https://")):
+            return "TECHNITIUM2_URL must start with http:// or https://"
+        if not (TECHNITIUM2_TOKEN or (TECHNITIUM2_USER and TECHNITIUM2_PASSWORD)):
+            return "Technitium 2 needs TECHNITIUM2_TOKEN, or TECHNITIUM2_USER and TECHNITIUM2_PASSWORD"
+        if _http_client2:
+            return await technitium_probe_p2(_http_client2)
+        return None
+
     if not PIHOLE2_URL:
         return "PIHOLE2_URL is not set in your configuration"
     if _P2_PLACEHOLDER in PIHOLE2_URL:
@@ -234,6 +262,7 @@ async def pihole2_stats(_request: Request) -> JSONResponse:
         "percent":     data.get("percent"),
         "queries":     data.get("queries"),
         "blocked":     data.get("blocked"),
+        "no_error":    data.get("no_error"),
         "gravity":     data.get("gravity"),
         "blocking":    data.get("blocking"),
         "block_timer": data.get("block_timer"),

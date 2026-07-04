@@ -4,6 +4,15 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.5.0] - 2026-07-03
+
+### Added
+
+- **Technitium DNS support** (`PROVIDER=technitium`): live query feed, stats, and blocking control (toggle, timed disable, force block-list update). Token or user/password auth. Requires the Query Logs (Sqlite) DNS app. See the [Technitium guide](technitium/README.md). Thanks to [@ArcticSlayy](https://github.com/ArcticSlayy) for the code headstart on Technitium support.
+- **Technitium local 2-player mode** via `TECHNITIUM2_URL` + `TECHNITIUM2_TOKEN`.
+
+---
+
 ## [1.4.0] - 2026-06-30
 
 ### Added

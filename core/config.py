@@ -44,11 +44,44 @@ _adguard2_ssl_raw = os.environ.get("ADGUARD2_VERIFY_SSL", "true").strip().lower(
 ADGUARD2_VERIFY_SSL = _adguard2_ssl_raw not in ("false", "0", "no")
 ADGUARD2_DASHBOARD = ADGUARD2_BASE.rstrip('/').removesuffix('/control') + '/' if ADGUARD2_BASE else ""
 
+# Technitium primary instance. TECHNITIUM_URL is the web-console root; the API
+# lives under {root}/api/ and the dashboard is the root itself. Auth is either a
+# permanent API token (TECHNITIUM_TOKEN) or user/password (+ optional TOTP).
+TECHNITIUM_URL = os.environ.get("TECHNITIUM_URL", "http://technitium:5380").strip()
+TECHNITIUM_BASE = TECHNITIUM_URL.rstrip('/')
+TECHNITIUM_DASHBOARD = TECHNITIUM_BASE + '/'
+_technitium_ssl_raw = os.environ.get("TECHNITIUM_VERIFY_SSL", "true").strip().lower()
+TECHNITIUM_VERIFY_SSL = _technitium_ssl_raw not in ("false", "0", "no")
+TECHNITIUM_TOKEN = os.environ.get("TECHNITIUM_TOKEN", "").strip()
+TECHNITIUM_USER = os.environ.get("TECHNITIUM_USER", "").strip()
+TECHNITIUM_PASSWORD = os.environ.get("TECHNITIUM_PASSWORD", "")
+TECHNITIUM_TOTP = os.environ.get("TECHNITIUM_TOTP", "").strip()
+# The query log comes from an installed DNS app (Query Logs (Sqlite) by default).
+TECHNITIUM_LOG_APP = os.environ.get("TECHNITIUM_QUERY_LOG_APP", "Query Logs (Sqlite)").strip()
+TECHNITIUM_LOG_CLASS = os.environ.get("TECHNITIUM_QUERY_LOG_CLASS", "QueryLogsSqlite.App").strip()
+
+# Technitium second instance (2-player local mode)
+TECHNITIUM2_URL = os.environ.get("TECHNITIUM2_URL", "").strip()
+TECHNITIUM2_BASE = TECHNITIUM2_URL.rstrip('/')
+TECHNITIUM2_DASHBOARD = (TECHNITIUM2_BASE + '/') if TECHNITIUM2_BASE else ""
+_technitium2_ssl_raw = os.environ.get("TECHNITIUM2_VERIFY_SSL", "true").strip().lower()
+TECHNITIUM2_VERIFY_SSL = _technitium2_ssl_raw not in ("false", "0", "no")
+TECHNITIUM2_TOKEN = os.environ.get("TECHNITIUM2_TOKEN", "").strip()
+TECHNITIUM2_USER = os.environ.get("TECHNITIUM2_USER", "").strip()
+TECHNITIUM2_PASSWORD = os.environ.get("TECHNITIUM2_PASSWORD", "")
+TECHNITIUM2_TOTP = os.environ.get("TECHNITIUM2_TOTP", "").strip()
+TECHNITIUM2_LOG_APP = os.environ.get("TECHNITIUM2_QUERY_LOG_APP", TECHNITIUM_LOG_APP).strip()
+TECHNITIUM2_LOG_CLASS = os.environ.get("TECHNITIUM2_QUERY_LOG_CLASS", TECHNITIUM_LOG_CLASS).strip()
+
 # Provider-neutral resolution of the second instance
 if PROVIDER == "adguard":
     P2_CONFIGURED = _p2_url_valid(ADGUARD2_BASE)
     P2_DASHBOARD = ADGUARD2_DASHBOARD
     P2_VERIFY_SSL = ADGUARD2_VERIFY_SSL
+elif PROVIDER == "technitium":
+    P2_CONFIGURED = _p2_url_valid(TECHNITIUM2_BASE)
+    P2_DASHBOARD = TECHNITIUM2_DASHBOARD
+    P2_VERIFY_SSL = TECHNITIUM2_VERIFY_SSL
 else:
     P2_CONFIGURED = _p2_url_valid(PIHOLE2_URL)
     P2_DASHBOARD = PIHOLE2_DASHBOARD
@@ -88,4 +121,7 @@ IGNORE_DOMAIN_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
 )
 ADGUARD_IGNORE_DOMAIN_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
     os.environ.get("ADGUARD_IGNORE_DOMAINS", ""), "ADGUARD_IGNORE_DOMAINS"
+)
+TECHNITIUM_IGNORE_DOMAIN_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
+    os.environ.get("TECHNITIUM_IGNORE_DOMAINS", ""), "TECHNITIUM_IGNORE_DOMAINS"
 )
