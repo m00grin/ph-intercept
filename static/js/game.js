@@ -27,18 +27,6 @@
     if (size !== baseSize) ctx.font = `${size}px "Press Start 2P", monospace`;
     return size;
   }
-  // Technitium's aggregated dashboard stats trail its live query log, so the HUD
-  // counters lag behind the feed. Bump them locally per feed event for a live feel;
-  // each stats poll reconciles upward to the authoritative totals (see fetchPiholeStats).
-  function _techLiveCount(evts) {
-    if (PROVIDER !== 'technitium' || hudStats.queries == null) return;
-    for (const ev of evts) {
-      hudStats.queries += 1;
-      if (ev && ev.status === 'blocked') hudStats.blocked = (hudStats.blocked || 0) + 1;
-    }
-    hudStats.percent = hudStats.queries > 0
-      ? Math.round((hudStats.blocked || 0) / hudStats.queries * 1000) / 10 : 0;
-  }
   const settingsBtnEl = document.getElementById('settings-btn');
   let W = 0, H = 0;
   let _dpr = 1; // device pixel ratio the backing store is currently sized for
@@ -3853,7 +3841,6 @@
       try {
         const evts = JSON.parse(e.data);
         if (Array.isArray(evts)) {
-          _techLiveCount(evts);
           queue.push(...evts);
           if (queue.length > 200) queue.splice(0, queue.length - 200);
         }
@@ -4172,19 +4159,9 @@
             shipPowerState = 'startup'; startupAt = performance.now();
           }
         }
-        if (PROVIDER === 'technitium') {
-          // Reconcile upward only: live-incremented counters may briefly lead
-          // Technitium's trailing aggregation, so never snap backward.
-          if (d.queries != null) hudStats.queries = Math.max(hudStats.queries || 0, d.queries);
-          if (d.blocked != null) hudStats.blocked = Math.max(hudStats.blocked || 0, d.blocked);
-          hudStats.percent = hudStats.queries > 0
-            ? Math.round((hudStats.blocked || 0) / hudStats.queries * 1000) / 10
-            : (d.percent != null ? d.percent : hudStats.percent);
-        } else {
-          if (d.blocked != null) hudStats.blocked = d.blocked;
-          if (d.queries != null) hudStats.queries = d.queries;
-          if (d.percent != null) hudStats.percent = d.percent;
-        }
+        if (d.blocked != null) hudStats.blocked = d.blocked;
+        if (d.queries != null) hudStats.queries = d.queries;
+        if (d.percent != null) hudStats.percent = d.percent;
         if (!_p1ShipVisible && (d.blocking != null || d.blocked != null || d.queries != null)) _p1Reveal();
       }).catch(() => {});
     }

@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 # composite key and remember the last N keys seen. Matches how Pi-hole/AdGuard
 # skip already-seen queries, just keyed differently.
 _SEEN_LIMIT = 500
-_STATS_TYPE = "LastDay"
+# LastHour reads Technitium's real-time in-memory window, matching the live
+# dashboard counter. LastDay is a periodically-cached aggregate that visibly lags.
+_STATS_TYPE = "LastHour"
 _ENTRIES_PER_PAGE = 50
 
 
