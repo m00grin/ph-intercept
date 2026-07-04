@@ -182,8 +182,10 @@ async def _fetch_stats(http_client: httpx.AsyncClient, inst: _Instance) -> dict 
         if remaining is not None:
             blocking, block_timer = False, remaining
         else:
-            settings = _response(await _api_call(http_client, inst, "settings/get", timeout=5.0))
-            blocking = bool(settings.get("enableBlocking", True))
+            settings_env = await _api_call(http_client, inst, "settings/get", timeout=5.0)
+            # Report None (unknown) if the call failed, so a transient settings
+            # error can't flip the HUD to "blocking on" while it is actually off.
+            blocking = None if settings_env is None else bool(_response(settings_env).get("enableBlocking", True))
             block_timer = None
 
         return {
@@ -333,7 +335,9 @@ async def _fetch_events(http_client: httpx.AsyncClient, inst: _Instance) -> list
             event = _entry_to_event(entry)
             if event:
                 events.append(event)
-    return events[:20]
+    # Cap the burst but keep the *newest* events (events is oldest-first); every
+    # entry above was already marked seen, so dropping the oldest is the right end.
+    return events[-20:]
 
 
 # ── Broadcast / SSE plumbing ─────────────────────────────────────────────────
