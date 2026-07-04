@@ -41,6 +41,15 @@
   let _vigGradW = -1, _vigGradH = -1, _vigGradIs2P = false;
   let _hudSlideAt = 0, _hudSlideFrom = 0, _hudSlideTo = 0;
   const HUD_SLIDE_DUR = 340;
+  // HUD auto-hide: slides the whole strip off-screen after idle; summoned back by
+  // pointer activity in the bottom reveal zone. Device-agnostic (mouse/touch/pen).
+  let _hudRevealAt = 0;        // perf-clock ts of last reveal-keeping activity
+  let _hudHideT = 0;           // 0 = fully shown, 1 = fully hidden (slide progress)
+  let _hudPrevT = 0;           // previous render ts, for frame-rate-independent easing
+  let _hudVisible = true;      // is the strip mostly shown (gates HUD interactions)
+  let _lastPtrType = 'mouse';  // last pointer type seen (mouse hover keeps HUD alive; touch has no hover)
+  const AUTOHIDE_MS = 4000;    // idle time before the HUD slides away
+  const HUD_FADE_DUR = 240;    // slide time-constant (ms)
   const entities = [], lasers = [], explosions = [], queue = [];
   let drone = { state: 'docked', x: 0, y: 0, lastFire: 0, side: 0, angle: 0, targetX: null, targetY: null, deployedAt: 0, recallAt: 0 };
   const droneMissiles = [];
@@ -102,6 +111,8 @@
   let showFriendlies = true;
   let showDomain     = true;
   let showClient     = false;
+  let hudAutoHide    = false;   // slide the HUD away when idle
+  let crtEnabled     = false;   // retro CRT-filter overlay
   (function _loadDisplaySettings() {
     try {
       const s = JSON.parse(localStorage.getItem('ph_display'));
@@ -109,11 +120,14 @@
         if (s.friendlies != null) showFriendlies = !!s.friendlies;
         if (s.domain     != null) showDomain     = !!s.domain;
         if (s.client     != null) showClient      = !!s.client;
+        if (s.autohide   != null) hudAutoHide     = !!s.autohide;
+        if (s.crt        != null) crtEnabled      = !!s.crt;
       }
     } catch {}
+    if (crtEnabled && document.body) document.body.classList.add('crt-on');
   })();
   function _saveDisplaySettings() {
-    try { localStorage.setItem('ph_display', JSON.stringify({ friendlies: showFriendlies, domain: showDomain, client: showClient })); } catch {}
+    try { localStorage.setItem('ph_display', JSON.stringify({ friendlies: showFriendlies, domain: showDomain, client: showClient, autohide: hudAutoHide, crt: crtEnabled })); } catch {}
   }
   // ── 2P state ──────────────────────────────────────────────────────
   let twoPlayerMode = 'off';        // 'off' | 'local'
@@ -1196,7 +1210,8 @@
 
     if (settingsBtnEl) {
       const _startupPhase = shipPowerState === 'startup' ? (t - startupAt) / STARTUP_DUR : -1;
-      const _btnHide = twoPlayerMode === 'off' && (shipPowerState === 'powerdown' || (_startupPhase >= 0 && _startupPhase <= 0.72));
+      const _autoHidden = hudAutoHide && !_hudVisible && !settingsMenuOpen;
+      const _btnHide = _autoHidden || (twoPlayerMode === 'off' && (shipPowerState === 'powerdown' || (_startupPhase >= 0 && _startupPhase <= 0.72)));
       settingsBtnEl.style.transition = _btnHide ? 'opacity 100ms ease' : '';
       settingsBtnEl.style.opacity = _btnHide ? '0' : '';
       settingsBtnEl.style.pointerEvents = _btnHide ? 'none' : '';
@@ -2984,6 +2999,29 @@
     }
     const SH = _animSH;
     const SY = H - SH - safeBottom;
+
+    // ── HUD auto-hide ────────────────────────────────────────
+    // Slide the whole strip below the viewport once idle; a mouse hovering the
+    // bottom band (or any menu open) keeps it alive. Touch/pen have no hover, so
+    // they rely on the idle timer, re-armed by taps in the reveal zone (see the
+    // window pointer listeners). Sliding as a unit avoids alpha-compositing cost.
+    let _hudTarget = 0;
+    if (hudAutoHide) {
+      if (_hudRevealAt === 0) _hudRevealAt = t;   // grace period on first frame / enable
+      const _zoneTop = H - hudSH - safeBottom - 50;
+      const _hover = _lastPtrType === 'mouse' && mouseX >= 0 && mouseY >= _zoneTop;
+      const _menusOpen = settingsMenuOpen || shieldMenuOpen || shipMenuOpen || p2ShieldMenuOpen || p2ShipMenuOpen;
+      if (_hover || _menusOpen) _hudRevealAt = t;
+      if (t - _hudRevealAt > AUTOHIDE_MS) _hudTarget = 1;
+    }
+    const _hdt = _hudPrevT ? Math.min(t - _hudPrevT, 80) : 16;
+    _hudPrevT = t;
+    _hudHideT += (_hudTarget - _hudHideT) * Math.min(1, _hdt / HUD_FADE_DUR);
+    if (_hudHideT < 0.001) _hudHideT = 0;
+    else if (_hudHideT > 0.999) _hudHideT = 1;
+    _hudVisible = _hudHideT < 0.5;
+    if (_hudHideT > 0) ctx.translate(0, _hudHideT * (hudSH + safeBottom + 8));
+
     const INT_W  = Math.min(240, Math.max(150, Math.round(W * 0.30)));
     const OPT_W  = W < 480 ? 0   : Math.min(140, Math.max(95,  Math.round(W * 0.16)));
     const TDB_W  = Math.min(250, Math.max(140, Math.round(W * 0.28)));
@@ -3173,11 +3211,15 @@
       const _sitems = [
         { key: 'friendlies', label: 'FRIENDLIES', state: showFriendlies, divAfter: true },
         { key: 'client',     label: 'CLIENT',      state: showClient },
-        { key: 'domain',     label: 'DOMAIN',     state: showDomain },
+        { key: 'domain',     label: 'DOMAIN',     state: showDomain, divAfter: true },
+        { key: 'crt',        label: 'CRT FILTER',  state: crtEnabled },
+        { key: 'autohide',   label: 'AUTO-HIDE',   state: hudAutoHide },
       ];
       const smw = 186, smItemH = 28, smPad = 10, smDivH = 10, smPhRowH = 34;
       const _has2P = window.TWO_PLAYER_ENABLED !== false;
-      const smh = smPad + smItemH + smDivH + smItemH * 2 + (_has2P ? smDivH + smItemH : 0) + smDivH + smPhRowH + (twoPlayerMode === 'local' && window.P2_DASHBOARD ? smPhRowH : 0) + smPad;
+      let _togH = 0;
+      for (const it of _sitems) { _togH += smItemH; if (it.divAfter) _togH += smDivH; }
+      const smh = smPad + _togH + (_has2P ? smDivH + smItemH : 0) + smDivH + smPhRowH + (twoPlayerMode === 'local' && window.P2_DASHBOARD ? smPhRowH : 0) + smPad;
       const smX = 6, smY = SY - smh - 6;
       settingsMenuPopupBox = { x: smX, y: smY, w: smw, h: smh };
       ctx.fillStyle = 'rgba(8,11,16,0.92)';
@@ -4449,6 +4491,13 @@
     if (!active) return;
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    // When the HUD is auto-hidden, the first click in the bottom band just summons
+    // it back rather than firing an unseen control underneath.
+    if (hudAutoHide && !_hudVisible && my >= H - hudSH - safeBottom - 50) {
+      _hudRevealAt = performance.now();
+      e.stopPropagation();
+      return;
+    }
     const _isP2Active = twoPlayerMode !== 'off' && _p2ShipVisible;
 
     // Settings menu open - click toggles a setting or dismisses
@@ -4459,6 +4508,8 @@
           if      (item.key === 'friendlies')  { showFriendlies = !showFriendlies; _saveDisplaySettings(); }
           else if (item.key === 'domain')      { showDomain     = !showDomain;     _saveDisplaySettings(); }
           else if (item.key === 'client')      { showClient     = !showClient;     _saveDisplaySettings(); }
+          else if (item.key === 'crt')         { crtEnabled     = !crtEnabled; document.body.classList.toggle('crt-on', crtEnabled); _saveDisplaySettings(); }
+          else if (item.key === 'autohide')    { hudAutoHide     = !hudAutoHide; _hudRevealAt = performance.now(); _saveDisplaySettings(); }
           else if (item.key === '2p-mode') {
             settingsMenuOpen = false;
             _closeSettingsBtnAnimated();
@@ -4651,6 +4702,16 @@
     const overP2ShipMenu   = p2ShipMenuOpen   && p2ShipMenuItems.some(item => !item.active && !item.locked && _inBox(mouseX, mouseY, item.hitbox));
     canvas.style.cursor = (arrowHovered || shieldHovered || overShieldMenu || shipMenuHovered || overShipMenu || overSettingsMenu || p2ArrowHovered || p2ShieldHovered || overP2ShieldMenu || p2ShipMenuHovered || overP2ShipMenu) ? 'pointer' : '';
   });
+
+  // HUD auto-hide: any pointer activity in the bottom reveal zone re-arms the idle
+  // timer. Pointer Events unify mouse/touch/pen, so touch taps summon the HUD too.
+  function _onHudPointer(e) {
+    _lastPtrType = e.pointerType || 'mouse';
+    if (!hudAutoHide) return;
+    if (e.clientY >= H - hudSH - safeBottom - 50) _hudRevealAt = performance.now();
+  }
+  window.addEventListener('pointermove', _onHudPointer, { passive: true });
+  window.addEventListener('pointerdown', _onHudPointer, { passive: true });
 
   // The settings button sits above the canvas (z-index 16) and captures pointer events,
   // so canvas mousemove never fires while hovering it.
