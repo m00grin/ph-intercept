@@ -41,27 +41,27 @@ body.pihole-mode #pihole-canvas {
   z-index: 20;
   pointer-events: none;
   display: none;
-  /* Scanlines: transparent gaps let the game through, dark lines dim it */
+  /* Scanlines: chunky dark bands with thin gaps, for a heavy tube look */
   background: repeating-linear-gradient(
     to bottom,
     rgba(0, 0, 0, 0)    0,
-    rgba(0, 0, 0, 0)    1.5px,
-    rgba(0, 0, 0, 0.18) 1.5px,
-    rgba(0, 0, 0, 0.18) 3px
+    rgba(0, 0, 0, 0)    2px,
+    rgba(0, 0, 0, 0.42) 2px,
+    rgba(0, 0, 0, 0.42) 4px
   );
 }
 body.crt-on #crt-overlay { display: block; }
 
-/* Aperture grille: faint vertical RGB triads for a phosphor shimmer */
+/* Aperture grille: vertical RGB triads for a phosphor shimmer */
 #crt-overlay::before {
   content: '';
   position: absolute; inset: 0;
   pointer-events: none;
   background: repeating-linear-gradient(
     to right,
-    rgba(255, 0, 0, 0.04) 0,   rgba(255, 0, 0, 0.04) 1px,
-    rgba(0, 255, 0, 0.04) 1px, rgba(0, 255, 0, 0.04) 2px,
-    rgba(0, 0, 255, 0.04) 2px, rgba(0, 0, 255, 0.04) 3px
+    rgba(255, 0, 0, 0.09) 0,   rgba(255, 0, 0, 0.09) 1px,
+    rgba(0, 255, 0, 0.09) 1px, rgba(0, 255, 0, 0.09) 2px,
+    rgba(0, 0, 255, 0.09) 2px, rgba(0, 0, 255, 0.09) 3px
   );
 }
 
@@ -71,7 +71,7 @@ body.crt-on #crt-overlay { display: block; }
   position: absolute; inset: 0;
   pointer-events: none;
   background: radial-gradient(ellipse at center,
-    rgba(0, 0, 0, 0) 55%, rgba(0, 0, 0, 0.28) 100%);
+    rgba(0, 0, 0, 0) 42%, rgba(0, 0, 0, 0.45) 100%);
 }
 
 /* Subtle brightness flicker; opacity-only so it stays GPU-composited. Disabled
@@ -81,8 +81,9 @@ body.crt-on #crt-overlay { display: block; }
 }
 @keyframes crt-flicker {
   0%, 100% { opacity: 1; }
-  48%      { opacity: 0.97; }
-  52%      { opacity: 0.99; }
+  47%      { opacity: 0.94; }
+  50%      { opacity: 0.98; }
+  53%      { opacity: 0.93; }
 }
 
 /* Settings burger button; bottom synced by JS on resize */

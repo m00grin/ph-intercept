@@ -1210,8 +1210,10 @@
 
     if (settingsBtnEl) {
       const _startupPhase = shipPowerState === 'startup' ? (t - startupAt) / STARTUP_DUR : -1;
-      const _autoHidden = hudAutoHide && !_hudVisible && !settingsMenuOpen;
-      const _btnHide = _autoHidden || (twoPlayerMode === 'off' && (shipPowerState === 'powerdown' || (_startupPhase >= 0 && _startupPhase <= 0.72)));
+      // Auto-hide slide + warp shake are applied to the button as a transform in
+      // render() (below), locked to the canvas HUD. Here we only fade it out for
+      // power-up/down transitions.
+      const _btnHide = twoPlayerMode === 'off' && (shipPowerState === 'powerdown' || (_startupPhase >= 0 && _startupPhase <= 0.72));
       settingsBtnEl.style.transition = _btnHide ? 'opacity 100ms ease' : '';
       settingsBtnEl.style.opacity = _btnHide ? '0' : '';
       settingsBtnEl.style.pointerEvents = _btnHide ? 'none' : '';
@@ -3020,7 +3022,15 @@
     if (_hudHideT < 0.001) _hudHideT = 0;
     else if (_hudHideT > 0.999) _hudHideT = 1;
     _hudVisible = _hudHideT < 0.5;
-    if (_hudHideT > 0) ctx.translate(0, _hudHideT * (hudSH + safeBottom + 8));
+    const _hudSlideY = _hudHideT * (hudSH + safeBottom + 8);
+    if (_hudHideT > 0) ctx.translate(0, _hudSlideY);
+
+    // Lock the DOM burger button to the canvas HUD: same warp shake, same auto-hide
+    // slide. (The button lives above the canvas, so it can't inherit the ctx transform.)
+    if (settingsBtnEl) {
+      settingsBtnEl.style.transform = `translate(${shakeSx.toFixed(2)}px, ${(shakeSy + _hudSlideY).toFixed(2)}px)`;
+      if (hudAutoHide && !_hudVisible && !settingsMenuOpen) settingsBtnEl.style.pointerEvents = 'none';
+    }
 
     const INT_W  = Math.min(240, Math.max(150, Math.round(W * 0.30)));
     const OPT_W  = W < 480 ? 0   : Math.min(140, Math.max(95,  Math.round(W * 0.16)));
