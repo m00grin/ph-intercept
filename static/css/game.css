@@ -44,21 +44,24 @@ body.pihole-mode #pihole-canvas {
   z-index: 20;
   pointer-events: none;
   display: none;
-  /* Soft scanlines: a triangular dark->clear->dark ramp over a 5px pitch reads
-     as glowing phosphor lines instead of a hard screen-door mesh. Layered with a
-     faint RGB shadow mask for sub-pixel texture. */
+  /* Scanlines built to read on a mostly-black scene: each 5px line has a bright
+     phosphor centre (visible over dark space) AND a dark gap (visible over bright
+     ships/HUD), so the effect shows everywhere instead of vanishing on black.
+     Layered with a luminous RGB shadow mask for sub-pixel phosphor shimmer. */
   background:
     repeating-linear-gradient(
       to bottom,
-      rgba(0, 0, 0, 0.34) 0,
-      rgba(0, 0, 0, 0)    2.5px,
-      rgba(0, 0, 0, 0.34) 5px
+      rgba(255, 255, 255, 0.08) 0,
+      rgba(255, 255, 255, 0)    1.6px,
+      rgba(0, 0, 0, 0.45)       2.5px,
+      rgba(255, 255, 255, 0)    3.4px,
+      rgba(255, 255, 255, 0.08) 5px
     ),
     repeating-linear-gradient(
       to right,
-      rgba(255, 0, 0, 0.05) 0,   rgba(255, 0, 0, 0.05) 2px,
-      rgba(0, 255, 0, 0.05) 2px, rgba(0, 255, 0, 0.05) 4px,
-      rgba(0, 0, 255, 0.05) 4px, rgba(0, 0, 255, 0.05) 6px
+      rgba(255, 70, 70, 0.09) 0,   rgba(255, 70, 70, 0.09) 2px,
+      rgba(70, 255, 70, 0.09) 2px, rgba(70, 255, 70, 0.09) 4px,
+      rgba(70, 70, 255, 0.09) 4px, rgba(70, 70, 255, 0.09) 6px
     );
   /* Tube curvature: soft inner darkening so the glass reads as convex */
   box-shadow: inset 0 0 160px 44px rgba(0, 0, 0, 0.5);
@@ -73,9 +76,9 @@ body.crt-on #crt-overlay { display: block; }
   top: 0; height: 22vh;
   pointer-events: none;
   background: linear-gradient(to bottom,
-    rgba(255, 255, 255, 0)     0,
-    rgba(255, 255, 255, 0.035) 50%,
-    rgba(255, 255, 255, 0)     100%);
+    rgba(255, 255, 255, 0)    0,
+    rgba(255, 255, 255, 0.05) 50%,
+    rgba(255, 255, 255, 0)    100%);
   transform: translateY(-30vh);
 }
 
