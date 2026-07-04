@@ -28,6 +28,31 @@
     return size;
   }
   const settingsBtnEl = document.getElementById('settings-btn');
+
+  // ── CRT power flash (on/off) ──────────────────────────────────────────
+  // A pure CSS animation toggled by a class; playing it just re-adds the class
+  // after a reflow so it restarts.
+  const crtPowerEl   = document.getElementById('crt-power');
+  // Fires only on a deliberate CRT toggle (never continuously), and the whole CRT
+  // look is opt-in, so it intentionally ignores prefers-reduced-motion.
+  function _playCrtOneShot(el, cls) {
+    if (!el) return;
+    el.classList.remove(cls);
+    void el.offsetWidth;            // force reflow so the animation restarts
+    el.classList.add(cls);
+  }
+  // The power flash and the filter's warm-up/cool-down (crt-warming / crt-cooling
+  // fade the scanlines, glow and content bump) run together and end together, so
+  // the flash drives the tube coming to life / dying rather than sitting over an
+  // instant toggle. Cleared here on the flash's animationend; for power-off the
+  // filter (crt-on) is dropped in the same frame the cool-down ends.
+  if (crtPowerEl) crtPowerEl.addEventListener('animationend', () => {
+    const wasOff = crtPowerEl.classList.contains('off');
+    crtPowerEl.classList.remove('on', 'off');
+    if (wasOff && !crtEnabled) document.body.classList.remove('crt-on', 'crt-cooling');
+    else document.body.classList.remove('crt-warming');
+  });
+
   let W = 0, H = 0;
   let _dpr = 1; // device pixel ratio the backing store is currently sized for
 
@@ -234,6 +259,14 @@
     { label: '30 SEC', timer: 30,  ms: 30000 },
     { label: '5 MIN',  timer: 300, ms: 300000 },
     { label: 'DISABLE', timer: null, ms: 0 },
+  ];
+  // Blocked-entity tier palette [bodyColor, bodyGlow, reticleColor, reticleGlow], indexed
+  // 0 = tier 0/1, 1 = tier 2, 2 = tier 3+. Hoisted out of the per-frame entity draw so the
+  // array isn't re-allocated for every blocked entity every frame (values unchanged).
+  const ENTITY_TIER_COLORS = [
+    ['rgba(255,50,50,1)',  'rgba(255,60,40,0.35)',  'rgba(80,255,160,0.9)', 'rgba(60,240,140,0.6)'],
+    ['rgba(255,130,30,1)', 'rgba(255,130,30,0.35)', 'rgba(0,220,255,0.9)',  'rgba(0,190,255,0.6)'],
+    ['rgba(190,60,255,1)', 'rgba(190,60,255,0.35)', 'rgba(255,210,50,0.9)', 'rgba(255,175,30,0.6)'],
   ];
   // Draws one nacelle engine exhaust flame centered at (x, base).
   function drawEngineFlare(x, base, ft, wScale = 1, lScale = wScale, taper = 0.6, shape = 'arch', wobble = 1, col = null) {
@@ -1927,11 +1960,7 @@
         const tier = Math.min(e.count, 3);
         const bmp  = tier >= 3 ? E3 : tier === 2 ? E2 : (e.design === 0 ? E0 : E1);
         const pulse = 0.75 + 0.25 * Math.sin(age * 0.005);
-        const [colFull, glow, rcol, rglow] = tier >= 3
-          ? ['rgba(190,60,255,1)', 'rgba(190,60,255,0.35)', 'rgba(255,210,50,0.9)',  'rgba(255,175,30,0.6)']
-          : tier === 2
-          ? ['rgba(255,130,30,1)', 'rgba(255,130,30,0.35)', 'rgba(0,220,255,0.9)',   'rgba(0,190,255,0.6)']
-          : ['rgba(255,50,50,1)',  'rgba(255,60,40,0.35)',  'rgba(80,255,160,0.9)',  'rgba(60,240,140,0.6)'];
+        const [colFull, glow, rcol, rglow] = ENTITY_TIER_COLORS[tier >= 3 ? 2 : tier === 2 ? 1 : 0];
         // Mutation scale pulse
         const mp = e.mutateAt > 0 ? Math.min(1, (t - e.mutateAt) / 500) : 1;
         const mutActive = mp < 1;
@@ -2056,11 +2085,8 @@
           const tier = Math.min(e.count, 3);
           const bmp = tier >= 3 ? E3 : tier === 2 ? E2 : (e.design === 0 ? E0 : E1);
           const pulse = 0.75 + 0.25 * Math.sin(age * 0.005);
-          const [colFull, glow] = tier >= 3
-            ? ['rgba(190,60,255,1)', 'rgba(190,60,255,0.35)']
-            : tier === 2
-            ? ['rgba(255,130,30,1)', 'rgba(255,130,30,0.35)']
-            : ['rgba(255,50,50,1)', 'rgba(255,60,40,0.35)'];
+          const _tc = ENTITY_TIER_COLORS[tier >= 3 ? 2 : tier === 2 ? 1 : 0];
+          const colFull = _tc[0], glow = _tc[1];
           const _sp = getCachedSprite(bmp, colFull, glow, EPX);
           ctx.globalAlpha = alpha * pulse;
           ctx.save(); ctx.translate(e.x, e.y);
@@ -3015,7 +3041,10 @@
       const _zoneTop = H - hudSH - safeBottom - 50;
       const _hover = _lastPtrType === 'mouse' && mouseX >= 0 && mouseY >= _zoneTop;
       const _menusOpen = settingsMenuOpen || shieldMenuOpen || shipMenuOpen || p2ShieldMenuOpen || p2ShipMenuOpen;
-      if (_hover || _menusOpen) _hudRevealAt = t;
+      // A gravity/blocklist pull in progress keeps the HUD up so the UPDATING
+      // status stays visible until it lands.
+      const _gravityBusy = gravityState === 'updating' || p2GravityState === 'updating';
+      if (_hover || _menusOpen || _gravityBusy) _hudRevealAt = t;
       if (t - _hudRevealAt > AUTOHIDE_MS) _hudTarget = 1;
     }
     const _hdt = _hudPrevT ? Math.min(t - _hudPrevT, 80) : 16;
@@ -4536,7 +4565,21 @@
           if      (item.key === 'friendlies')  { showFriendlies = !showFriendlies; _saveDisplaySettings(); }
           else if (item.key === 'domain')      { showDomain     = !showDomain;     _saveDisplaySettings(); }
           else if (item.key === 'client')      { showClient     = !showClient;     _saveDisplaySettings(); }
-          else if (item.key === 'crt')         { crtEnabled     = !crtEnabled; document.body.classList.toggle('crt-on', crtEnabled); _saveDisplaySettings(); }
+          else if (item.key === 'crt') {
+            crtEnabled = !crtEnabled;
+            _saveDisplaySettings();
+            if (crtEnabled) {
+              document.body.classList.remove('crt-cooling');
+              document.body.classList.add('crt-on', 'crt-warming'); // fade the filter in with the flash
+              _playCrtOneShot(crtPowerEl, 'on');
+            } else if (!crtPowerEl) {
+              document.body.classList.remove('crt-on', 'crt-warming', 'crt-cooling'); // no element -> drop now
+            } else {
+              document.body.classList.remove('crt-warming');
+              document.body.classList.add('crt-cooling');        // keep crt-on; fade out with the collapse
+              _playCrtOneShot(crtPowerEl, 'off');
+            }
+          }
           else if (item.key === 'autohide')    { hudAutoHide     = !hudAutoHide; _hudRevealAt = performance.now(); _saveDisplaySettings(); }
           else if (item.key === '2p-mode') {
             settingsMenuOpen = false;

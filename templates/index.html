@@ -43,6 +43,9 @@ if (window.BG_CONFIG.bg_image) {
      phosphor glow (screen blend), crt-overlay = scanline/mask darkening (multiply). -->
 <div id="crt-glow" aria-hidden="true"></div>
 <div id="crt-overlay" aria-hidden="true"></div>
+<!-- Transient CRT flash, transparent at rest; JS adds a class to play one shot:
+     the tube warm-up / collapse when the CRT filter is switched on or off. -->
+<div id="crt-power" aria-hidden="true"></div>
 
 <div id="settings-btn">
   <span></span><span></span><span></span>
