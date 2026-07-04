@@ -32,58 +32,77 @@ body.pihole-mode #pihole-canvas {
 }
 
 /* ── CRT filter overlay ────────────────────────────────────────────────
-   Opt-in retro look. Every layer is a static gradient painted once and
-   composited on the GPU, so there is no per-frame CPU/canvas cost - safe on
-   low-power boards (RPi). Sits above the game canvas + HUD (z 15/16) but below
-   the 2P modal (z 30). pointer-events:none so it never eats input. */
+   Opt-in retro look, built the way real-CRT shaders are described (soft
+   phosphor scanlines, a faint shadow mask, tube curvature via edge darkening,
+   a slow rolling refresh band, and a gentle flicker). Every base layer is a
+   static gradient painted once and GPU-composited; the only animations are
+   opacity + transform (both compositor-only), so there is no per-frame
+   CPU/canvas cost - safe on low-power boards (RPi). Sits above the game canvas
+   + HUD (z 15/16) but below the 2P modal (z 30); pointer-events:none. */
 #crt-overlay {
   position: fixed; inset: 0;
   z-index: 20;
   pointer-events: none;
   display: none;
-  /* Scanlines: chunky dark bands with thin gaps, for a heavy tube look */
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0)    0,
-    rgba(0, 0, 0, 0)    2px,
-    rgba(0, 0, 0, 0.42) 2px,
-    rgba(0, 0, 0, 0.42) 4px
-  );
+  /* Soft scanlines: a triangular dark->clear->dark ramp over a 5px pitch reads
+     as glowing phosphor lines instead of a hard screen-door mesh. Layered with a
+     faint RGB shadow mask for sub-pixel texture. */
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0.34) 0,
+      rgba(0, 0, 0, 0)    2.5px,
+      rgba(0, 0, 0, 0.34) 5px
+    ),
+    repeating-linear-gradient(
+      to right,
+      rgba(255, 0, 0, 0.05) 0,   rgba(255, 0, 0, 0.05) 2px,
+      rgba(0, 255, 0, 0.05) 2px, rgba(0, 255, 0, 0.05) 4px,
+      rgba(0, 0, 255, 0.05) 4px, rgba(0, 0, 255, 0.05) 6px
+    );
+  /* Tube curvature: soft inner darkening so the glass reads as convex */
+  box-shadow: inset 0 0 160px 44px rgba(0, 0, 0, 0.5);
 }
 body.crt-on #crt-overlay { display: block; }
 
-/* Aperture grille: vertical RGB triads for a phosphor shimmer */
+/* Rolling refresh band: a faint bright bar drifting down the screen, the
+   camera-of-a-CRT beat that makes it feel alive. transform-only animation. */
 #crt-overlay::before {
   content: '';
-  position: absolute; inset: 0;
+  position: absolute; left: 0; right: 0;
+  top: 0; height: 22vh;
   pointer-events: none;
-  background: repeating-linear-gradient(
-    to right,
-    rgba(255, 0, 0, 0.09) 0,   rgba(255, 0, 0, 0.09) 1px,
-    rgba(0, 255, 0, 0.09) 1px, rgba(0, 255, 0, 0.09) 2px,
-    rgba(0, 0, 255, 0.09) 2px, rgba(0, 0, 255, 0.09) 3px
-  );
+  background: linear-gradient(to bottom,
+    rgba(255, 255, 255, 0)     0,
+    rgba(255, 255, 255, 0.035) 50%,
+    rgba(255, 255, 255, 0)     100%);
+  transform: translateY(-30vh);
 }
 
-/* Vignette: darken the corners like a curved tube */
+/* Corner vignette on top of the curvature shadow */
 #crt-overlay::after {
   content: '';
   position: absolute; inset: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse at center,
-    rgba(0, 0, 0, 0) 42%, rgba(0, 0, 0, 0.45) 100%);
+  background: radial-gradient(ellipse 100% 100% at center,
+    rgba(0, 0, 0, 0) 58%, rgba(0, 0, 0, 0.32) 100%);
 }
 
-/* Subtle brightness flicker; opacity-only so it stays GPU-composited. Disabled
-   for users who prefer reduced motion. */
+/* Motion (roll + flicker) only for users who allow it; opacity/transform stay
+   GPU-composited so the cost is negligible even on a Pi. */
 @media (prefers-reduced-motion: no-preference) {
-  body.crt-on #crt-overlay { animation: crt-flicker 6s ease-in-out infinite; }
+  body.crt-on #crt-overlay          { animation: crt-flicker 5s ease-in-out infinite; }
+  body.crt-on #crt-overlay::before  { animation: crt-roll 8s linear infinite; }
 }
 @keyframes crt-flicker {
   0%, 100% { opacity: 1; }
-  47%      { opacity: 0.94; }
-  50%      { opacity: 0.98; }
-  53%      { opacity: 0.93; }
+  48%      { opacity: 0.97; }
+  50%      { opacity: 0.99; }
+  52%      { opacity: 0.96; }
+}
+@keyframes crt-roll {
+  from { transform: translateY(-30vh); }
+  to   { transform: translateY(130vh); }
 }
 
 /* Settings burger button; bottom synced by JS on resize */
