@@ -3280,7 +3280,7 @@
         ctx.textAlign = 'left';
         const _phLbl = _isP2 ? PROVIDER_NAME + ' 1' : PROVIDER_NAME;
         const _phLblX = iconX + iconW + 12;
-        _fitLabelFont(_phLbl, (smX + smw - 19) - _phLblX - 6, _fSub);
+        _fitLabelFont(_phLbl, (smX + smw - 19) - _phLblX - 4, _fSub);
         ctx.fillStyle = phHov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
         ctx.fillText(_phLbl, _phLblX, siy + smPhRowH / 2 + 6);
         // External link arrow drawn with lines
@@ -3310,7 +3310,7 @@
           ctx.textAlign = 'left';
           const _ph2Lbl = PROVIDER_NAME + ' 2';
           const _ph2LblX = _icon2X + _icon2W + 12;
-          _fitLabelFont(_ph2Lbl, (smX + smw - 19) - _ph2LblX - 6, _fSub);
+          _fitLabelFont(_ph2Lbl, (smX + smw - 19) - _ph2LblX - 4, _fSub);
           ctx.fillStyle = ph2Hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
           ctx.fillText(_ph2Lbl, _ph2LblX, siy + smPhRowH / 2 + 6);
           const _a2x = smX + smw - 14, _a2y = siy + smPhRowH / 2;
