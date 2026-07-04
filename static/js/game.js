@@ -17,6 +17,28 @@
   const PROVIDER_TOGGLE_LABEL = PROVIDER === 'adguard' ? 'FILTER'
                               : PROVIDER === 'technitium' ? 'BLOCK LIST'
                               : 'GRAVITY';
+  // Shrink a "Press Start 2P" label so it fits within maxW. Keeps long provider
+  // names (e.g. TECHNITIUM) from colliding with a row's link arrow. Sets ctx.font
+  // as a side effect and returns the chosen pixel size.
+  function _fitLabelFont(text, maxW, baseSize) {
+    ctx.font = `${baseSize}px "Press Start 2P", monospace`;
+    const w = ctx.measureText(text).width;
+    const size = (w > maxW && w > 0) ? Math.max(6, Math.floor(baseSize * maxW / w)) : baseSize;
+    if (size !== baseSize) ctx.font = `${size}px "Press Start 2P", monospace`;
+    return size;
+  }
+  // Technitium's aggregated dashboard stats trail its live query log, so the HUD
+  // counters lag behind the feed. Bump them locally per feed event for a live feel;
+  // each stats poll reconciles upward to the authoritative totals (see fetchPiholeStats).
+  function _techLiveCount(evts) {
+    if (PROVIDER !== 'technitium' || hudStats.queries == null) return;
+    for (const ev of evts) {
+      hudStats.queries += 1;
+      if (ev && ev.status === 'blocked') hudStats.blocked = (hudStats.blocked || 0) + 1;
+    }
+    hudStats.percent = hudStats.queries > 0
+      ? Math.round((hudStats.blocked || 0) / hudStats.queries * 1000) / 10 : 0;
+  }
   const settingsBtnEl = document.getElementById('settings-btn');
   let W = 0, H = 0;
   let _dpr = 1; // device pixel ratio the backing store is currently sized for
@@ -3266,11 +3288,13 @@
           ctx.drawImage(_phIcon, iconX, iconY, iconW, iconH);
           ctx.restore();
         }
-        // Label
+        // Label (shrink to fit so long names don't collide with the link arrow at smX+smw-14)
         ctx.textAlign = 'left';
-        ctx.font = `${_fSub}px "Press Start 2P", monospace`;
+        const _phLbl = _isP2 ? PROVIDER_NAME + ' 1' : PROVIDER_NAME;
+        const _phLblX = iconX + iconW + 12;
+        _fitLabelFont(_phLbl, (smX + smw - 19) - _phLblX - 6, _fSub);
         ctx.fillStyle = phHov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
-        ctx.fillText(_isP2 ? PROVIDER_NAME + ' 1' : PROVIDER_NAME, iconX + iconW + 12, siy + smPhRowH / 2 + 6);
+        ctx.fillText(_phLbl, _phLblX, siy + smPhRowH / 2 + 6);
         // External link arrow drawn with lines
         const _ax = smX + smw - 14, _ay = siy + smPhRowH / 2;
         ctx.strokeStyle = phHov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
@@ -3296,9 +3320,11 @@
             ctx.restore();
           }
           ctx.textAlign = 'left';
-          ctx.font = `${_fSub}px "Press Start 2P", monospace`;
+          const _ph2Lbl = PROVIDER_NAME + ' 2';
+          const _ph2LblX = _icon2X + _icon2W + 12;
+          _fitLabelFont(_ph2Lbl, (smX + smw - 19) - _ph2LblX - 6, _fSub);
           ctx.fillStyle = ph2Hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
-          ctx.fillText(PROVIDER_NAME + ' 2', _icon2X + _icon2W + 12, siy + smPhRowH / 2 + 6);
+          ctx.fillText(_ph2Lbl, _ph2LblX, siy + smPhRowH / 2 + 6);
           const _a2x = smX + smw - 14, _a2y = siy + smPhRowH / 2;
           ctx.strokeStyle = ph2Hov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
           ctx.lineWidth = 1.5; ctx.lineCap = 'round';
@@ -3827,6 +3853,7 @@
       try {
         const evts = JSON.parse(e.data);
         if (Array.isArray(evts)) {
+          _techLiveCount(evts);
           queue.push(...evts);
           if (queue.length > 200) queue.splice(0, queue.length - 200);
         }
@@ -4145,9 +4172,19 @@
             shipPowerState = 'startup'; startupAt = performance.now();
           }
         }
-        if (d.blocked != null) hudStats.blocked = d.blocked;
-        if (d.queries != null) hudStats.queries = d.queries;
-        if (d.percent != null) hudStats.percent = d.percent;
+        if (PROVIDER === 'technitium') {
+          // Reconcile upward only: live-incremented counters may briefly lead
+          // Technitium's trailing aggregation, so never snap backward.
+          if (d.queries != null) hudStats.queries = Math.max(hudStats.queries || 0, d.queries);
+          if (d.blocked != null) hudStats.blocked = Math.max(hudStats.blocked || 0, d.blocked);
+          hudStats.percent = hudStats.queries > 0
+            ? Math.round((hudStats.blocked || 0) / hudStats.queries * 1000) / 10
+            : (d.percent != null ? d.percent : hudStats.percent);
+        } else {
+          if (d.blocked != null) hudStats.blocked = d.blocked;
+          if (d.queries != null) hudStats.queries = d.queries;
+          if (d.percent != null) hudStats.percent = d.percent;
+        }
         if (!_p1ShipVisible && (d.blocking != null || d.blocked != null || d.queries != null)) _p1Reveal();
       }).catch(() => {});
     }
