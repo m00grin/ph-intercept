@@ -47,7 +47,7 @@
   let drone2 = { state: 'docked', x: 0, y: 0, lastFire: 0, side: 0, angle: 0, targetX: null, targetY: null, deployedAt: 0, recallAt: 0 };
   const drone2Missiles = [];
   let hudGravity = null;
-  let hudStats = { blocked: null, queries: null, percent: null };
+  let hudStats = { blocked: null, queries: null, no_error: null, percent: null };
   let hudStatsPollTimer = null, _onVisible = null, _onFocus = null, _sleepCheckTimer = null, _exitTimer = null;
   let gravityState = 'idle'; // 'idle' | 'updating' | 'done'
   let gravityDoneAt = 0;
@@ -125,7 +125,7 @@
   let p2WarpAt = 0;
   let p2WarpNextShip = null;
   let p2WarpPrevShip = null;
-  let p2HudStats = { blocked: null, queries: null, percent: null };
+  let p2HudStats = { blocked: null, queries: null, no_error: null, percent: null };
   let p2BlockingEnabled = null;
   let p2BlockingOffAt = 0, p2BlockingDuration = 0, p2PowerdownAt = 0;
   let p2BlockingOffSince = 0;  // set once per off-transition; see blockingOffSince
@@ -3335,7 +3335,11 @@
     if (INTEL_W >= 50) {
       const _i2Min = 15 * _fSub, _i4Min = 33 * _fSub;
       const hsBlocked = hudStats.blocked;
-      const hsAllowed = hudStats.queries != null && hudStats.blocked != null ? hudStats.queries - hudStats.blocked : null;
+      // Technitium mirrors its dashboard's "No Error" card; others show allowed (total - blocked).
+      const _isTech = PROVIDER === 'technitium';
+      const hsAllowed = _isTech ? hudStats.no_error
+        : (hudStats.queries != null && hudStats.blocked != null ? hudStats.queries - hudStats.blocked : null);
+      const _allowedLabel = _isTech ? 'no error' : 'allowed';
       const hsTotal = hudStats.queries;
       const pct = hudStats.percent;
       const _pctColor = pct == null ? 'rgba(150,150,150,0.50)' : pct >= 60 ? 'rgba(50,215,120,0.85)' : pct >= 40 ? 'rgba(210,220,70,0.85)' : 'rgba(255,110,50,0.85)';
@@ -3344,7 +3348,7 @@
         ? [
             { val: _fmtN(hsTotal),   label: 'total',     color: 'rgba(130,185,255,0.90)' },
             { val: _fmtN(hsBlocked), label: 'blocked',   color: 'rgba(255,70,60,0.90)'   },
-            { val: _fmtN(hsAllowed), label: 'allowed',   color: 'rgba(50,215,120,0.90)'  },
+            { val: _fmtN(hsAllowed), label: _allowedLabel, color: 'rgba(50,215,120,0.90)'  },
             { val: _pctVal,          label: 'intercept', color: _pctColor },
           ]
         : INTEL_W >= _i2Min
@@ -3629,7 +3633,9 @@
       if (INTEL_W >= 50) {
         const _p2i2Min = 15 * _fSub, _p2i4Min = 33 * _fSub;
         const _p2Blocked = p2HudStats.blocked;
-        const _p2Allowed = p2HudStats.queries != null && _p2Blocked != null ? p2HudStats.queries - _p2Blocked : null;
+        const _p2Allowed = PROVIDER === 'technitium' ? p2HudStats.no_error
+          : (p2HudStats.queries != null && _p2Blocked != null ? p2HudStats.queries - _p2Blocked : null);
+        const _p2AllowedLabel = PROVIDER === 'technitium' ? 'no error' : 'allowed';
         const _p2Total   = p2HudStats.queries;
         const _p2Pct     = p2HudStats.percent;
         const _p2PctColor = _p2Pct == null ? 'rgba(150,150,150,0.50)' : _p2Pct >= 60 ? 'rgba(50,215,120,0.85)' : _p2Pct >= 40 ? 'rgba(210,220,70,0.85)' : 'rgba(255,110,50,0.85)';
@@ -3638,7 +3644,7 @@
           ? [
               { val: _fmtP2(_p2Total),   label: 'total',     color: 'rgba(130,185,255,0.90)' },
               { val: _fmtP2(_p2Blocked), label: 'blocked',   color: 'rgba(255,70,60,0.90)'   },
-              { val: _fmtP2(_p2Allowed), label: 'allowed',   color: 'rgba(50,215,120,0.90)'  },
+              { val: _fmtP2(_p2Allowed), label: _p2AllowedLabel, color: 'rgba(50,215,120,0.90)'  },
               { val: _p2PctVal,           label: 'intercept', color: _p2PctColor },
             ]
           : INTEL_W >= _p2i2Min
@@ -3883,7 +3889,7 @@
     p2Queue.length = 0;
     p2Entities.length = 0;
     p2Lasers.length = 0;
-    p2HudStats = { blocked: null, queries: null, percent: null };
+    p2HudStats = { blocked: null, queries: null, no_error: null, percent: null };
     p2BlockingEnabled = null;
     p2CmdExpected = null; p2CmdDeadline = 0;
     p2WarpState = 'none'; p2WarpAt = 0; p2WarpNextShip = null; p2WarpPrevShip = null;
@@ -3900,6 +3906,7 @@
         .then(d => {
           if (d.blocked != null) p2HudStats.blocked = d.blocked;
           if (d.queries != null) p2HudStats.queries = d.queries;
+          if (d.no_error != null) p2HudStats.no_error = d.no_error;
           if (d.percent != null) p2HudStats.percent = d.percent;
           // Reconciliation: while a locally-issued toggle is pending, a poll that
           // still reflects the pre-toggle state is stale. Ignore it so it can't
@@ -4063,7 +4070,7 @@
     drone2.deployedAt = 0; drone2.recallAt = 0;
     drone2Missiles.length = 0;
     hudGravity = null;
-    hudStats = { blocked: null, queries: null, percent: null };
+    hudStats = { blocked: null, queries: null, no_error: null, percent: null };
     _p1ShipVisible = false;
     if (hudStatsPollTimer) { clearInterval(hudStatsPollTimer); hudStatsPollTimer = null; }
     gravityState = 'idle'; gravityDoneAt = 0;
@@ -4161,6 +4168,7 @@
         }
         if (d.blocked != null) hudStats.blocked = d.blocked;
         if (d.queries != null) hudStats.queries = d.queries;
+        if (d.no_error != null) hudStats.no_error = d.no_error;
         if (d.percent != null) hudStats.percent = d.percent;
         if (!_p1ShipVisible && (d.blocking != null || d.blocked != null || d.queries != null)) _p1Reveal();
       }).catch(() => {});

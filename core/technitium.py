@@ -189,6 +189,9 @@ async def _fetch_stats(http_client: httpx.AsyncClient, inst: _Instance) -> dict 
         return {
             "queries": queries,
             "blocked": blocked,
+            # Matches the Technitium dashboard's "No Error" card (NOERROR-rcode
+            # responses); the HUD shows this in place of "allowed" for Technitium.
+            "no_error": int(stats.get("totalNoError") or 0),
             "percent": round(blocked / queries * 100, 1) if queries else 0.0,
             "gravity": gravity,
             "blocking": blocking,
