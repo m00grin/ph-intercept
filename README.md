@@ -9,6 +9,8 @@ Designed to be dropped in alongside an existing Pi-hole v6 setup with no extra d
 ---
 
 > **AdGuard Home user?** See the [AdGuard setup guide](adguard/README.md).
+>
+> **Technitium DNS user?** See the [Technitium setup guide](technitium/README.md).
 
 ## Quick Start
 
@@ -268,6 +270,8 @@ PIHOLE2_PASSWORD=your_second_pihole_password
 `PIHOLE2_PASSWORD` can be omitted if the second Pi-hole has no app password set. Setting a valid `PIHOLE2_URL` is all that is required to make the mode available; turn it on from the in-game 2-player panel. On/off state is saved to the `data` volume, so it survives container restarts.
 
 > **AdGuard Home?** The second instance mirrors your primary provider, so an AdGuard setup pairs with a second AdGuard Home via `ADGUARD2_URL` / `ADGUARD2_USERNAME` / `ADGUARD2_PASSWORD`. See the [AdGuard 2-player setup](adguard/README.md#local-2-player-mode).
+>
+> **Technitium DNS?** Pairs with a second Technitium via `TECHNITIUM2_URL` and `TECHNITIUM2_TOKEN` (or user + password). See the [Technitium 2-player setup](technitium/README.md#local-2-player-mode).
 
 ---
 

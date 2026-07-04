@@ -1,0 +1,107 @@
+services:
+  ph-intercept:
+    image: ghcr.io/m00grin/ph-intercept:latest
+    hostname: ph-intercept
+    container_name: ph-intercept
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128m
+          cpus: "1"
+          pids: 20
+
+    environment:
+      PROVIDER: technitium
+
+      # REQUIRED: Technitium DNS web-console root (the API lives under /api).
+      # Example: "http://192.168.1.2:5380"
+      TECHNITIUM_URL: "http://CHANGE.ME:5380"
+
+      # Authentication: use EITHER a permanent API token OR a username + password.
+      # A token is recommended (create one under Administration > Sessions >
+      # Create Token in the Technitium console).
+      # CLI users: put the secret in a .env file next to this compose file.
+      # Portainer Web users: add it as an environment variable.
+      TECHNITIUM_TOKEN: ${TECHNITIUM_TOKEN}
+      # TECHNITIUM_USER: "admin"
+      # TECHNITIUM_PASSWORD: ${TECHNITIUM_PASSWORD}
+      # TECHNITIUM_TOTP: ""   # only if the account has 2FA enabled
+
+      # REQUIRED for the query feed: the "Query Logs (Sqlite)" DNS app must be
+      # installed in Technitium (Apps > App Store > Query Logs (Sqlite)). These
+      # match its default install name and class path; only change them if you
+      # installed the app under a different name.
+      # TECHNITIUM_QUERY_LOG_APP: "Query Logs (Sqlite)"
+      # TECHNITIUM_QUERY_LOG_CLASS: "QueryLogsSqlite.App"
+
+      # Optional: where ESC navigates to (like your homelab dashboard or homepage)
+      # Accepts http://, https://, protocol-relative (//), relative paths, and custom app schemes
+      # Leave blank ("") to disable ESC entirely
+      RETURN_URL: ""
+
+      # Background style: starfield | dark | nebula
+      BG_MODE: starfield
+
+      # Sky region shown when BG_MODE=starfield:
+      #   summer_triangle | orion | scorpius | southern_cross
+      SKY_PRESET: summer_triangle
+
+      # Set BG_IMAGE to use a custom background. URL for an image, or /bg/your-filename.jpg
+      # If set, BG_IMAGE overrides BG_MODE entirely
+      BG_IMAGE: ""
+
+      # SSL certificate verification. Set to "false" if Technitium uses HTTPS
+      #  with a self-signed certificate. Leave as "true" for HTTP or valid HTTPS.
+      TECHNITIUM_VERIFY_SSL: "true"
+
+      # Optional: comma-separated regex patterns. Matching domains spawn no ships. Case-insensitive.
+      # TECHNITIUM_IGNORE_DOMAINS: .*\.local$,.*\.internal$
+
+      # 2-player local mode: set the URL and a token (or user + password) to enable
+      # a second Technitium ship on the right half. The second instance also needs
+      # the Query Logs (Sqlite) app installed.
+      # TECHNITIUM2_URL: "http://192.168.1.3:5380"
+      # TECHNITIUM2_TOKEN: ${TECHNITIUM2_TOKEN}
+      # TECHNITIUM2_USER: "admin"
+      # TECHNITIUM2_PASSWORD: ${TECHNITIUM2_PASSWORD}
+      # TECHNITIUM2_VERIFY_SSL: "true"
+
+    volumes:
+      # Portainer Web users: This will resolve to /data/compose/<stack-id>/bg/
+      - ./bg:/app/static/bg
+      # Persists 2-player mode state across container restarts
+      - data:/app/data
+
+    cap_drop:
+      - ALL
+
+    security_opt:
+      - "no-new-privileges:true"
+
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    ports:
+      # Host port : container port. Change the left side if 4673 is taken
+      - "4673:4653"
+
+    # Optional: point DNS at your Technitium DNS server
+    # dns:
+    #   - your.dns.dockernet.ip
+
+    # Optional: only needed if you use static IPs on a custom Docker network
+    # Uncomment both networks blocks if you need this
+    # networks:
+    #   intercept_net:
+    #     ipv4_address: this.container.dockernet.ip
+
+# networks:
+#   intercept_net:
+#     external: true
+
+volumes:
+  data:
