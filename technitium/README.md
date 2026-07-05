@@ -70,14 +70,18 @@ services:
       # Optional: where ESC navigates to (like your homelab dashboard or homepage)
       RETURN_URL: ""
 
-      # Background style: starfield | dark | nebula
+      # Background. These set the DEFAULT; each user can also switch the background live
+      # from the in-app settings menu, and their choice is remembered per-browser.
+      # Style: starfield | nebula | outrun | dark
       BG_MODE: starfield
 
-      # Sky region shown when BG_MODE=starfield:
+      # Sky region shown for the starfield:
       #   summer_triangle | orion | scorpius | southern_cross
       SKY_PRESET: summer_triangle
 
-      # Set BG_IMAGE to use a custom background. URL for an image, or /bg/your-filename.jpg
+      # Optional custom background image: a URL, or /bg/your-filename.jpg (mounted volume).
+      # When set, it becomes the default and enables the in-app "CUSTOM" option so it can be
+      # picked any time. Leave blank to disable it (CUSTOM shows greyed out in the menu).
       BG_IMAGE: ""
 
       # SSL certificate verification. Set to "false" if Technitium uses HTTPS
@@ -132,6 +136,8 @@ Open `http://your-host:4673`.
 
 All configuration is via environment variables in `compose.yaml`.
 
+> **Upgrading?** Pulling the latest `compose.yaml` is recommended so you have all current environment variables on hand. Anything you don't set falls back to a sensible default, so an older compose keeps working, you just might be missing newer options.
+
 ### Required
 
 | Variable | Description |
@@ -150,9 +156,9 @@ All configuration is via environment variables in `compose.yaml`.
 | `TECHNITIUM_VERIFY_SSL` | `true` | Set to `false` if Technitium uses HTTPS with a self-signed certificate. |
 | `TECHNITIUM_IGNORE_DOMAINS` | _(unset)_ | Comma-separated regex patterns. Domains that match spawn no ships. Case-insensitive; escape literal dots (`\.local$`). Example: `.*\.local$,.*\.internal$` |
 | `RETURN_URL` | `""` | URL that ESC navigates to. Accepts `http://`, `https://`, protocol-relative (`//`), relative paths, and custom app schemes. Leave blank to disable ESC. |
-| `BG_MODE` | `starfield` | `starfield` · `dark` · `nebula` |
-| `SKY_PRESET` | `summer_triangle` | `summer_triangle` · `orion` · `scorpius` · `southern_cross` |
-| `BG_IMAGE` | `""` | Image URL or `/bg/filename.jpg`. Overrides `BG_MODE` when set. |
+| `BG_MODE` | `starfield` | Default background: `starfield` · `nebula` · `outrun` · `dark`. Switchable live in-app. |
+| `SKY_PRESET` | `summer_triangle` | Default sky region: `summer_triangle` · `orion` · `scorpius` · `southern_cross`. Switchable live in-app. |
+| `BG_IMAGE` | `""` | Custom image URL or `/bg/filename.jpg`. When set, it's the default and enables the in-app `CUSTOM` option; blank leaves `CUSTOM` disabled. |
 | `TECHNITIUM2_URL` | _(unset)_ | Second Technitium console URL. Setting a valid URL activates local 2-player split-screen mode. See below. |
 | `TECHNITIUM2_TOKEN` | `""` | API token for the second instance (or use user + password below). |
 | `TECHNITIUM2_USER` / `TECHNITIUM2_PASSWORD` | `""` | Console credentials for the second instance. |
@@ -195,7 +201,7 @@ Technitium tags each answer with a response type, which ph-intercept maps to the
 
 ## Gameplay, ship, HUD, and background
 
-The entities, ship roster, HUD panels, and background modes are identical across all providers. See the [main README](../README.md) for the full walkthrough of entity tiers, the seven selectable ships, the four HUD panels, and the starfield / nebula / dark backgrounds.
+The entities, ship roster, HUD panels, and background modes are identical across all providers. See the [main README](../README.md) for the full walkthrough of entity tiers, the seven selectable ships, the four HUD panels, and the starfield / nebula / outrun / dark backgrounds.
 
 ---
 

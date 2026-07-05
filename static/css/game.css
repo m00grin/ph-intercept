@@ -31,6 +31,196 @@ body.pihole-mode #pihole-canvas {
   pointer-events: auto; cursor: default;
 }
 
+/* ── CRT filter ────────────────────────────────────────────────────────
+   Opt-in retro look, modelled on how real-CRT shaders (VileR/FFmpeg, crt-lottes)
+   are built rather than a grid drawn on top:
+
+     1. The CONTENT gets a soft blur + brightness/contrast/saturation bump, so
+        pixels read as glowing phosphor and to pre-compensate for step 2's
+        darkening. This is half of what sells "CRT".
+     2. The overlay's scanlines + shadow mask are applied with mix-blend-mode:
+        multiply, so they darken lit pixels but leave black black - exactly like
+        a real tube, where dark areas emit no beam and show no scanline.
+
+   Unlike the earlier static version this does per-frame GPU compositing (a blend
+   layer + a canvas filter), so it is heavier - fine on a desktop, and it stays
+   opt-in so low-power boards (RPi) can leave it off. Sits above the game canvas
+   + HUD (z 15/16), below the 2P modal (z 30); pointer-events:none. */
+
+/* 1. Phosphor glow on the content itself. */
+body.crt-on #pihole-canvas,
+body.crt-on #starfield,
+body.crt-on #bg-image {
+  filter: saturate(1.18) contrast(1.05) brightness(1.22) blur(0.5px);
+}
+
+/* 2. Scanline + shadow-mask multiply layer. */
+#crt-overlay {
+  position: fixed; inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  display: none;
+  /* Grayscale scanlines (dark gaps, phosphor-line centres pass at white) times a
+     near-white RGB shadow mask. background-blend-mode multiplies the two into one
+     opaque pattern; mix-blend-mode multiplies THAT onto the game behind it, so it
+     structures lit pixels and vanishes on black. */
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgb(135, 135, 135) 0,
+      rgb(255, 255, 255) 2.6px,
+      rgb(255, 255, 255) 3.4px,
+      rgb(135, 135, 135) 6px
+    ),
+    repeating-linear-gradient(
+      to right,
+      rgb(255, 232, 232) 0,   rgb(255, 232, 232) 1px,
+      rgb(232, 255, 232) 1px, rgb(232, 255, 232) 2px,
+      rgb(232, 232, 255) 2px, rgb(232, 232, 255) 3px
+    );
+  background-blend-mode: multiply;
+  mix-blend-mode: multiply;
+  /* Tube edge darkening (multiplied -> a soft vignette / convex-glass read) */
+  box-shadow: inset 0 0 200px 60px rgba(0, 0, 0, 0.45);
+  /* Ease the effect down over the HUD strip so the readout stays legible; full
+     strength above it. The render loop drives both vars: --hud-h is the strip's
+     on-screen height (shrinks as auto-hide slides it away) and --crt-floor is the
+     reduction over that band (0.58 shown -> 1 hidden), so the filter fills back in
+     as the HUD leaves. Defaults (0px / 1) = full effect when JS hasn't run yet. */
+  -webkit-mask-image: linear-gradient(to top,
+    rgba(0, 0, 0, var(--crt-floor, 1)) 0,
+    rgba(0, 0, 0, var(--crt-floor, 1)) var(--hud-h, 0px),
+    #000 calc(var(--hud-h, 0px) + 64px));
+  mask-image: linear-gradient(to top,
+    rgba(0, 0, 0, var(--crt-floor, 1)) 0,
+    rgba(0, 0, 0, var(--crt-floor, 1)) var(--hud-h, 0px),
+    #000 calc(var(--hud-h, 0px) + 64px));
+}
+body.crt-on #crt-overlay { display: block; }
+
+/* 3. Additive phosphor glow so the effect still reads on near-black areas - a
+   real tube is never truly off-black; the phosphor rows glow and the glass
+   diffuses a little light. Screen blend lifts darks (a faint line of light on
+   each 6px row, aligned to the multiply scanlines) and barely touches pixels
+   that are already bright. This is what gives the dark space background CRT
+   presence without a fake grid painted over the black. */
+#crt-glow {
+  position: fixed; inset: 0;
+  z-index: 19;
+  pointer-events: none;
+  display: none;
+  mix-blend-mode: screen;
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      rgba(0, 0, 0, 0)          0,
+      rgba(170, 190, 225, 0.07) 3px,
+      rgba(0, 0, 0, 0)          6px
+    ),
+    linear-gradient(rgba(120, 140, 180, 0.02), rgba(120, 140, 180, 0.02));
+  -webkit-mask-image: linear-gradient(to top,
+    rgba(0, 0, 0, var(--crt-floor, 1)) 0,
+    rgba(0, 0, 0, var(--crt-floor, 1)) var(--hud-h, 0px),
+    #000 calc(var(--hud-h, 0px) + 64px));
+  mask-image: linear-gradient(to top,
+    rgba(0, 0, 0, var(--crt-floor, 1)) 0,
+    rgba(0, 0, 0, var(--crt-floor, 1)) var(--hud-h, 0px),
+    #000 calc(var(--hud-h, 0px) + 64px));
+}
+body.crt-on #crt-glow { display: block; }
+
+/* Gentle brightness flicker (opacity modulates the multiply strength). */
+@media (prefers-reduced-motion: no-preference) {
+  body.crt-on #crt-overlay { animation: crt-flicker 6s ease-in-out infinite; }
+}
+@keyframes crt-flicker {
+  0%, 100% { opacity: 1; }
+  48%      { opacity: 0.96; }
+  50%      { opacity: 0.99; }
+  52%      { opacity: 0.95; }
+}
+
+/* One-shot CRT power flash. Sits above the scanline layer, screen-blends so it
+   only adds light (never blacks out the game), stays transparent at rest, and is
+   driven by a class JS adds for a single animation. Ignores reduced-motion by
+   design (opt-in, one-shot on a deliberate toggle). */
+#crt-power {
+  position: fixed; inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  mix-blend-mode: screen;
+  transform-origin: center center;
+  will-change: opacity, transform;
+}
+
+/* Soft center-weighted band rather than a full white sheet: even at full opacity
+   the top/bottom stay clear, so the flash reads as a gentle beam rather than a
+   blinding wash. scaleY opens/collapses the band for the power on/off. */
+#crt-power {
+  z-index: 21;
+  background: linear-gradient(to bottom,
+    rgba(0, 0, 0, 0)          0,
+    rgba(0, 0, 0, 0)          8%,
+    rgba(218, 236, 255, 0.42) 50%,
+    rgba(0, 0, 0, 0)          92%,
+    rgba(0, 0, 0, 0)          100%);
+}
+/* Opt-in CRT toggle flash; ignores prefers-reduced-motion by design. */
+#crt-power.on  { animation: crt-power-on  460ms cubic-bezier(0.2, 0.8, 0.3, 1); }
+#crt-power.off { animation: crt-power-off 420ms cubic-bezier(0.6, 0, 0.9, 0.4); }
+@keyframes crt-power-on {
+  0%   { opacity: 0;    transform: scaleY(0.04); }
+  10%  { opacity: 0.75; transform: scaleY(0.04); }  /* soft beam-line */
+  42%  { opacity: 0.3;  transform: scaleY(1);    }  /* line eases open, dim */
+  100% { opacity: 0;    transform: scaleY(1);    }
+}
+@keyframes crt-power-off {
+  0%   { opacity: 0;    transform: scaleY(1)    scaleX(1);    }
+  26%  { opacity: 0.3;  transform: scaleY(1)    scaleX(1);    }  /* soft flare */
+  62%  { opacity: 0.7;  transform: scaleY(0.04) scaleX(1);    }  /* collapse to a beam-line */
+  85%  { opacity: 0.55; transform: scaleY(0.04) scaleX(0.14); }  /* pinch toward a dot */
+  100% { opacity: 0;    transform: scaleY(0.02) scaleX(0);    }
+}
+
+/* Tube warm-up / cool-down, run in step with the power flash so the filter itself
+   fades in/out instead of snapping. crt-warming/crt-cooling are added alongside the
+   flash and cleared on its animationend (matched durations). These take over the
+   scanline layer's `animation` slot during the transition (the steady flicker
+   resumes once the class is gone) and, like the flash, ignore reduced-motion. */
+body.crt-warming #crt-overlay,
+body.crt-warming #crt-glow { animation: crt-layer-in  460ms ease-out; }
+body.crt-cooling #crt-overlay,
+body.crt-cooling #crt-glow { animation: crt-layer-out 420ms ease-in forwards; }
+@keyframes crt-layer-in {
+  0%   { opacity: 0;   }
+  35%  { opacity: 0.3; }
+  75%  { opacity: 1;   }
+  100% { opacity: 1;   }
+}
+@keyframes crt-layer-out {
+  0%   { opacity: 1;    }
+  40%  { opacity: 0.8;  }   /* hold through the flare */
+  72%  { opacity: 0.22; }   /* drop as the beam collapses */
+  100% { opacity: 0;    }
+}
+
+/* Content phosphor bump eases in/out too, from the identity filter to the steady
+   value set by `body.crt-on` above (kept in sync with that rule). */
+body.crt-warming #pihole-canvas,
+body.crt-warming #starfield,
+body.crt-warming #bg-image { animation: crt-content-in  460ms ease-out; }
+body.crt-cooling #pihole-canvas,
+body.crt-cooling #starfield,
+body.crt-cooling #bg-image { animation: crt-content-out 420ms ease-in forwards; }
+@keyframes crt-content-in {
+  from { filter: saturate(1) contrast(1) brightness(1) blur(0); }
+  to   { filter: saturate(1.18) contrast(1.05) brightness(1.22) blur(0.5px); }
+}
+@keyframes crt-content-out {
+  from { filter: saturate(1.18) contrast(1.05) brightness(1.22) blur(0.5px); }
+  to   { filter: saturate(1) contrast(1) brightness(1) blur(0); }
+}
+
 /* Settings burger button; bottom synced by JS on resize */
 #settings-btn {
   position: fixed;

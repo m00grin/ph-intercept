@@ -3,8 +3,10 @@
 
 const _cfg     = window.BG_CONFIG || {};
 const BG_MODE  = (_cfg.bg_mode  || 'starfield').toLowerCase();
-const HOME_RA  = typeof _cfg.sky_ra  === 'number' ? _cfg.sky_ra  : 19.27;
-const HOME_DEC = typeof _cfg.sky_dec === 'number' ? _cfg.sky_dec : 15.86;
+// Sky centre - mutable so the in-app sky-preset picker can re-aim the view live.
+// project() and buildBg() read these every rebuild, so updating them + bgDirty repaints.
+let HOME_RA  = typeof _cfg.sky_ra  === 'number' ? _cfg.sky_ra  : 19.27;
+let HOME_DEC = typeof _cfg.sky_dec === 'number' ? _cfg.sky_dec : 15.86;
 
 const HOME_RA_SPAN  = 4.74;
 const HOME_DEC_SPAN = 94.6;
@@ -51,7 +53,18 @@ nextSatDelay   = 45000 + Math.random() * 90000;
 nextMeteorDelay = 20000 + Math.random() * 40000;
 
 function draw(t) {
-  if (BG_MODE !== 'starfield') { requestAnimationFrame(draw); return; }
+  // Gate on the live mode (window._bgMode), which the in-app picker flips at runtime.
+  // 'dark' mode: paint the canvas true black (matches the starfield's own #000 space, and
+  // is darker than the themed body bg that would otherwise show through). Done every frame
+  // so it survives window resizes, which clear the backing store.
+  if (window._bgMode === 'dark') {
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    requestAnimationFrame(draw); return;
+  }
+  // Keep the rAF alive while idle so a switch back to starfield resumes instantly.
+  if (window._bgMode !== 'starfield') { requestAnimationFrame(draw); return; }
 
   // buildBg and bgCanvas/bgDirty/lastBgUpdate are owned by dso-render.js
   if (bgDirty || t - lastBgUpdate > 80) {
@@ -117,8 +130,29 @@ function draw(t) {
   requestAnimationFrame(draw);
 }
 
+// Runtime switches driven by the in-app background picker (see game.js settings menu).
+window.applyBgMode = function (mode) {
+  window._bgMode = mode;
+  bgDirty = true;   // force a starfield bg rebuild at the current size when it reactivates
+  if (mode === 'image') {
+    // Reveal the #bg-image div: wipe any stale starfield/nebula frame so the shared canvas
+    // is transparent. (Resizes re-clear it; the draw loop leaves 'image' untouched.)
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  // 'dark' is painted black by the draw loop; 'starfield'/'nebula' redraw themselves.
+};
+window.applySkyPreset = function (ra, dec) {
+  if (typeof ra === 'number')  HOME_RA  = ra;
+  if (typeof dec === 'number') HOME_DEC = dec;
+  bgDirty = true;
+};
+
 // ── Load & init ───────────────────────────────────────────────────────
-if (BG_MODE === 'starfield') {
+// Always load the star data and start the loop (even if the page opened in nebula/image
+// mode) so the user can switch to starfield in-app without a reload. The loop idles via
+// the window._bgMode gate above until starfield is the active mode.
+{
   fetch('/static/stars-lite.json').then(r => r.json()).then(d => {
     STARS       = d.stars;
     STAR_COLORS = d.colors || {};
@@ -157,7 +191,4 @@ if (BG_MODE === 'starfield') {
     resize();
     requestAnimationFrame(draw);
   });
-} else {
-  resize();
-  requestAnimationFrame(draw);
 }

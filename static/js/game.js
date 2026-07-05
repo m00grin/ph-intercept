@@ -28,6 +28,31 @@
     return size;
   }
   const settingsBtnEl = document.getElementById('settings-btn');
+
+  // ── CRT power flash (on/off) ──────────────────────────────────────────
+  // A pure CSS animation toggled by a class; playing it just re-adds the class
+  // after a reflow so it restarts.
+  const crtPowerEl   = document.getElementById('crt-power');
+  // Fires only on a deliberate CRT toggle (never continuously), and the whole CRT
+  // look is opt-in, so it intentionally ignores prefers-reduced-motion.
+  function _playCrtOneShot(el, cls) {
+    if (!el) return;
+    el.classList.remove(cls);
+    void el.offsetWidth;            // force reflow so the animation restarts
+    el.classList.add(cls);
+  }
+  // The power flash and the filter's warm-up/cool-down (crt-warming / crt-cooling
+  // fade the scanlines, glow and content bump) run together and end together, so
+  // the flash drives the tube coming to life / dying rather than sitting over an
+  // instant toggle. Cleared here on the flash's animationend; for power-off the
+  // filter (crt-on) is dropped in the same frame the cool-down ends.
+  if (crtPowerEl) crtPowerEl.addEventListener('animationend', () => {
+    const wasOff = crtPowerEl.classList.contains('off');
+    crtPowerEl.classList.remove('on', 'off');
+    if (wasOff && !crtEnabled) document.body.classList.remove('crt-on', 'crt-cooling');
+    else document.body.classList.remove('crt-warming');
+  });
+
   let W = 0, H = 0;
   let _dpr = 1; // device pixel ratio the backing store is currently sized for
 
@@ -41,6 +66,17 @@
   let _vigGradW = -1, _vigGradH = -1, _vigGradIs2P = false;
   let _hudSlideAt = 0, _hudSlideFrom = 0, _hudSlideTo = 0;
   const HUD_SLIDE_DUR = 340;
+  // HUD auto-hide: slides the whole strip off-screen after idle; summoned back by
+  // pointer activity in the bottom reveal zone. Device-agnostic (mouse/touch/pen).
+  let _hudRevealAt = 0;        // perf-clock ts of last reveal-keeping activity
+  let _hudHideT = 0;           // 0 = fully shown, 1 = fully hidden (slide progress)
+  let _hudPrevT = 0;           // previous render ts, for frame-rate-independent easing
+  let _hudVisible = true;      // is the strip mostly shown (gates HUD interactions)
+  let _lastPtrType = 'mouse';  // last pointer type seen (mouse hover keeps HUD alive; touch has no hover)
+  let _lastHudBandCss = -1;    // last --hud-h written (CRT HUD-easing band height), change-detected
+  let _lastCrtFloorCss = '';   // last --crt-floor written (CRT reduction over that band)
+  const AUTOHIDE_MS = 4000;    // idle time before the HUD slides away
+  const HUD_FADE_DUR = 240;    // slide time-constant (ms)
   const entities = [], lasers = [], explosions = [], queue = [];
   let drone = { state: 'docked', x: 0, y: 0, lastFire: 0, side: 0, angle: 0, targetX: null, targetY: null, deployedAt: 0, recallAt: 0 };
   const droneMissiles = [];
@@ -102,6 +138,8 @@
   let showFriendlies = true;
   let showDomain     = true;
   let showClient     = false;
+  let hudAutoHide    = false;   // slide the HUD away when idle
+  let crtEnabled     = false;   // retro CRT-filter overlay
   (function _loadDisplaySettings() {
     try {
       const s = JSON.parse(localStorage.getItem('ph_display'));
@@ -109,11 +147,50 @@
         if (s.friendlies != null) showFriendlies = !!s.friendlies;
         if (s.domain     != null) showDomain     = !!s.domain;
         if (s.client     != null) showClient      = !!s.client;
+        if (s.autohide   != null) hudAutoHide     = !!s.autohide;
+        if (s.crt        != null) crtEnabled      = !!s.crt;
       }
     } catch {}
+    if (crtEnabled && document.body) document.body.classList.add('crt-on');
   })();
   function _saveDisplaySettings() {
-    try { localStorage.setItem('ph_display', JSON.stringify({ friendlies: showFriendlies, domain: showDomain, client: showClient })); } catch {}
+    try { localStorage.setItem('ph_display', JSON.stringify({ friendlies: showFriendlies, domain: showDomain, client: showClient, autohide: hudAutoHide, crt: crtEnabled })); } catch {}
+  }
+  // ── Background settings (mode + sky preset) ───────────────────────
+  // Persisted under ph_bg and applied live via window.applyBgMode / window.applySkyPreset
+  // (see starfield-lite.js). Initial values come from window.BG_CONFIG, which index.html
+  // already reconciled with localStorage. The picker is always shown; the compose/env values
+  // load as the default and stay authoritative for CUSTOM: BG_IMAGE (if set) is always loaded
+  // into #bg-image, so CUSTOM works regardless of the in-app selection (backward compatible).
+  const SKY_PRESET_ORDER  = ['summer_triangle', 'orion', 'scorpius', 'southern_cross'];
+  const SKY_PRESET_LABELS = { summer_triangle: 'SUMMER TRIANGLE', orion: 'ORION', scorpius: 'SCORPIUS', southern_cross: 'SOUTHERN CROSS' };
+  // 'image' mode is labelled CUSTOM in the UI; it's only selectable when BG_IMAGE is configured.
+  const BG_MODE_ORDER  = ['starfield', 'nebula', 'outrun', 'dark', 'image'];
+  const BG_MODE_LABELS = { starfield: 'STARFIELD', nebula: 'NEBULA', outrun: 'OUTRUN', dark: 'DARK', image: 'CUSTOM' };
+  const _bgCfg0 = window.BG_CONFIG || {};
+  const bgImageAvailable = !!_bgCfg0.bg_image;   // BG_IMAGE set in compose -> CUSTOM is selectable
+  let bgMode   = BG_MODE_ORDER.includes(_bgCfg0.bg_mode) ? _bgCfg0.bg_mode : 'starfield';
+  let bgPreset = SKY_PRESET_ORDER.includes(_bgCfg0.sky_preset) ? _bgCfg0.sky_preset : 'summer_triangle';
+  // Background picker flyouts. The BACKGROUND row opens a mode flyout (STARS/NEBULA/DARK);
+  // choosing STARS opens a further sky-preset flyout that cascades off it. Selections apply
+  // live and keep the flyouts open (compare freely); clicking away closes them.
+  let bgMenuOpen = false;   // mode flyout open
+  let bgSkyOpen  = false;   // sky-preset cascade open (only meaningful with starfield)
+  let bgModeItems = [], bgModeBox = null;
+  let bgSkyItems  = [], bgSkyBox  = null;
+  function _saveBgSettings() {
+    try { localStorage.setItem('ph_bg', JSON.stringify({ mode: bgMode, preset: bgPreset })); } catch {}
+  }
+  function _applyBgMode(mode) {
+    bgMode = mode;
+    if (window.applyBgMode) window.applyBgMode(mode);
+    _saveBgSettings();
+  }
+  function _applyBgPreset(preset) {
+    bgPreset = preset;
+    const _p = (window.SKY_PRESETS || {})[preset];
+    if (_p && window.applySkyPreset) window.applySkyPreset(_p.ra, _p.dec);
+    _saveBgSettings();
   }
   // ── 2P state ──────────────────────────────────────────────────────
   let twoPlayerMode = 'off';        // 'off' | 'local'
@@ -171,6 +248,19 @@
   let shipQuoteDeck = [];       // shuffled queue for the current ship
   let shipQuoteDeckFor = null;  // which ship the deck was built for
   let shipQuoteLastShown = null;
+  // Quintuple-click easter egg: embiggen the P1 ship to 3x for 5 seconds, then it
+  // bounces back to normal on its own. A squash-and-stretch drives the grow/shrink.
+  const SHIP_EGG_BIG = 3;
+  const SHIP_EGG_HOLD = 5000;  // ms the ship stays big before auto-reverting
+  let shipEggBig    = false;  // currently big (or growing to big)
+  let shipEggBigUntil = 0;    // performance.now() timestamp the auto-revert fires
+  let shipEggFrom   = 1;      // scale at the start of the running grow/shrink
+  let shipEggTo     = 1;      // scale the current animation is heading to
+  let shipEggAnimAt = -1;     // performance.now() the grow/shrink began (-1 = settled)
+  let shipEggScale  = 1;      // last computed magnitude, reused for the hitbox + bubble
+  let shipClickTimes = [];    // recent ship-click times, windowed for quintuple-click detection
+  // Overshoot easing: settles past the target then eases back, for the "boing".
+  function _easeOutBack(x) { const c1 = 2.2, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); }
   let p2ShipQuote = null;
   let p2ShipQuoteCooldown = 0;
   let p2ShipQuoteDeck = [];
@@ -218,6 +308,14 @@
     { label: '30 SEC', timer: 30,  ms: 30000 },
     { label: '5 MIN',  timer: 300, ms: 300000 },
     { label: 'DISABLE', timer: null, ms: 0 },
+  ];
+  // Blocked-entity tier palette [bodyColor, bodyGlow, reticleColor, reticleGlow], indexed
+  // 0 = tier 0/1, 1 = tier 2, 2 = tier 3+. Hoisted out of the per-frame entity draw so the
+  // array isn't re-allocated for every blocked entity every frame (values unchanged).
+  const ENTITY_TIER_COLORS = [
+    ['rgba(255,50,50,1)',  'rgba(255,60,40,0.35)',  'rgba(80,255,160,0.9)', 'rgba(60,240,140,0.6)'],
+    ['rgba(255,130,30,1)', 'rgba(255,130,30,0.35)', 'rgba(0,220,255,0.9)',  'rgba(0,190,255,0.6)'],
+    ['rgba(190,60,255,1)', 'rgba(190,60,255,0.35)', 'rgba(255,210,50,0.9)', 'rgba(255,175,30,0.6)'],
   ];
   // Draws one nacelle engine exhaust flame centered at (x, base).
   function drawEngineFlare(x, base, ft, wScale = 1, lScale = wScale, taper = 0.6, shape = 'arch', wobble = 1, col = null) {
@@ -569,6 +667,8 @@
     settingsMenuOpen = false;
     if (settingsBtnEl) settingsBtnEl.classList.remove('menu-open');
     shipQuote = null; shipQuoteCooldown = 0; shipQuoteDeck = []; shipQuoteDeckFor = null; shipQuoteLastShown = null;
+    // Snap the triple-click size egg back to normal so a giant ship doesn't warp out huge.
+    shipEggBig = false; shipEggFrom = 1; shipEggTo = 1; shipEggAnimAt = -1; shipEggScale = 1; shipClickTimes = [];
     p2ShipQuote = null; p2ShipQuoteCooldown = 0; p2ShipQuoteDeck = []; p2ShipQuoteDeckFor = null; p2ShipQuoteLastShown = null;
     lasers.length = 0;
     shakeAt = warpAt; shakeDur = 500; shakeAmp = 16;
@@ -1196,6 +1296,9 @@
 
     if (settingsBtnEl) {
       const _startupPhase = shipPowerState === 'startup' ? (t - startupAt) / STARTUP_DUR : -1;
+      // Auto-hide slide + warp shake are applied to the button as a transform in
+      // render() (below), locked to the canvas HUD. Here we only fade it out for
+      // power-up/down transitions.
       const _btnHide = twoPlayerMode === 'off' && (shipPowerState === 'powerdown' || (_startupPhase >= 0 && _startupPhase <= 0.72));
       settingsBtnEl.style.transition = _btnHide ? 'opacity 100ms ease' : '';
       settingsBtnEl.style.opacity = _btnHide ? '0' : '';
@@ -1908,11 +2011,7 @@
         const tier = Math.min(e.count, 3);
         const bmp  = tier >= 3 ? E3 : tier === 2 ? E2 : (e.design === 0 ? E0 : E1);
         const pulse = 0.75 + 0.25 * Math.sin(age * 0.005);
-        const [colFull, glow, rcol, rglow] = tier >= 3
-          ? ['rgba(190,60,255,1)', 'rgba(190,60,255,0.35)', 'rgba(255,210,50,0.9)',  'rgba(255,175,30,0.6)']
-          : tier === 2
-          ? ['rgba(255,130,30,1)', 'rgba(255,130,30,0.35)', 'rgba(0,220,255,0.9)',   'rgba(0,190,255,0.6)']
-          : ['rgba(255,50,50,1)',  'rgba(255,60,40,0.35)',  'rgba(80,255,160,0.9)',  'rgba(60,240,140,0.6)'];
+        const [colFull, glow, rcol, rglow] = ENTITY_TIER_COLORS[tier >= 3 ? 2 : tier === 2 ? 1 : 0];
         // Mutation scale pulse
         const mp = e.mutateAt > 0 ? Math.min(1, (t - e.mutateAt) / 500) : 1;
         const mutActive = mp < 1;
@@ -2037,11 +2136,8 @@
           const tier = Math.min(e.count, 3);
           const bmp = tier >= 3 ? E3 : tier === 2 ? E2 : (e.design === 0 ? E0 : E1);
           const pulse = 0.75 + 0.25 * Math.sin(age * 0.005);
-          const [colFull, glow] = tier >= 3
-            ? ['rgba(190,60,255,1)', 'rgba(190,60,255,0.35)']
-            : tier === 2
-            ? ['rgba(255,130,30,1)', 'rgba(255,130,30,0.35)']
-            : ['rgba(255,50,50,1)', 'rgba(255,60,40,0.35)'];
+          const _tc = ENTITY_TIER_COLORS[tier >= 3 ? 2 : tier === 2 ? 1 : 0];
+          const colFull = _tc[0], glow = _tc[1];
           const _sp = getCachedSprite(bmp, colFull, glow, EPX);
           ctx.globalAlpha = alpha * pulse;
           ctx.save(); ctx.translate(e.x, e.y);
@@ -2155,6 +2251,38 @@
     const cx = Math.round(shipX);
     const cy = Math.round(shipY + passiveBob);
     const gtp = shipGunTipPos(currentShip, cx, cy);
+
+    // Triple-click size egg: bouncy grow/shrink with squash-and-stretch. _eggSX/_eggSY are
+    // the per-axis scale and _eggRot a decaying tilt; all identity when settled at 1x.
+    let _eggSX = 1, _eggSY = 1, _eggRot = 0;
+    {
+      // Auto-revert once the hold expires: bounce back to normal size on its own.
+      if (shipEggBig && t >= shipEggBigUntil) {
+        shipEggBig = false; shipEggFrom = shipEggScale; shipEggTo = 1; shipEggAnimAt = t;
+      }
+      // The shrink is also kicked off early when blocking is disabled (see setBlocking) and
+      // plays out during the 'powerdown' hold, so the ship is normal-size by the time it
+      // descends. Only snap instantly for cases with no powerdown window: warp, or a
+      // ship already committed to 'down'/'startup' (e.g. an external poll-driven toggle).
+      if ((warpState !== 'none' || shipPowerState === 'down' || shipPowerState === 'startup') && (shipEggBig || shipEggAnimAt >= 0 || shipEggScale !== 1)) {
+        shipEggBig = false; shipEggFrom = 1; shipEggTo = 1; shipEggAnimAt = -1; shipEggScale = 1; shipClickTimes = [];
+      }
+      let _mag = shipEggTo;
+      if (shipEggAnimAt >= 0) {
+        const _dur = shipEggTo >= shipEggFrom ? 650 : 520;   // grow lingers, shrink snaps
+        const _p = Math.min(1, (t - shipEggAnimAt) / _dur);
+        _mag = shipEggFrom + (shipEggTo - shipEggFrom) * _easeOutBack(_p);
+        // Jelly wobble: width and height pulse out of phase, decaying over the animation.
+        const _wob = Math.sin(_p * Math.PI * 4) * Math.pow(1 - _p, 1.6) * 0.24;
+        _eggRot = Math.sin(_p * Math.PI * 5) * Math.pow(1 - _p, 2) * 0.13;
+        _eggSX = _mag * (1 + _wob);
+        _eggSY = _mag * (1 - _wob);
+        if (_p >= 1) shipEggAnimAt = -1;
+      } else {
+        _eggSX = _mag; _eggSY = _mag;
+      }
+      shipEggScale = _mag;
+    }
 
     // Laser lines - before ship so hull covers the origin end
     if (twoPlayerMode !== 'off') { ctx.save(); ctx.beginPath(); ctx.rect(0, 0, W / 2, H); ctx.clip(); }
@@ -2470,7 +2598,9 @@
     const _shipBmp = _SCFG.bmp;
     const flareBase = cy + bmpH(_shipBmp) * PX / 2 - 5;
     const _shipHW = bmpW(_shipBmp) * PX / 2, _shipHH = bmpH(_shipBmp) * PX / 2;
-    shipBodyHitbox = (_p1ShipVisible || twoPlayerMode === 'off') && warpState === 'none' ? { x: cx - _shipHW, y: cy - _shipHH, w: _shipHW * 2, h: _shipHH * 2 } : { x: 0, y: 0, w: 0, h: 0 };
+    // Grow the clickable body with the size egg so the enlarged ship still takes clicks.
+    const _hbHW = _shipHW * shipEggScale, _hbHH = _shipHH * shipEggScale;
+    shipBodyHitbox = (_p1ShipVisible || twoPlayerMode === 'off') && warpState === 'none' ? { x: cx - _hbHW, y: cy - _hbHH, w: _hbHW * 2, h: _hbHH * 2 } : { x: 0, y: 0, w: 0, h: 0 };
     const ft = t * 0.005;
     if (!_p1ShipVisible && twoPlayerMode !== 'off') {
       const _ca = 0.25 + 0.20 * Math.sin(t * 0.0025);
@@ -2512,6 +2642,17 @@
           ctx.restore();
         }
       }
+    }
+
+    // Apply the size egg around the whole ship rig (hull + engine flares) so they scale
+    // together about the ship centre. Skipped during warp (which has its own scaling).
+    const _eggOn = warpState === 'none' && (Math.abs(_eggSX - 1) > 0.001 || Math.abs(_eggSY - 1) > 0.001 || Math.abs(_eggRot) > 0.0001);
+    if (_eggOn) {
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(_eggRot);
+      ctx.scale(_eggSX, _eggSY);
+      ctx.translate(-cx, -cy);
     }
 
     if (warpState !== 'none') {
@@ -2661,6 +2802,8 @@
       if (_SCFG.flareSplitRow != null) drawBmp(ctx, _shipBmp, cx, cy, _SCFG.color, _SCFG.glow, PX, false, _sr);
     }
 
+    if (_eggOn) ctx.restore();
+
     // ── Ship easter-egg speech bubble ──────────────────────────
     if (shipQuote) {
       const _qAge = t - shipQuote.shownAt;
@@ -2685,7 +2828,7 @@
         }
         if (_qCur) _qLines.push(_qCur);
         const _qLineH = _qFont + 8;
-        const _qBY = cy - _shipHH - 14;
+        const _qBY = cy - _shipHH * shipEggScale - 14;
         ctx.fillStyle = 'rgba(215,225,248,0.95)';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'bottom';
@@ -2984,6 +3127,56 @@
     }
     const SH = _animSH;
     const SY = H - SH - safeBottom;
+
+    // ── HUD auto-hide ────────────────────────────────────────
+    // Slide the whole strip below the viewport once idle; a mouse hovering the
+    // bottom band (or any menu open) keeps it alive. Touch/pen have no hover, so
+    // they rely on the idle timer, re-armed by taps in the reveal zone (see the
+    // window pointer listeners). Sliding as a unit avoids alpha-compositing cost.
+    let _hudTarget = 0;
+    if (hudAutoHide) {
+      if (_hudRevealAt === 0) _hudRevealAt = t;   // grace period on first frame / enable
+      const _zoneTop = H - hudSH - safeBottom - 50;
+      const _hover = _lastPtrType === 'mouse' && mouseX >= 0 && mouseY >= _zoneTop;
+      const _menusOpen = settingsMenuOpen || shieldMenuOpen || shipMenuOpen || p2ShieldMenuOpen || p2ShipMenuOpen;
+      // A gravity/blocklist pull in progress keeps the HUD up so the UPDATING
+      // status stays visible until it lands.
+      const _gravityBusy = gravityState === 'updating' || p2GravityState === 'updating';
+      if (_hover || _menusOpen || _gravityBusy) _hudRevealAt = t;
+      if (t - _hudRevealAt > AUTOHIDE_MS) _hudTarget = 1;
+    }
+    const _hdt = _hudPrevT ? Math.min(t - _hudPrevT, 80) : 16;
+    _hudPrevT = t;
+    _hudHideT += (_hudTarget - _hudHideT) * Math.min(1, _hdt / HUD_FADE_DUR);
+    if (_hudHideT < 0.001) _hudHideT = 0;
+    else if (_hudHideT > 0.999) _hudHideT = 1;
+    _hudVisible = _hudHideT < 0.5;
+    const _hudSlideY = _hudHideT * (hudSH + safeBottom + 8);
+    if (_hudHideT > 0) ctx.translate(0, _hudSlideY);
+
+    // Lock the DOM burger button to the canvas HUD: same warp shake, same auto-hide
+    // slide. (The button lives above the canvas, so it can't inherit the ctx transform.)
+    if (settingsBtnEl) {
+      settingsBtnEl.style.transform = `translate(${shakeSx.toFixed(2)}px, ${(shakeSy + _hudSlideY).toFixed(2)}px)`;
+      if (hudAutoHide && !_hudVisible && !settingsMenuOpen) settingsBtnEl.style.pointerEvents = 'none';
+    }
+
+    // Keep the CRT's HUD-easing in step with the auto-hide slide: the eased band
+    // shrinks as the strip slides off (--hud-h tracks the strip's on-screen top
+    // edge) and its reduction fades to full (--crt-floor -> 1), so the filter fills
+    // straight back in over the space the HUD vacated. Change-detected so the CSS
+    // var only rewrites during the slide, not every frame.
+    const _hudBandH = Math.max(0, Math.round(hudSH + safeBottom - _hudSlideY));
+    if (_hudBandH !== _lastHudBandCss) {
+      _lastHudBandCss = _hudBandH;
+      document.documentElement.style.setProperty('--hud-h', _hudBandH + 'px');
+    }
+    const _crtFloor = (0.58 + 0.42 * _hudHideT).toFixed(3);
+    if (_crtFloor !== _lastCrtFloorCss) {
+      _lastCrtFloorCss = _crtFloor;
+      document.documentElement.style.setProperty('--crt-floor', _crtFloor);
+    }
+
     const INT_W  = Math.min(240, Math.max(150, Math.round(W * 0.30)));
     const OPT_W  = W < 480 ? 0   : Math.min(140, Math.max(95,  Math.round(W * 0.16)));
     const TDB_W  = Math.min(250, Math.max(140, Math.round(W * 0.28)));
@@ -3173,11 +3366,17 @@
       const _sitems = [
         { key: 'friendlies', label: 'FRIENDLIES', state: showFriendlies, divAfter: true },
         { key: 'client',     label: 'CLIENT',      state: showClient },
-        { key: 'domain',     label: 'DOMAIN',     state: showDomain },
+        { key: 'domain',     label: 'DOMAIN',     state: showDomain, divAfter: true },
+        { key: 'crt',        label: 'CRT FILTER',  state: crtEnabled },
+        { key: 'autohide',   label: 'AUTO-HIDE',   state: hudAutoHide },
       ];
       const smw = 186, smItemH = 28, smPad = 10, smDivH = 10, smPhRowH = 34;
       const _has2P = window.TWO_PLAYER_ENABLED !== false;
-      const smh = smPad + smItemH + smDivH + smItemH * 2 + (_has2P ? smDivH + smItemH : 0) + smDivH + smPhRowH + (twoPlayerMode === 'local' && window.P2_DASHBOARD ? smPhRowH : 0) + smPad;
+      let _togH = 0;
+      for (const it of _sitems) { _togH += smItemH; if (it.divAfter) _togH += smDivH; }
+      // Background section: a single BACKGROUND row; mode + sky presets live in flyouts off it.
+      const _bgRows = 1;
+      const smh = smPad + _togH + _bgRows * smItemH + (_has2P ? smDivH + smItemH : 0) + smDivH + smPhRowH + (twoPlayerMode === 'local' && window.P2_DASHBOARD ? smPhRowH : 0) + smPad;
       const smX = 6, smY = SY - smh - 6;
       settingsMenuPopupBox = { x: smX, y: smY, w: smw, h: smh };
       ctx.fillStyle = 'rgba(8,11,16,0.92)';
@@ -3228,6 +3427,26 @@
           ctx.stroke();
           siy += smDivH;
         }
+      }
+      // ── Background row: label + '>' that opens the mode flyout; selection lives there. ──
+      let _bgModeRowY = siy;
+      {
+        const _bgHb = { x: smX, y: siy, w: smw, h: smItemH };
+        const _bgHov = (mouseX >= _bgHb.x && mouseX <= _bgHb.x + _bgHb.w && mouseY >= _bgHb.y && mouseY <= _bgHb.y + _bgHb.h) || bgMenuOpen;
+        if (_bgHov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(_bgHb.x, _bgHb.y, _bgHb.w, _bgHb.h); }
+        ctx.font = `${_fSub}px "Press Start 2P", monospace`;
+        ctx.textAlign = 'left';
+        ctx.fillStyle = _bgHov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.65)';
+        ctx.fillText('BACKGROUND', smX + 12, siy + 19);
+        const _bAx = smX + smw - 14, _bAy = siy + smItemH / 2;
+        ctx.strokeStyle = _bgHov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
+        ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(_bAx - 4, _bAy - 4); ctx.lineTo(_bAx + 4, _bAy); ctx.lineTo(_bAx - 4, _bAy + 4);
+        ctx.stroke();
+        settingsMenuItems.push({ key: 'bg-mode', hitbox: _bgHb });
+        _bgModeRowY = siy;
+        siy += smItemH;
       }
       if (_has2P) {
         // Divider before 2P MODE row
@@ -3323,9 +3542,95 @@
           settingsMenuItems.push({ key: 'pihole-link-2', hitbox: ph2Hb });
         }
       }
+      // ── Background flyouts: mode list, with a sky-preset list cascading off STARS ──
+      if (bgMenuOpen) {
+        const _fItemH = 26, _fPad = 8;
+        // Width to fit the widest label (24px left inset for the dot + right pad; rows with a
+        // '>' cascade arrow get extra room so the label doesn't crowd the arrow).
+        const _flyoutW = (opts) => {
+          ctx.font = `${_fSub}px "Press Start 2P", monospace`;
+          let wmax = 0;
+          for (const o of opts) wmax = Math.max(wmax, ctx.measureText(o.label).width);
+          return Math.ceil(wmax) + 24 + (opts.some(o => o.arrow) ? 32 : 18);
+        };
+        // Draw one flyout panel of selectable rows; returns its hitbox list + box.
+        const _drawFlyout = (fx, fy, fw, opts, activeKey) => {
+          const fh = opts.length * _fItemH + _fPad * 2;
+          ctx.fillStyle = 'rgba(8,11,16,0.96)';
+          ctx.fillRect(fx, fy, fw, fh);
+          const a = 12;
+          ctx.strokeStyle = 'rgba(140,160,175,0.42)'; ctx.lineWidth = 2; ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(fx + a, fy);        ctx.lineTo(fx, fy);        ctx.lineTo(fx, fy + a);
+          ctx.moveTo(fx + fw - a, fy);   ctx.lineTo(fx + fw, fy);   ctx.lineTo(fx + fw, fy + a);
+          ctx.moveTo(fx, fy + fh - a);   ctx.lineTo(fx, fy + fh);   ctx.lineTo(fx + a, fy + fh);
+          ctx.moveTo(fx + fw, fy + fh - a); ctx.lineTo(fx + fw, fy + fh); ctx.lineTo(fx + fw - a, fy + fh);
+          ctx.stroke();
+          ctx.font = `${_fSub}px "Press Start 2P", monospace`;
+          // Center label, active dot and arrow on one line via a middle baseline.
+          ctx.textBaseline = 'middle';
+          const items = opts.map((opt, idx) => {
+            const iy = fy + _fPad + idx * _fItemH;
+            const cy = iy + _fItemH / 2;
+            const hb = { x: fx, y: iy, w: fw, h: _fItemH };
+            const disabled = !!opt.disabled;
+            const hov = !disabled && mouseX >= hb.x && mouseX < hb.x + hb.w && mouseY >= hb.y && mouseY < hb.y + hb.h;
+            const active = opt.key === activeKey;
+            if (hov || (opt.arrow && bgSkyOpen)) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(hb.x, hb.y, hb.w, hb.h); }
+            if (active && !disabled) {
+              ctx.fillStyle = 'rgba(120,180,255,0.95)';
+              ctx.beginPath(); ctx.arc(fx + 13, cy - 1, 3, 0, Math.PI * 2); ctx.fill();
+            }
+            ctx.textAlign = 'left';
+            ctx.fillStyle = disabled ? 'rgba(130,140,155,0.35)'
+                          : active ? 'rgba(150,200,255,0.98)'
+                          : hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.6)';
+            ctx.fillText(opt.label, fx + 24, cy);
+            if (opt.arrow) {
+              const ax = fx + fw - 12;
+              ctx.strokeStyle = hov || bgSkyOpen ? 'rgba(215,225,248,0.7)' : 'rgba(140,160,175,0.4)';
+              ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+              ctx.beginPath(); ctx.moveTo(ax - 4, cy - 4); ctx.lineTo(ax + 3, cy); ctx.lineTo(ax - 4, cy + 4); ctx.stroke();
+            }
+            return { key: opt.key, hitbox: hb, disabled };
+          });
+          ctx.textBaseline = 'alphabetic';
+          return { items, box: { x: fx, y: fy, w: fw, h: fh } };
+        };
+        // Mode flyout - STARFIELD carries a '>' (opens sky cascade); CUSTOM is disabled unless
+        // BG_IMAGE is configured in the compose/env.
+        const _modeOpts = BG_MODE_ORDER.map(k => ({ key: k, label: BG_MODE_LABELS[k], arrow: k === 'starfield', disabled: k === 'image' && !bgImageAvailable }));
+        const _modeFw = _flyoutW(_modeOpts);
+        let _mfx = smX + smw + 6;
+        if (_mfx + _modeFw > W - 4) _mfx = Math.max(4, smX - _modeFw - 6);
+        const _modeFh = _modeOpts.length * _fItemH + _fPad * 2;
+        // Line the flyouts' first row highlight up with the BACKGROUND row highlight: the panel
+        // top sits _fPad above the row so its first item row lands exactly on it.
+        const _mfy = Math.max(6, Math.min(_bgModeRowY - _fPad, SY - _modeFh - 6));
+        const _m = _drawFlyout(_mfx, _mfy, _modeFw, _modeOpts, bgMode);
+        bgModeItems = _m.items; bgModeBox = _m.box;
+        // Sky cascade off the STARFIELD row (index 0), when open and starfield is active.
+        if (bgSkyOpen && bgMode === 'starfield') {
+          const _skyOpts = SKY_PRESET_ORDER.map(k => ({ key: k, label: SKY_PRESET_LABELS[k] }));
+          const _skyFw = _flyoutW(_skyOpts);   // wide enough for "SUMMER TRIANGLE" / "SOUTHERN CROSS"
+          let _sfx = _mfx + _modeFw + 6;
+          if (_sfx + _skyFw > W - 4) _sfx = Math.max(4, _mfx - _skyFw - 6);
+          const _skyFh = _skyOpts.length * _fItemH + _fPad * 2;
+          const _sfy = Math.max(6, Math.min(_mfy, SY - _skyFh - 6));   // top-align with the mode flyout
+          const _s = _drawFlyout(_sfx, _sfy, _skyFw, _skyOpts, bgPreset);
+          bgSkyItems = _s.items; bgSkyBox = _s.box;
+        } else {
+          bgSkyItems = []; bgSkyBox = null;
+        }
+      } else {
+        bgModeItems = []; bgModeBox = null;
+        bgSkyItems = []; bgSkyBox = null;
+      }
     } else {
       settingsMenuItems = [];
       settingsMenuPopupBox = null;
+      bgModeItems = []; bgModeBox = null;
+      bgSkyItems = []; bgSkyBox = null;
     }
 
     // ── INTEL ──────────────────────────────────────────────
@@ -4287,6 +4592,11 @@
       if (blockingDuration > 0)
         sessionStorage.setItem('ph_block_timer', JSON.stringify({ wallOffAt: Date.now(), duration: blockingDuration }));
       shipPowerState = 'powerdown'; powerdownAt = performance.now();
+      // If the ship is embiggened (triple-click egg), shrink it back with the bouncy
+      // animation during the powerdown hold so it docks at normal size.
+      if (shipEggBig || shipEggTo > 1) {
+        shipEggBig = false; shipEggFrom = shipEggScale; shipEggTo = 1; shipEggAnimAt = performance.now();
+      }
       if (shipQuote) shipQuote.shownAt = performance.now() - 3000;
       if (drone.state !== 'docked') drone.state = 'docking';
       if (drone2.state !== 'docked') drone2.state = 'docking';
@@ -4449,16 +4759,60 @@
     if (!active) return;
     const rect = canvas.getBoundingClientRect();
     const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    // When the HUD is auto-hidden, the first click in the bottom band just summons
+    // it back rather than firing an unseen control underneath.
+    if (hudAutoHide && !_hudVisible && my >= H - hudSH - safeBottom - 50) {
+      _hudRevealAt = performance.now();
+      e.stopPropagation();
+      return;
+    }
     const _isP2Active = twoPlayerMode !== 'off' && _p2ShipVisible;
 
     // Settings menu open - click toggles a setting or dismisses
     if (settingsMenuOpen) {
       e.stopPropagation();
+      // Background flyouts take priority and stay open after a pick (so you can compare).
+      // Sky cascade first (it sits on top of / beside the mode flyout).
+      if (bgSkyOpen) {
+        for (const it of bgSkyItems) {
+          if (_inBox(mx, my, it.hitbox)) { _applyBgPreset(it.key); return; }
+        }
+        if (bgSkyBox && _inBox(mx, my, bgSkyBox)) return;   // padding click: consume
+      }
+      if (bgMenuOpen) {
+        for (const it of bgModeItems) {
+          if (_inBox(mx, my, it.hitbox)) {
+            if (it.disabled) return;                // CUSTOM with no BG_IMAGE: inert, keep menu open
+            _applyBgMode(it.key);
+            bgSkyOpen = (it.key === 'starfield');   // STARFIELD reveals the sky cascade; others hide it
+            return;
+          }
+        }
+        if (bgModeBox && _inBox(mx, my, bgModeBox)) return;
+      }
       for (const item of settingsMenuItems) {
         if (_inBox(mx, my, item.hitbox)) {
+          if (item.key !== 'bg-mode') { bgMenuOpen = false; bgSkyOpen = false; }
           if      (item.key === 'friendlies')  { showFriendlies = !showFriendlies; _saveDisplaySettings(); }
           else if (item.key === 'domain')      { showDomain     = !showDomain;     _saveDisplaySettings(); }
           else if (item.key === 'client')      { showClient     = !showClient;     _saveDisplaySettings(); }
+          else if (item.key === 'crt') {
+            crtEnabled = !crtEnabled;
+            _saveDisplaySettings();
+            if (crtEnabled) {
+              document.body.classList.remove('crt-cooling');
+              document.body.classList.add('crt-on', 'crt-warming'); // fade the filter in with the flash
+              _playCrtOneShot(crtPowerEl, 'on');
+            } else if (!crtPowerEl) {
+              document.body.classList.remove('crt-on', 'crt-warming', 'crt-cooling'); // no element -> drop now
+            } else {
+              document.body.classList.remove('crt-warming');
+              document.body.classList.add('crt-cooling');        // keep crt-on; fade out with the collapse
+              _playCrtOneShot(crtPowerEl, 'off');
+            }
+          }
+          else if (item.key === 'autohide')    { hudAutoHide     = !hudAutoHide; _hudRevealAt = performance.now(); _saveDisplaySettings(); }
+          else if (item.key === 'bg-mode')     { bgMenuOpen = !bgMenuOpen; if (!bgMenuOpen) bgSkyOpen = false; }
           else if (item.key === '2p-mode') {
             settingsMenuOpen = false;
             _closeSettingsBtnAnimated();
@@ -4479,8 +4833,9 @@
           return;
         }
       }
-      if (settingsMenuPopupBox && _inBox(mx, my, settingsMenuPopupBox)) return;
+      if (settingsMenuPopupBox && _inBox(mx, my, settingsMenuPopupBox)) { bgMenuOpen = false; bgSkyOpen = false; return; }
       settingsMenuOpen = false;
+      bgMenuOpen = false; bgSkyOpen = false;
       _closeSettingsBtnAnimated();
       // fall through; let the click reach shield/ship hitboxes
     }
@@ -4547,6 +4902,22 @@
     // Ship body easter egg
     if (_inBox(mx, my, shipBodyHitbox) && warpState === 'none' && shipPowerState === 'up') {
       e.stopPropagation();
+      // Quintuple-click within 1000ms embiggens the ship to 3x; it auto-reverts after
+      // SHIP_EGG_HOLD on its own. While already big, clicks don't affect the size at all
+      // (no re-arm, no shrink) - but a single click still pops a quote, below.
+      if (!shipEggBig) {
+        const _now = performance.now();
+        shipClickTimes = shipClickTimes.filter(_ct => _now - _ct < 1000);
+        shipClickTimes.push(_now);
+        if (shipClickTimes.length >= 5) {
+          shipClickTimes = [];
+          shipEggBig = true;
+          shipEggFrom = shipEggScale;
+          shipEggTo = SHIP_EGG_BIG;
+          shipEggAnimAt = _now;
+          shipEggBigUntil = _now + SHIP_EGG_HOLD;
+        }
+      }
       if (!shipQuote && performance.now() >= shipQuoteCooldown) {
         if (shipQuoteDeck.length === 0 || shipQuoteDeckFor !== currentShip) {
           const _src = [...SHIP_QUOTES[currentShip]];
@@ -4647,10 +5018,22 @@
     const overShieldMenu   = shieldMenuOpen   && shieldMenuItems.some(item => _inBox(mouseX, mouseY, item.hitbox));
     const overShipMenu     = shipMenuOpen     && shipMenuItems.some(item => !item.active && !item.locked && _inBox(mouseX, mouseY, item.hitbox));
     const overSettingsMenu = settingsMenuOpen && settingsMenuItems.some(item => _inBox(mouseX, mouseY, item.hitbox));
+    const overBgFlyout     = (bgMenuOpen && bgModeItems.some(item => !item.disabled && _inBox(mouseX, mouseY, item.hitbox)))
+                          || (bgSkyOpen && bgSkyItems.some(item => _inBox(mouseX, mouseY, item.hitbox)));
     const overP2ShieldMenu = p2ShieldMenuOpen && p2ShieldMenuItems.some(item => _inBox(mouseX, mouseY, item.hitbox));
     const overP2ShipMenu   = p2ShipMenuOpen   && p2ShipMenuItems.some(item => !item.active && !item.locked && _inBox(mouseX, mouseY, item.hitbox));
-    canvas.style.cursor = (arrowHovered || shieldHovered || overShieldMenu || shipMenuHovered || overShipMenu || overSettingsMenu || p2ArrowHovered || p2ShieldHovered || overP2ShieldMenu || p2ShipMenuHovered || overP2ShipMenu) ? 'pointer' : '';
+    canvas.style.cursor = (arrowHovered || shieldHovered || overShieldMenu || shipMenuHovered || overShipMenu || overSettingsMenu || overBgFlyout || p2ArrowHovered || p2ShieldHovered || overP2ShieldMenu || p2ShipMenuHovered || overP2ShipMenu) ? 'pointer' : '';
   });
+
+  // HUD auto-hide: any pointer activity in the bottom reveal zone re-arms the idle
+  // timer. Pointer Events unify mouse/touch/pen, so touch taps summon the HUD too.
+  function _onHudPointer(e) {
+    _lastPtrType = e.pointerType || 'mouse';
+    if (!hudAutoHide) return;
+    if (e.clientY >= H - hudSH - safeBottom - 50) _hudRevealAt = performance.now();
+  }
+  window.addEventListener('pointermove', _onHudPointer, { passive: true });
+  window.addEventListener('pointerdown', _onHudPointer, { passive: true });
 
   // The settings button sits above the canvas (z-index 16) and captures pointer events,
   // so canvas mousemove never fires while hovering it.
@@ -4675,6 +5058,7 @@
       e.stopPropagation();
       if (!active) return;
       settingsMenuOpen = !settingsMenuOpen;
+      bgMenuOpen = false; bgSkyOpen = false;   // never reopen straight into a background flyout
       if (settingsMenuOpen) { settingsBtnEl.classList.add('menu-open'); }
       else { _closeSettingsBtnAnimated(); }
       if (settingsMenuOpen) {

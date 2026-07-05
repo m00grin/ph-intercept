@@ -4,6 +4,21 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.5.1] - 2026-07-04
+
+### Added
+
+- **CRT filter** -- a selectable retro CRT overlay effect. Toggle it from the in-game settings menu.
+- **HUD auto-hide** -- the HUD strip slides away when idle and returns on interaction (touch-compatible). Toggle it from settings.
+- **In-app background picker** -- switch the background live from the settings menu (starfield, nebula, outrun, dark, or a custom image), with a sky-preset submenu for the starfield. Your pick is remembered per-browser; the compose/env values remain the default, so existing deployments are unchanged.
+- **`outrun` background** -- an animated synthwave scene. Pairs well with the CRT filter.
+
+### Changed
+
+- **`dark` background** -- now renders true black instead of the previous dark grey.
+
+---
+
 ## [1.5.0] - 2026-07-03
 
 ### Added
