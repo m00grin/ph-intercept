@@ -26,15 +26,18 @@ services:
       # Leave blank ("") to disable ESC entirely
       RETURN_URL: ""
 
-      # Background style: starfield | dark | nebula
+      # Background. These set the DEFAULT; each user can also switch the background live
+      # from the in-app settings menu, and their choice is remembered per-browser.
+      # Style: starfield | nebula | outrun | dark
       BG_MODE: starfield
 
-      # Sky region shown when BG_MODE=starfield:
+      # Sky region shown for the starfield:
       #   summer_triangle | orion | scorpius | southern_cross
       SKY_PRESET: summer_triangle
 
-      # Set BG_IMAGE to use a custom background. URL for an image, or /bg/your-filename.jpg
-      # If set, BG_IMAGE overrides BG_MODE entirely
+      # Optional custom background image: a URL, or /bg/your-filename.jpg (mounted volume).
+      # When set, it becomes the default and enables the in-app "CUSTOM" option so it can be
+      # picked any time. Leave blank to disable it (CUSTOM shows greyed out in the menu).
       BG_IMAGE: ""
 
       # SSL certificate verification. Set to "false" if Pi-hole uses HTTPS

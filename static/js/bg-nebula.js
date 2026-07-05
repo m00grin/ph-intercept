@@ -1,12 +1,12 @@
 // ── Procedural nebula background ─────────────────────────────────────
-// Activated when BG_MODE === 'nebula'.  Renders to the #starfield canvas
+// Active while window._bgMode === 'nebula'.  Renders to the #starfield canvas
 // using a seeded simplex-noise-like approach (no external deps).
 // Three overlapping nebula lobes + a sparse synthetic star layer.
 // Built once into an offscreen canvas, then blitted each frame.
+// Always loaded now: the loop runs but idles unless nebula is the active mode, so the
+// in-app background picker can switch it on without a page reload.
 
 (function () {
-  if ((window.BG_CONFIG || {}).bg_mode !== 'nebula') return;
-
   const canvas = document.getElementById('starfield');
   const ctx    = canvas.getContext('2d');
 
@@ -139,6 +139,9 @@
 
   // ── Draw loop ─────────────────────────────────────────────────────
   function draw() {
+    // Idle (but keep looping) unless nebula is the active mode, so starfield can own the
+    // shared #starfield canvas when it's selected and we resume instantly on switch-back.
+    if (window._bgMode !== 'nebula') { requestAnimationFrame(draw); return; }
     // Render at physical-pixel resolution so fractional OS/browser scaling stays crisp.
     // The offscreen is built at device pixels and blitted 1:1; at devicePixelRatio 1
     // this reduces to the original cw/ch sizing.

@@ -139,8 +139,11 @@ async def index(request: Request) -> HTMLResponse:
             "bg_image": BG_IMAGE,
             "sky_ra": preset["ra"],
             "sky_dec": preset["dec"],
+            "sky_preset": SKY_PRESET,
             "return_url": RETURN_URL,
         },
+        # Full preset table so the client can switch sky presets in-app without a round trip.
+        "sky_presets": SKY_PRESETS,
     })
 
 

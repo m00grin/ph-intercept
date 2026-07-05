@@ -26,8 +26,31 @@
 
 <div id="bg-image"></div>
 
+<script>window.SKY_PRESETS = {{ sky_presets | tojson }};</script>
 <script>
 window.BG_CONFIG = JSON.parse(document.getElementById('bg-config').textContent);
+// In-app background override. The compose/env values load as the default; a saved in-app
+// choice (ph_bg) replaces the mode + sky preset before the renderers read BG_CONFIG below.
+// The env stays authoritative for the image itself: bg_image is always loaded (further down),
+// and the saved 'image'/CUSTOM mode only applies when an image is actually configured, so env
+// deployments keep working regardless of the in-app selection. window._bgMode is the live
+// source of truth the starfield/nebula loops gate on; the settings UI mutates it at runtime.
+(function () {
+  const cfg = window.BG_CONFIG;
+  try {
+    const s = JSON.parse(localStorage.getItem('ph_bg'));
+    if (s) {
+      if (['starfield', 'nebula', 'outrun', 'dark'].includes(s.mode)) cfg.bg_mode = s.mode;
+      else if (s.mode === 'image' && cfg.bg_image) cfg.bg_mode = 'image';   // CUSTOM only if configured
+      if (s.preset && window.SKY_PRESETS[s.preset]) {
+        cfg.sky_ra = window.SKY_PRESETS[s.preset].ra;
+        cfg.sky_dec = window.SKY_PRESETS[s.preset].dec;
+        cfg.sky_preset = s.preset;
+      }
+    }
+  } catch (e) {}
+  window._bgMode = cfg.bg_mode;
+})();
 if (window.BG_CONFIG.bg_image) {
   const _img = window.BG_CONFIG.bg_image;
   if (_img.startsWith('/') || /^https?:\/\//i.test(_img)) {
@@ -68,9 +91,10 @@ if (window.BG_CONFIG.bg_image) {
 <script src="/static/js/dso-render.js"></script>
 <script src="/static/js/starfield-lite.js"></script>
 
-{% if bg_mode == 'nebula' %}
+<!-- Procedural bg renderers: always loaded so they can be switched on in-app; each idles
+     unless its mode is active (nebula | outrun). -->
 <script src="/static/js/bg-nebula.js"></script>
-{% endif %}
+<script src="/static/js/bg-outrun.js"></script>
 
 <!-- Splash runs first; calls enterPiholeMode() when animation completes -->
 <script src="/static/js/splash.js"></script>

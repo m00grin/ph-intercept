@@ -68,9 +68,9 @@ body.crt-on #bg-image {
     repeating-linear-gradient(
       to bottom,
       rgb(135, 135, 135) 0,
-      rgb(255, 255, 255) 2.2px,
-      rgb(255, 255, 255) 2.9px,
-      rgb(135, 135, 135) 5px
+      rgb(255, 255, 255) 2.6px,
+      rgb(255, 255, 255) 3.4px,
+      rgb(135, 135, 135) 6px
     ),
     repeating-linear-gradient(
       to right,
@@ -101,7 +101,7 @@ body.crt-on #crt-overlay { display: block; }
 /* 3. Additive phosphor glow so the effect still reads on near-black areas - a
    real tube is never truly off-black; the phosphor rows glow and the glass
    diffuses a little light. Screen blend lifts darks (a faint line of light on
-   each 5px row, aligned to the multiply scanlines) and barely touches pixels
+   each 6px row, aligned to the multiply scanlines) and barely touches pixels
    that are already bright. This is what gives the dark space background CRT
    presence without a fake grid painted over the black. */
 #crt-glow {
@@ -114,8 +114,8 @@ body.crt-on #crt-overlay { display: block; }
     repeating-linear-gradient(
       to bottom,
       rgba(0, 0, 0, 0)          0,
-      rgba(170, 190, 225, 0.07) 2.5px,
-      rgba(0, 0, 0, 0)          5px
+      rgba(170, 190, 225, 0.07) 3px,
+      rgba(0, 0, 0, 0)          6px
     ),
     linear-gradient(rgba(120, 140, 180, 0.02), rgba(120, 140, 180, 0.02));
   -webkit-mask-image: linear-gradient(to top,
