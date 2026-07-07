@@ -4,7 +4,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir --root-user-action=ignore --upgrade pip \
     && pip install --no-cache-dir --root-user-action=ignore -r requirements.txt \
-    && pip uninstall --root-user-action=ignore -y pip
+    && pip uninstall --root-user-action=ignore -y pip \
+    && PYLIB=/usr/local/lib/python3.14 \
+    && rm -rf "$PYLIB"/ensurepip "$PYLIB"/idlelib "$PYLIB"/tkinter \
+              "$PYLIB"/turtledemo "$PYLIB"/turtle.py "$PYLIB"/pydoc_data \
+              "$PYLIB"/config-3.14-* "$PYLIB"/lib-dynload/_tkinter*.so \
+    && rm -rf /sbin/apk /etc/apk /lib/apk /var/cache/apk /usr/share/apk
 COPY core/      core/
 COPY static/    static/
 COPY templates/ templates/
