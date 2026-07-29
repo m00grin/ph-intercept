@@ -1,8 +1,8 @@
 FROM python:3.14-alpine3.24
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir --root-user-action=ignore --upgrade pip \
+RUN --mount=type=bind,source=requirements.txt,target=requirements.txt \
+    pip install --no-cache-dir --root-user-action=ignore --upgrade pip \
     && pip install --no-cache-dir --root-user-action=ignore -r requirements.txt \
     && pip uninstall --root-user-action=ignore -y pip \
     && PYLIB=/usr/local/lib/python3.14 \
