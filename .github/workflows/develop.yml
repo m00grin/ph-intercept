@@ -11,6 +11,8 @@ on:
       - "compose.yaml"
       - "adguard/compose.yaml"
       - "adguard/README.md"
+      - "technitium/compose.yaml"
+      - "technitium/README.md"
       - ".gitattributes"
       - ".gitignore"
       - ".github/FUNDING.yml"
