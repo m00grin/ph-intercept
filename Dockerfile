@@ -17,4 +17,6 @@ COPY --chown=app:app templates/ templates/
 COPY --chown=app:app app.py     .
 USER app
 EXPOSE 4653
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+    CMD ["wget", "--spider", "-q", "-T", "2", "http://127.0.0.1:4653/api/2p/status"]
 CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4653", "--timeout-graceful-shutdown", "2", "--no-server-header"]
