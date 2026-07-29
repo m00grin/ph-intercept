@@ -82,7 +82,6 @@
   let drone2 = { state: 'docked', x: 0, y: 0, lastFire: 0, side: 0, angle: 0, targetX: null, targetY: null, deployedAt: 0, recallAt: 0 };
   const drone2Missiles = [];
   let hudStatsPollTimer = null, _onVisible = null, _onFocus = null, _sleepCheckTimer = null, _exitTimer = null;
-  let gravityPollTimer = null;
 
   const domainFragments = [];
   const debris = [];
@@ -205,6 +204,8 @@
   // Only fields whose P1/P2 initial values genuinely differ are passed in.
   function makePlayer(init) {
     return {
+      api: 'pihole',          // endpoint base: /api/<api>/...
+      gravityPollTimer: null,
       shipQuote: null,        // { text: string, shownAt: number } | null
       shipQuoteCooldown: 0,   // performance.now() ts; no new quotes until after this
       shipQuoteDeck: [],      // shuffled queue for the current ship
@@ -263,7 +264,7 @@
     };
   }
   const P1 = makePlayer({});
-  const P2 = makePlayer({ shipY: -300, currentShip: localStorage.getItem('ph_p2_ship') || 'falcon',});
+  const P2 = makePlayer({ api: 'pihole2', shipY: -300, currentShip: localStorage.getItem('ph_p2_ship') || 'falcon',});
   // Quintuple-click easter egg: embiggen the P1 ship to 3x for 5 seconds, then it
   // bounces back to normal on its own. A squash-and-stretch drives the grow/shrink.
   const SHIP_EGG_BIG = 3;
@@ -412,37 +413,48 @@
   }
 
   // ── Entity management ─────────────────────────────────────────────
-  function spawnEntity(ev) {
+  // Horizontal spawn band and off-screen exit targets for a player, as
+  // [start, spread] fractions of W. P2 always owns the right half; P1 owns the
+  // left half in 2P mode and the full width in 1P. Kept as one table so the two
+  // ships' geometry can be compared at a glance instead of across two functions.
+  function spawnGeom(P) {
+    if (P === P2) return { blocked: [0.55, 0.40], allowed: [0.55, 0.40], exitR: W + 100, exitL: W / 2 + 50 };
+    if (twoPlayerMode !== 'off') return { blocked: [0.05, 0.40], allowed: [0.03, 0.44], exitR: W / 2 - 20, exitL: -100 };
+    return { blocked: [0.1, 0.8], allowed: [0.05, 0.9], exitR: W + 100, exitL: -100 };
+  }
+
+  function spawnEntity(P, ev) {
     if (ev.status === 'allowed' && !showFriendlies) return;
     const blocked = ev.status === 'blocked';
     const isCache = ev.source === 'cache';
-    const existing = P1.entities.find(e => e.domain === ev.domain && e.type === ev.status && e.state !== 'shot');
+    const existing = P.entities.find(e => e.domain === ev.domain && e.type === ev.status && e.state !== 'shot');
     if (existing) {
       const prevTier = Math.min(existing.count, 3);
       existing.count++;
       const newTier = Math.min(existing.count, 3);
       if (blocked && newTier > prevTier) {
-          const tierColor = newTier >= 3 ? '190,60,255' : '255,130,30';
-          existing.mutateAt = performance.now();
-          existing.mutateColor = tierColor;
-          const ps = [];
-          for (let i = 0; i < 14; i++) {
-            const a = (Math.PI * 2 * i / 14) + (Math.random() - 0.5) * 0.3;
-            const s = 0.05 + Math.random() * 0.12;
-            ps.push({ x: existing.x, y: existing.y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
-                      r: 1.5 + Math.random() * 2.5, col: tierColor });
-          }
-          explosions.push({ ps, born: performance.now(), dur: 600 });
+        const tierColor = newTier >= 3 ? '190,60,255' : '255,130,30';
+        existing.mutateAt = performance.now();
+        existing.mutateColor = tierColor;
+        const ps = [];
+        for (let i = 0; i < 14; i++) {
+          const a = (Math.PI * 2 * i / 14) + (Math.random() - 0.5) * 0.3;
+          const s = 0.05 + Math.random() * 0.12;
+          ps.push({ x: existing.x, y: existing.y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
+                    r: 1.5 + Math.random() * 2.5, col: tierColor });
         }
+        explosions.push({ ps, born: performance.now(), dur: 600 });
+      }
       return;
     }
-    if (P1.entities.length >= 50) return;
+    if (P.entities.length >= 50) return;
 
     const now = performance.now();
+    const g = spawnGeom(P);
     let x, y, vx, vy, headStart = 0;
     if (blocked) {
       const spd = 0.055 + Math.random() * 0.03;
-      x = twoPlayerMode !== 'off' ? W * (0.05 + Math.random() * 0.40) : W * (0.1 + Math.random() * 0.8);
+      x = W * (g.blocked[0] + Math.random() * g.blocked[1]);
       if (Math.random() < 0.65) {
         y = -50;
       } else {
@@ -452,16 +464,16 @@
       vx = (Math.random() - 0.5) * 0.018; vy = spd;
     } else {
       const spd = isCache ? (0.095 + Math.random() * 0.03) : (0.078 + Math.random() * 0.03);
-      x = twoPlayerMode !== 'off' ? W * (0.03 + Math.random() * 0.44) : W * (0.05 + Math.random() * 0.9);
+      x = W * (g.allowed[0] + Math.random() * g.allowed[1]);
       y = -50;
       const goRight = Math.random() < 0.5;
-      const tx = twoPlayerMode !== 'off' ? (goRight ? W / 2 - 20 : -100) : (goRight ? W + 100 : -100);
+      const tx = goRight ? g.exitR : g.exitL;
       const ty = H * (0.35 + Math.random() * 0.5);
       const d = Math.hypot(tx - x, ty - y);
       vx = (tx - x) / d * spd; vy = (ty - y) / d * spd;
     }
 
-    P1.entities.push({
+    P.entities.push({
       type: ev.status,
       source: ev.source || 'upstream',
       design: blocked ? Math.floor(Math.random() * 2) : Math.floor(Math.random() * 3),
@@ -482,62 +494,9 @@
     });
   }
 
-  function spawnP2Entity(ev) {
-    if (ev.status === 'allowed' && !showFriendlies) return;
-    const blocked = ev.status === 'blocked';
-    const isCache = ev.source === 'cache';
-    const now = performance.now();
-    const existing = P2.entities.find(e => e.domain === ev.domain && e.type === ev.status && e.state !== 'shot');
-    if (existing) {
-      const prevTier = Math.min(existing.count, 3);
-      existing.count++;
-      const newTier = Math.min(existing.count, 3);
-      if (blocked && newTier > prevTier) {
-        const tierColor = newTier >= 3 ? '190,60,255' : '255,130,30';
-        existing.mutateAt = now;
-        existing.mutateColor = tierColor;
-        const ps = [];
-        for (let i = 0; i < 14; i++) {
-          const a = (Math.PI * 2 * i / 14) + (Math.random() - 0.5) * 0.3;
-          const s = 0.05 + Math.random() * 0.12;
-          ps.push({ x: existing.x, y: existing.y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
-                    r: 1.5 + Math.random() * 2.5, col: tierColor });
-        }
-        explosions.push({ ps, born: now, dur: 600 });
-      }
-      return;
-    }
-    if (P2.entities.length >= 50) return;
-    let x, y, vx, vy, headStart = 0;
-    if (blocked) {
-      const spd = 0.055 + Math.random() * 0.03;
-      x = W * (0.55 + Math.random() * 0.40);
-      if (Math.random() < 0.65) { y = -50; }
-      else { y = H * (0.05 + Math.random() * 0.14); headStart = Math.min((y + 50) / spd, 1800); }
-      vx = (Math.random() - 0.5) * 0.018; vy = spd;
-    } else {
-      const spd = isCache ? (0.095 + Math.random() * 0.03) : (0.078 + Math.random() * 0.03);
-      x = W * (0.55 + Math.random() * 0.40); y = -50;
-      const goRight = Math.random() < 0.5;
-      const tx = goRight ? W + 100 : W / 2 + 50;
-      const ty = H * (0.35 + Math.random() * 0.5);
-      const d = Math.hypot(tx - x, ty - y);
-      vx = (tx - x) / d * spd; vy = (ty - y) / d * spd;
-    }
-    const design = blocked ? Math.floor(Math.random() * 2) : Math.floor(Math.random() * 3);
-    P2.entities.push({
-      type: ev.status, source: ev.source || 'upstream',
-      design,
-      x, y, vx, vy, wobble: Math.random() * Math.PI * 2,
-      domain: ev.domain, client: ev.client || '',
-      spawnTime: now - headStart, appearAt: now,
-      state: 'alive',
-      targetedAt: 0, shotAt: 0, labelAlpha: 1, count: 1,
-      mutateAt: 0, mutateColor: '', warpPushed: false,
-    });
-  }
-
-  function fireAt(ent) {
+  // Fires `P`'s guns at `ent`. Tier picks the weapon: 3 = beam spread or
+  // seeker volley (coin flip), 2 = both wing guns, 1 = alternating single.
+  function fireAt(P, ent) {
     ent.shotAt = performance.now();
     ent.mutateAt = 0;
     const now = performance.now();
@@ -548,16 +507,16 @@
         // Beam style - triple spread from left gun, nose, right gun
         ent.state = 'shot';
         const sp = 10;
-        P1.lasers.push({ side: 0, tier, x1: ent.x - sp, y1: ent.y, born: now });
-        P1.lasers.push({ side: 2, tier, x1: ent.x,      y1: ent.y, born: now });
-        P1.lasers.push({ side: 1, tier, x1: ent.x + sp, y1: ent.y, born: now });
+        P.lasers.push({ side: 0, tier, x1: ent.x - sp, y1: ent.y, born: now });
+        P.lasers.push({ side: 2, tier, x1: ent.x,      y1: ent.y, born: now });
+        P.lasers.push({ side: 1, tier, x1: ent.x + sp, y1: ent.y, born: now });
       } else {
         // Seeker style - 5 rapid bolts from nose gun, each arcing a different path to target
         // Delay explosion until the last bolt arrives (born offset 4*30 + dur 210 = 330ms)
         seekerFire = true;
         ent.state = 'seeker-incoming';
         ent.detonateAt = now + 330;
-        const gtp0 = shipGunTipPos(P1.currentShip, Math.round(P1.shipX), Math.round(P1.shipY));
+        const gtp0 = shipGunTipPos(P.currentShip, Math.round(P.shipX), Math.round(P.shipY));
         const sx0 = gtp0.nx, sy0 = gtp0.ny;
         const tx = ent.x, ty = ent.y;
         const ddx = tx - sx0, ddy = ty - sy0, ddist = Math.hypot(ddx, ddy) || 1;
@@ -566,7 +525,7 @@
         const offsets = [-52, 38, -24, 58, -10];
         for (let bi = 0; bi < offsets.length; bi++) {
           const off = offsets[bi] + (Math.random() - 0.5) * 18;
-          P1.lasers.push({ style: 'seeker', tier, target: ent,
+          P.lasers.push({ style: 'seeker', tier, target: ent,
                         x0: sx0, y0: sy0, x1: tx, y1: ty,
                         cpx: midX + px * off, cpy: midY + py * off,
                         born: now + bi * 30, dur: 210 });
@@ -575,14 +534,14 @@
     } else if (tier === 2) {
       // Double: both wing guns converge on target
       ent.state = 'shot';
-      P1.lasers.push({ side: 0, tier, x1: ent.x, y1: ent.y, born: now });
-      P1.lasers.push({ side: 1, tier, x1: ent.x, y1: ent.y, born: now });
+      P.lasers.push({ side: 0, tier, x1: ent.x, y1: ent.y, born: now });
+      P.lasers.push({ side: 1, tier, x1: ent.x, y1: ent.y, born: now });
     } else {
       // Single: alternating gun
       ent.state = 'shot';
-      const side = P1.lastGun;
-      P1.lastGun = 1 - P1.lastGun;
-      P1.lasers.push({ side, tier, x1: ent.x, y1: ent.y, born: now });
+      const side = P.lastGun;
+      P.lastGun = 1 - P.lastGun;
+      P.lasers.push({ side, tier, x1: ent.x, y1: ent.y, born: now });
     }
     if (!seekerFire) {
       const ps = [];
@@ -598,77 +557,28 @@
     }
   }
 
-  function fireAtP2(ent) {
-    ent.shotAt = performance.now();
-    ent.mutateAt = 0;
-    const now = performance.now();
-    const tier = Math.min(ent.count, 3);
-    let seekerFire = false;
-    const _gtp2 = shipGunTipPos(P2.currentShip, Math.round(P2.shipX), Math.round(P2.shipY));
-    if (tier >= 3) {
-      if (Math.random() < 0.5) {
-        ent.state = 'shot';
-        const sp = 10;
-        P2.lasers.push({ side: 0, tier, x1: ent.x - sp, y1: ent.y, born: now });
-        P2.lasers.push({ side: 2, tier, x1: ent.x,      y1: ent.y, born: now });
-        P2.lasers.push({ side: 1, tier, x1: ent.x + sp, y1: ent.y, born: now });
-      } else {
-        seekerFire = true;
-        ent.state = 'seeker-incoming';
-        ent.detonateAt = now + 330;
-        const sx0 = _gtp2.nx, sy0 = _gtp2.ny;
-        const tx = ent.x, ty = ent.y;
-        const ddx = tx - sx0, ddy = ty - sy0, ddist = Math.hypot(ddx, ddy) || 1;
-        const px = -ddy / ddist, py = ddx / ddist;
-        const midX = (sx0 + tx) / 2, midY = (sy0 + ty) / 2;
-        const offsets = [-52, 38, -24, 58, -10];
-        for (let bi = 0; bi < offsets.length; bi++) {
-          const off = offsets[bi] + (Math.random() - 0.5) * 18;
-          P2.lasers.push({ style: 'seeker', tier, target: ent,
-                          x0: sx0, y0: sy0, x1: tx, y1: ty,
-                          cpx: midX + px * off, cpy: midY + py * off,
-                          born: now + bi * 30, dur: 210 });
-        }
-      }
-    } else if (tier === 2) {
-      ent.state = 'shot';
-      P2.lasers.push({ side: 0, tier, x1: ent.x, y1: ent.y, born: now });
-      P2.lasers.push({ side: 1, tier, x1: ent.x, y1: ent.y, born: now });
-    } else {
-      ent.state = 'shot';
-      const side = P2.lastGun;
-      P2.lastGun = 1 - P2.lastGun;
-      P2.lasers.push({ side, tier, x1: ent.x, y1: ent.y, born: now });
+  // Starts `P`'s warp-out. The P1 path additionally tears down shared chrome
+  // (settings menu, the triple-click size egg) and the entity warp flags; the P2
+  // ship has no equivalent of those, so that work is genuinely one-sided rather
+  // than a mirror waiting to be filled in.
+  function initWarpOut(P, nextShip) {
+    P.warpPrevShip = null;
+    P.warpNextShip = nextShip;
+    P.warpState = 'out';
+    P.warpAt = performance.now();
+    P.shipMenuOpen = false;
+    P.shipQuote = null; P.shipQuoteCooldown = 0; P.shipQuoteDeck = []; P.shipQuoteDeckFor = null; P.shipQuoteLastShown = null;
+    P.lasers.length = 0;
+    shakeAt = P.warpAt; shakeDur = 500; shakeAmp = 16;
+    if (P === P1) {
+      settingsMenuOpen = false;
+      if (settingsBtnEl) settingsBtnEl.classList.remove('menu-open');
+      // Snap the triple-click size egg back so a giant ship doesn't warp out huge.
+      shipEggBig = false; shipEggFrom = 1; shipEggTo = 1; shipEggAnimAt = -1; shipEggScale = 1; shipClickTimes = [];
+      // P1's warp clears P2's quote state too: they share the carrier chrome.
+      P2.shipQuote = null; P2.shipQuoteCooldown = 0; P2.shipQuoteDeck = []; P2.shipQuoteDeckFor = null; P2.shipQuoteLastShown = null;
+      for (const e of P1.entities) e.warpPushed = false;
     }
-    if (!seekerFire) {
-      const ps = [];
-      const n = 10 + Math.floor(Math.random() * 6);
-      for (let i = 0; i < n; i++) {
-        const a = (Math.PI * 2 * i / n) + (Math.random() - 0.5) * 0.5;
-        const s = 0.06 + Math.random() * 0.14;
-        const palettes = ['255,60,30', '255,130,40', '255,200,70', '255,255,180'];
-        ps.push({ x: ent.x, y: ent.y, vx: Math.cos(a)*s, vy: Math.sin(a)*s,
-                  r: 1.5 + Math.random() * 2.5, col: palettes[Math.floor(Math.random() * 4)] });
-      }
-      explosions.push({ ps, born: performance.now(), dur: 680 });
-    }
-  }
-
-  function initWarpOut(nextShip) {
-    P1.warpPrevShip = null;
-    P1.warpNextShip = nextShip;
-    P1.warpState = 'out';
-    P1.warpAt = performance.now();
-    P1.shipMenuOpen = false;
-    settingsMenuOpen = false;
-    if (settingsBtnEl) settingsBtnEl.classList.remove('menu-open');
-    P1.shipQuote = null; P1.shipQuoteCooldown = 0; P1.shipQuoteDeck = []; P1.shipQuoteDeckFor = null; P1.shipQuoteLastShown = null;
-    // Snap the triple-click size egg back to normal so a giant ship doesn't warp out huge.
-    shipEggBig = false; shipEggFrom = 1; shipEggTo = 1; shipEggAnimAt = -1; shipEggScale = 1; shipClickTimes = [];
-    P2.shipQuote = null; P2.shipQuoteCooldown = 0; P2.shipQuoteDeck = []; P2.shipQuoteDeckFor = null; P2.shipQuoteLastShown = null;
-    P1.lasers.length = 0;
-    shakeAt = P1.warpAt; shakeDur = 500; shakeAmp = 16;
-    for (const e of P1.entities) e.warpPushed = false;
   }
 
   // ── Game tick ─────────────────────────────────────────────────────
@@ -681,14 +591,14 @@
 
     const spawnRate = P1.queue.length > 10 ? 70 : 130;
     if (P1.queue.length > 0 && t - P1.lastSpawn > spawnRate) {
-      spawnEntity(P1.queue.shift());
+      spawnEntity(P1, P1.queue.shift());
       P1.lastSpawn = t;
     }
 
     if (twoPlayerMode !== 'off') {
       const p2Rate = P2.queue.length > 10 ? 70 : 130;
       if (P2.queue.length > 0 && t - P2.lastSpawn > p2Rate) {
-        spawnP2Entity(P2.queue.shift());
+        spawnEntity(P2, P2.queue.shift());
         P2.lastSpawn = t;
       }
       // P2 entity movement + AI
@@ -701,7 +611,7 @@
           e.x += Math.sin(e.wobble + age * 0.002) * 0.012 * dt;
           if (_p2ShipVisible && P1.warpState === 'none' && P2.blockingEnabled !== false) {
             if (e.state === 'alive' && age > 2200 && t - e.appearAt > 600) { e.state = 'targeted'; e.targetedAt = t; }
-            if (e.state === 'targeted' && age > 3400 && t - e.appearAt > 600) fireAtP2(e);
+            if (e.state === 'targeted' && age > 3400 && t - e.appearAt > 600) fireAt(P2, e);
           } else if (e.state === 'targeted') {
             e.state = 'alive';
           }
@@ -782,7 +692,7 @@
         e.x += Math.sin(e.wobble + age * 0.002) * 0.012 * dt;
         if (shipPowerState === 'up' && P1.warpState === 'none') {
           if (e.state === 'alive' && age > 2200 && t - e.appearAt > 600) { e.state = 'targeted'; e.targetedAt = t; }
-          if (e.state === 'targeted' && age > 3400 && t - e.appearAt > 600) fireAt(e);
+          if (e.state === 'targeted' && age > 3400 && t - e.appearAt > 600) fireAt(P1, e);
         } else if (e.state === 'targeted') {
           e.state = 'alive'; // drop targeting lock when shields are down
         }
@@ -4375,7 +4285,7 @@
     _p1ShipVisible = false;
     if (hudStatsPollTimer) { clearInterval(hudStatsPollTimer); hudStatsPollTimer = null; }
     P1.gravityState = 'idle'; P1.gravityDoneAt = 0;
-    if (gravityPollTimer) { clearTimeout(gravityPollTimer); gravityPollTimer = null; }
+    if (P1.gravityPollTimer) { clearTimeout(P1.gravityPollTimer); P1.gravityPollTimer = null; }
     P1.blockingEnabled = null; // preserve blockingOffAt/blockingDuration so active timers survive exit/re-enter
     blockingCmdExpected = null; blockingCmdDeadline = 0;
     shipPowerState = 'up'; P1.startupAt = 0; P1.lastEnemyAt = 0;
@@ -4541,7 +4451,7 @@
     document.body.classList.remove('pihole-mode');
     if (window._startZenFade) window._startZenFade(false);
     if (hudStatsPollTimer) { clearInterval(hudStatsPollTimer); hudStatsPollTimer = null; }
-    if (gravityPollTimer) { clearTimeout(gravityPollTimer); gravityPollTimer = null; }
+    if (P1.gravityPollTimer) { clearTimeout(P1.gravityPollTimer); P1.gravityPollTimer = null; }
     P1.gravityState = 'idle'; P1.arrowHovered = false;
     P1.shieldMenuOpen = false; P1.shieldHovered = false; P1.shieldMenuItems = [];
     P1.shipMenuOpen = false; P1.shipMenuHovered = false; P1.shipMenuItems = [];
@@ -4621,37 +4531,39 @@
   }
 
   // ── Gravity update ────────────────────────────────────────────────
-  function triggerGravityUpdate() {
-    const prevGravity = P1.hudGravity;
+  // Kicks off `P`'s gravity/filter update, then polls that player's stats until
+  // the list count actually changes (or 25s elapses) before reporting 'done'.
+  function triggerGravityUpdate(P) {
+    const prevGravity = P.hudGravity;
     const triggeredAt = performance.now();
-    P1.gravityState = 'updating';
-    fetch('/api/pihole/gravity-update', { method: 'POST' })
+    P.gravityState = 'updating';
+    fetch(`/api/${P.api}/gravity-update`, { method: 'POST' })
       .then(r => r.json())
       .then(d => {
-        if (d.error || !d.ok) { P1.gravityState = 'idle'; return; }
+        if (d.error || !d.ok) { P.gravityState = 'idle'; return; }
         let polls = 0;
         function poll() {
-          if (!active || P1.gravityState !== 'updating') return;
-          if (polls++ > 40) { P1.gravityState = 'idle'; return; }
-          fetch('/api/pihole/stats', { signal: AbortSignal.timeout(4000) })
+          if (!active || P.gravityState !== 'updating') return;
+          if (polls++ > 40) { P.gravityState = 'idle'; return; }
+          fetch(`/api/${P.api}/stats`, { signal: AbortSignal.timeout(4000) })
             .then(r => r.json())
             .then(d => {
               const elapsed = performance.now() - triggeredAt;
               const countChanged = d.gravity != null && d.gravity !== prevGravity;
               const minWaitPassed = elapsed > 25000;
               if (countChanged || (d.gravity != null && minWaitPassed)) {
-                if (d.gravity != null) P1.hudGravity = d.gravity;
-                P1.gravityState = 'done';
-                P1.gravityDoneAt = performance.now();
+                if (d.gravity != null) P.hudGravity = d.gravity;
+                P.gravityState = 'done';
+                P.gravityDoneAt = performance.now();
               } else {
-                gravityPollTimer = setTimeout(poll, 3000);
+                P.gravityPollTimer = setTimeout(poll, 3000);
               }
             })
-            .catch(() => { gravityPollTimer = setTimeout(poll, 5000); });
+            .catch(() => { P.gravityPollTimer = setTimeout(poll, 5000); });
         }
-        gravityPollTimer = setTimeout(poll, 4000);
+        P.gravityPollTimer = setTimeout(poll, 4000);
       })
-      .catch(() => { P1.gravityState = 'idle'; });
+      .catch(() => { P.gravityState = 'idle'; });
   }
 
   function setP2Blocking(enable, timerSec = null) {
@@ -4692,48 +4604,6 @@
         if (twoPlayerMode !== 'off' && _pb2 !== false && d.blocking === false && _p2ShipVisible && P1.carrierState === 'none') { P1.carrierState = 'arriving'; P1.carrierRestY = (H - hudSH - safeBottom) - Math.round(CARRIER_BMP.length * CARRIER_PX / 2) - 10; P1.carrierY = H + 240; P1.carrierArrivingAt = performance.now(); }
       }
     }).catch(() => {});
-  }
-
-  function triggerP2GravityUpdate() {
-    const prevGravity = P2.hudGravity;
-    const triggeredAt = performance.now();
-    P2.gravityState = 'updating';
-    fetch('/api/pihole2/gravity-update', { method: 'POST' })
-      .then(r => r.json())
-      .then(d => {
-        if (d.error || !d.ok) { P2.gravityState = 'idle'; return; }
-        let polls = 0;
-        function poll() {
-          if (!active || P2.gravityState !== 'updating') return;
-          if (polls++ > 40) { P2.gravityState = 'idle'; return; }
-          fetch('/api/pihole2/stats', { signal: AbortSignal.timeout(4000) })
-            .then(r => r.json())
-            .then(d => {
-              const elapsed = performance.now() - triggeredAt;
-              const countChanged = d.gravity != null && d.gravity !== prevGravity;
-              if (countChanged || (d.gravity != null && elapsed > 25000)) {
-                if (d.gravity != null) P2.hudGravity = d.gravity;
-                P2.gravityState = 'done'; P2.gravityDoneAt = performance.now();
-              } else {
-                setTimeout(poll, 3000);
-              }
-            })
-            .catch(() => { setTimeout(poll, 5000); });
-        }
-        setTimeout(poll, 4000);
-      })
-      .catch(() => { P2.gravityState = 'idle'; });
-  }
-
-  function initP2WarpOut(nextShip) {
-    P2.warpPrevShip = null;
-    P2.warpNextShip = nextShip;
-    P2.warpState = 'out';
-    P2.warpAt = performance.now();
-    shakeAt = P2.warpAt; shakeDur = 500; shakeAmp = 16;
-    P2.shipMenuOpen = false;
-    P2.shipQuote = null; P2.shipQuoteCooldown = 0; P2.shipQuoteDeck = []; P2.shipQuoteDeckFor = null; P2.shipQuoteLastShown = null;
-    P2.lasers.length = 0;
   }
 
   function _inBox(mx, my, box) {
@@ -4841,7 +4711,7 @@
       e.stopPropagation();
       for (const item of P2.shipMenuItems) {
         if (_inBox(mx, my, item.hitbox)) {
-          if (!item.active && !item.locked) initP2WarpOut(item.ship);
+          if (!item.active && !item.locked) initWarpOut(P2, item.ship);
           if (item.locked && !item.taken && performance.now() >= missingnoGlitchCooldown) { missingnoGlitchAt = performance.now(); missingnoGlitchCooldown = missingnoGlitchAt + 2200; }
           return;
         }
@@ -4867,7 +4737,7 @@
       e.stopPropagation();
       for (const item of P1.shipMenuItems) {
         if (_inBox(mx, my, item.hitbox)) {
-          if (!item.active && !item.locked) initWarpOut(item.ship);
+          if (!item.active && !item.locked) initWarpOut(P1, item.ship);
           if (item.locked && !item.taken && performance.now() >= missingnoGlitchCooldown) { missingnoGlitchAt = performance.now(); missingnoGlitchCooldown = missingnoGlitchAt + 2200; }
           return;
         }
@@ -4974,7 +4844,7 @@
     // Gravity arrow
     if (P1.gravityState === 'idle' && _inBox(mx, my, P1.arrowHitbox)) {
       e.stopPropagation();
-      triggerGravityUpdate();
+      triggerGravityUpdate(P1);
       return;
     }
 
@@ -4996,7 +4866,7 @@
     // P2 gravity arrow
     if (_isP2Active && P2.gravityState === 'idle' && _inBox(mx, my, P2.arrowHitbox)) {
       e.stopPropagation();
-      triggerP2GravityUpdate();
+      triggerGravityUpdate(P2);
     }
   });
 
@@ -5088,7 +4958,7 @@
     active = false;
     if (P1.evtSource) { P1.evtSource.close(); P1.evtSource = null; }
     if (hudStatsPollTimer) { clearInterval(hudStatsPollTimer); hudStatsPollTimer = null; }
-    if (gravityPollTimer) { clearTimeout(gravityPollTimer); gravityPollTimer = null; }
+    if (P1.gravityPollTimer) { clearTimeout(P1.gravityPollTimer); P1.gravityPollTimer = null; }
     window.enterPiholeMode();
   });
 
@@ -5126,18 +4996,13 @@
       }),
       setBlocking: (e, t = null) => setBlocking(e, t),
       setP2Blocking: (e, t = null) => setP2Blocking(e, t),
-      // Inject a dummy P2 crew member parked at post, to verify it is force-cleared
-      // when the shared carrier departs (rather than left orphaned).
-      // Placed far from the hatch so it cannot coincidentally reach the hatch and
-      // be filtered out within the carrier-leave window; only an explicit clear
-      // removes it.
       // Open a canvas-drawn menu directly. Only the settings menu has a DOM
       // affordance (#settings-btn); the rest are canvas hit-tested, so the
-      // visual-baseline harness needs a way in that does not depend on
-      // hit-box coordinates (which move whenever the HUD layout changes).
-      // The bg flyout lives inside the settings menu, so it opens both.
-      // settings and bg are shared chrome; ship and shield are per-player and
-      // live on P1 (the harness only ever drives the left ship's menus).
+      // visual-baseline harness needs a way in that does not depend on hit-box
+      // coordinates (which move whenever the HUD layout changes). settings and
+      // bg are shared chrome; ship and shield are per-player and live on P1,
+      // since the harness only ever drives the left ship's menus. The bg flyout
+      // lives inside the settings menu, so it opens both.
       openMenu: (name) => {
         settingsMenuOpen = bgMenuOpen = false;
         P1.shipMenuOpen = P1.shieldMenuOpen = false;
@@ -5152,6 +5017,11 @@
         shieldMenuOpen: P1.shieldMenuOpen,
         bgMenuOpen: bgMenuOpen,
       }),
+      // Inject a dummy P2 crew member parked at post, to verify it is force-cleared
+      // when the shared carrier departs (rather than left orphaned).
+      // Placed far from the hatch so it cannot coincidentally reach the hatch and
+      // be filtered out within the carrier-leave window; only an explicit clear
+      // removes it.
       addP2Crew: () => P2.crewMembers.push({
         type: 'fuel', x: 9000, y: 9000, fromX: 9000, fromY: 9000, state: 'at_post',
         stateAt: performance.now(), wpIdx: 0, waypoints: [], returnPath: [],
