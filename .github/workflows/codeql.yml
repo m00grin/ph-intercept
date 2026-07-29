@@ -49,7 +49,7 @@ jobs:
         uses: aquasecurity/trivy-action@v0.36.0
         with:
           version: v0.72.0
-          image-ref: ghcr.io/m00grin/ph-intercept:latest
+          scan-ref: ghcr.io/m00grin/ph-intercept:latest
           scanners: vuln,secret
           ignore-unfixed: true
           severity: MEDIUM,HIGH,CRITICAL
@@ -66,7 +66,7 @@ jobs:
       - name: Render table
         uses: aquasecurity/trivy-action@v0.36.0
         with:
-          image-ref: ghcr.io/m00grin/ph-intercept:latest
+          scan-ref: ghcr.io/m00grin/ph-intercept:latest
           scanners: vuln,secret
           ignore-unfixed: true
           severity: MEDIUM,HIGH,CRITICAL
@@ -79,7 +79,7 @@ jobs:
           {
             echo '### Trivy: ghcr.io/m00grin/ph-intercept:latest'
             echo '```'
-            cat trivy-table.txt
+            if [ -s trivy-table.txt ]; then cat trivy-table.txt; else echo 'No findings.'; fi
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
 
