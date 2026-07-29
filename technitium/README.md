@@ -210,6 +210,6 @@ The entities, ship roster, HUD panels, and background modes are identical across
 - Technitium DNS Server (recent version) with the **Query Logs (Sqlite)** app installed
 - Docker with Compose
 - Network route from the container to your Technitium instance
-- **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64`
+- **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64` · `linux/ppc64le`
 
 The container listens on port 4653 internally, mapped to host port 4673 by default.

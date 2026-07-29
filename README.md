@@ -291,7 +291,7 @@ PIHOLE2_PASSWORD=your_second_pihole_password
 - Pi-hole v6 (v5 is not compatible)
 - Docker with Compose
 - Network route from the container to your Pi-hole
-- **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64`
+- **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64` · `linux/ppc64le`
 
 The container listens on port 4653. The compose file includes an optional static IP block for existing Docker networks.
 
