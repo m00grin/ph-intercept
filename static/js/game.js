@@ -5122,6 +5122,19 @@
       // Placed far from the hatch so it cannot coincidentally reach the hatch and
       // be filtered out within the carrier-leave window; only an explicit clear
       // removes it.
+      // Open a canvas-drawn menu directly. Only the settings menu has a DOM
+      // affordance (#settings-btn); the rest are canvas hit-tested, so the
+      // visual-baseline harness needs a way in that does not depend on
+      // hit-box coordinates (which move whenever the HUD layout changes).
+      // The bg flyout lives inside the settings menu, so it opens both.
+      openMenu: (name) => {
+        settingsMenuOpen = shipMenuOpen = shieldMenuOpen = bgMenuOpen = false;
+        if (name === 'settings') settingsMenuOpen = true;
+        else if (name === 'ship') shipMenuOpen = true;
+        else if (name === 'shield') shieldMenuOpen = true;
+        else if (name === 'bg') { settingsMenuOpen = true; bgMenuOpen = true; }
+      },
+      menus: () => ({ settingsMenuOpen, shipMenuOpen, shieldMenuOpen, bgMenuOpen }),
       addP2Crew: () => p2CrewMembers.push({
         type: 'fuel', x: 9000, y: 9000, fromX: 9000, fromY: 9000, state: 'at_post',
         stateAt: performance.now(), wpIdx: 0, waypoints: [], returnPath: [],
