@@ -9,7 +9,7 @@ on:
 jobs:
   dockerfile:
     name: Lint Dockerfile
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       security-events: write
       contents: read
@@ -46,9 +46,6 @@ jobs:
 
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.36.0
-        env:
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           version: v0.72.0
           image-ref: ghcr.io/m00grin/ph-intercept:latest
@@ -67,9 +64,6 @@ jobs:
 
       - name: Render table
         uses: aquasecurity/trivy-action@v0.36.0
-        env:
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ghcr.io/m00grin/ph-intercept:latest
           scanners: vuln,secret
