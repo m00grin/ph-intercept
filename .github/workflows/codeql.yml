@@ -31,6 +31,63 @@ jobs:
           sarif_file: hadolint-results.sarif
           category: dockerfile
 
+  image:
+    name: Scan published image
+    if: github.event_name == 'schedule'
+    runs-on: self-hosted
+    timeout-minutes: 20
+    permissions:
+      security-events: write
+      contents: read
+      packages: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Scan image
+        uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          version: v0.72.0
+          image-ref: ghcr.io/m00grin/ph-intercept:latest
+          scanners: vuln,secret
+          ignore-unfixed: true
+          severity: MEDIUM,HIGH,CRITICAL
+          limit-severities-for-sarif: true
+          format: sarif
+          output: trivy-results.sarif
+
+      - name: Upload results
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: trivy-results.sarif
+          category: image
+
+      - name: Render table
+        uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          image-ref: ghcr.io/m00grin/ph-intercept:latest
+          scanners: vuln,secret
+          ignore-unfixed: true
+          severity: MEDIUM,HIGH,CRITICAL
+          format: table
+          output: trivy-table.txt
+          skip-setup-trivy: true
+
+      - name: Write job summary
+        run: |
+          {
+            echo '### Trivy: ghcr.io/m00grin/ph-intercept:latest'
+            echo '```'
+            cat trivy-table.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
   analyze:
     name: Analyze (${{ matrix.language }})
     runs-on: ${{ (matrix.language == 'swift' && 'macos-latest') || 'ubuntu-latest' }}
