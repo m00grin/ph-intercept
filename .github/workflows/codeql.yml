@@ -53,7 +53,7 @@ jobs:
           scan-ref: ghcr.io/m00grin/ph-intercept:latest
           scanners: vuln,secret
           ignore-unfixed: true
-          severity: MEDIUM,HIGH,CRITICAL
+          severity: LOW,MEDIUM,HIGH,CRITICAL
           limit-severities-for-sarif: true
           format: sarif
           output: trivy-results.sarif
@@ -66,13 +66,11 @@ jobs:
 
       - name: Render table
         uses: aquasecurity/trivy-action@v0.36.0
-        env:
-          TRIVY_TABLE_MODE: detailed
         with:
           scan-ref: ghcr.io/m00grin/ph-intercept:latest
-          scanners: vuln,secret
+          scanners: vuln
           ignore-unfixed: true
-          severity: MEDIUM,HIGH,CRITICAL
+          severity: LOW,MEDIUM,HIGH,CRITICAL
           format: table
           output: trivy-table.txt
           skip-setup-trivy: true
