@@ -5,6 +5,7 @@ on:
     tags: ["v*"]
   schedule:
     - cron: '35 5 * * 1'
+  workflow_dispatch:
 
 jobs:
   dockerfile:
@@ -34,7 +35,7 @@ jobs:
 
   image:
     name: Scan published image
-    if: github.event_name == 'schedule'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: self-hosted
     timeout-minutes: 20
     permissions:
