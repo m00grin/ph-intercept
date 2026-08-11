@@ -28,7 +28,7 @@ jobs:
           no-fail: true
 
       - name: Upload results
-        uses: github/codeql-action/upload-sarif@v4.37.4
+        uses: github/codeql-action/upload-sarif@v4.37.6
         with:
           sarif_file: hadolint-results.sarif
           category: dockerfile
@@ -59,7 +59,7 @@ jobs:
           output: trivy-results.sarif
 
       - name: Upload results
-        uses: github/codeql-action/upload-sarif@v4.37.4
+        uses: github/codeql-action/upload-sarif@v4.37.6
         with:
           sarif_file: trivy-results.sarif
           category: image
@@ -101,12 +101,12 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v4.37.4
+        uses: github/codeql-action/init@v4.37.6
         with:
           languages: ${{ matrix.language }}
           build-mode: none
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v4.37.4
+        uses: github/codeql-action/analyze@v4.37.6
         with:
           category: "/language:${{ matrix.language }}"
