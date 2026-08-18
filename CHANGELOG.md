@@ -4,6 +4,27 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.5.2] - 2026-08-17
+
+### Added
+
+- **`linux/ppc64le` build** -- added to the multi-arch image.
+- **Container healthcheck** -- polls `/api/2p/status` every 30s so a wedged process gets restarted.
+
+### Changed
+
+- **Smaller image** -- base bumped to `python:3.14-alpine3.24`; stripped `tkinter`, `idlelib`, `turtledemo`, `pydoc_data`, and `apk` from the image after install.
+- **`requirements.txt` bind-mounted** during build instead of copied into a layer.
+- **Graceful shutdown capped at 2s** (`--timeout-graceful-shutdown 2`) so `docker compose down` doesn't hang on a slow container.
+- **Dependency bumps** -- `starlette` 1.4.1 -> 1.6.0, `uvicorn` 0.52.1 -> 0.52.3.
+- **HUD strip extracted from `render()`** into `static/js/hud.js`; P1/P2 game state collapsed into shared player objects. Internal refactor, no behavior change.
+
+### Security
+
+- **`uvicorn` `Server` header dropped** from HTTP responses to reduce fingerprinting.
+
+---
+
 ## [1.5.1] - 2026-07-04
 
 ### Added
