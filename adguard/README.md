@@ -294,6 +294,6 @@ Setting a valid `ADGUARD2_URL` is all that is required to activate split-screen 
 - AdGuard Home (any recent version)
 - Docker with Compose
 - Network route from the container to your AdGuard Home instance
-- **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64`
+- **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64` · `linux/ppc64le`
 
 The container listens on port 4653 internally, mapped to host port 4663 by default. The compose file includes an optional static IP block for existing Docker networks.
