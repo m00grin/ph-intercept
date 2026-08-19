@@ -132,6 +132,20 @@ Open `http://your-host:4673`.
 
 ---
 
+## Image Tags
+
+| Tag | What it is |
+|-----|------------|
+| `:latest` | Latest stable release. |
+| `:X.Y.Z` | Pinned release (e.g. `1.5.2`). |
+| `:develop` | Built automatically on every push to the `develop` branch. May be unstable. |
+
+---
+
+## Portainer Note for BG
+
+- Drop image files into `/data/compose/<stack-id>/bg/` on the Portainer host (where the `./bg` bind mount resolves).
+
 ## Configuration
 
 All configuration is via environment variables in `compose.yaml`.
@@ -212,4 +226,4 @@ The entities, ship roster, HUD panels, and background modes are identical across
 - Network route from the container to your Technitium instance
 - **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64` · `linux/ppc64le`
 
-The container listens on port 4653 internally, mapped to host port 4673 by default.
+The container listens on port 4653 internally, mapped to host port 4673 by default. The compose file includes an optional static IP block for existing Docker networks.
