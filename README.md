@@ -94,6 +94,8 @@ services:
     security_opt:
       - "no-new-privileges:true"
 
+    read_only: true
+
     logging:
       driver: "json-file"
       options:
