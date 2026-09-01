@@ -4,6 +4,22 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.5.3] - 2026-09-01
+
+### Security
+
+- **Base image packages upgraded at build time** -- `apk upgrade --no-cache` now runs during the Docker build (replacing an unpinned `pip install --upgrade pip` step), pulling in Alpine's fixed `libssl3`/`libcrypto3` and `sqlite-libs` packages and closing out several openssl and SQLite CVEs flagged against the published image.
+- **Container root filesystem is now read-only** (`read_only: true`) across all three compose files (main, AdGuard Home, Technitium).
+- **Dropped unused `contents: write` permission** from the publish workflow.
+
+### Changed
+
+- **Dependency bump** -- `uvicorn` 0.52.3 -> 0.52.4.
+- **De-duped `latest` tag application** on tagged releases in the publish workflow.
+- **Example custom network renamed** `dns_net` -> `intercept_net` across READMEs and compose examples for consistency. Docs only, no functional change.
+
+---
+
 ## [1.5.2] - 2026-08-17
 
 ### Added
