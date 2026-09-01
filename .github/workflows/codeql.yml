@@ -49,7 +49,6 @@ jobs:
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.36.0
         env:
-          # runner has old local copies of this tag from testing; force a registry pull
           TRIVY_IMAGE_SRC: remote
         with:
           version: v0.72.0
