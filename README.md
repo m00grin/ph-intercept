@@ -94,6 +94,8 @@ services:
     security_opt:
       - "no-new-privileges:true"
 
+    read_only: true
+
     logging:
       driver: "json-file"
       options:
@@ -137,7 +139,7 @@ Open `http://your-host:4653`.
 | Tag | What it is |
 |-----|------------|
 | `:latest` | Latest stable release. |
-| `:X.Y.Z` | Pinned release (e.g. `1.5.2`). |
+| `:X.Y.Z` | Pinned release (e.g. `1.5.3`). |
 | `:develop` | Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
 
 ---
