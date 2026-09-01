@@ -48,6 +48,9 @@ jobs:
 
       - name: Scan image
         uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          # runner has old local copies of this tag from testing; force a registry pull
+          TRIVY_IMAGE_SRC: remote
         with:
           version: v0.72.0
           scan-ref: ghcr.io/m00grin/ph-intercept:latest
@@ -66,6 +69,8 @@ jobs:
 
       - name: Render table
         uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_IMAGE_SRC: remote
         with:
           scan-ref: ghcr.io/m00grin/ph-intercept:latest
           scanners: vuln
