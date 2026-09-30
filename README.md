@@ -113,11 +113,11 @@ services:
     # Optional: only needed if you use static IPs on a custom Docker network
     # Uncomment both networks blocks if you need this
     # networks:
-    #   dns_net:
+    #   intercept_net:
     #     ipv4_address: this.container.dockernet.ip
 
 # networks:
-#   dns_net:
+#   intercept_net:
 #     external: true
 
 volumes:
