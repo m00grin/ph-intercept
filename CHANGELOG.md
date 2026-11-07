@@ -4,6 +4,28 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.5.5] - 2026-11-07
+
+### Security
+
+- **Other websites can no longer control your DNS server through ph-intercept** -- any page you visited could send a background request that turned blocking off, started a gravity/filter update or changed 2-player mode. Cross-site requests to those controls are now refused. Scripts and integrations that call the API directly (curl, Home Assistant) work as before.
+
+### Fixed
+
+- **`linux/arm/v6` image crashing on ARMv6 boards** -- 1.5.4's arm/v6 image shipped an ARMv7 build of MarkupSafe, which ARMv6 CPUs (Raspberry Pi Zero, Zero W, Pi 1) can't run. arm/v6 now uses MarkupSafe's pure-Python build, the same as `linux/386`. Other platforms are unchanged.
+- **AdGuard timed disables surviving a restart** -- timed disables now use AdGuard Home's own timer. Previously the timer only lived inside ph-intercept, so restarting or updating the container mid-disable (for example during TOMORROW) left protection off. The HUD countdown now shows for AdGuard too.
+- **2-player mode using up Pi-hole logins** -- turning on local 2-player mode with Pi-hole left a session open on the second Pi-hole every time, and Pi-hole allows 16 by default. If Pi-hole is rate-limiting logins, the message now says so instead of pointing at the password.
+- **Blank screen when browser storage is blocked** -- for example when ph-intercept is embedded in a dashboard on another hostname with third-party cookies blocked. The game now starts regardless.
+- **Malformed API requests** now get a 400 instead of a server error.
+
+### Changed
+
+- **Setup problems are now logged** -- a wrong password, an unreachable server, a wrong URL, a missing Technitium query-log app or an unrecognised `PROVIDER` each log one clear warning to `docker logs`, plus one line when it recovers. Passwords and tokens are never logged.
+- **Base image bumped to Python 3.15** (`python:3.15-alpine3.24`). The image is about 7 MB larger, from upstream's 3.15 base.
+- **Docs** -- the Pi-hole README now lists the `PIHOLE2_*` variables, and the page description names the active provider.
+
+---
+
 ## [1.5.4] - 2026-11-07
 
 ### Security
