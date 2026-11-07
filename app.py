@@ -112,9 +112,38 @@ _CSP = (
 )
 
 
+_CROSS_SITE_FETCH = frozenset(["cross-site", "same-site"])
+
+
+def _is_cross_site_write(request: Request) -> bool:
+    if request.method != "POST":
+        return False
+    if request.headers.get("sec-fetch-site", "").strip().lower() in _CROSS_SITE_FETCH:
+        return True
+    if "origin" in request.headers:
+        ctype = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        return ctype != "application/json"
+    return False
+
+
+async def _json_body(request: Request) -> dict | None:
+    try:
+        body = await request.json()
+    except Exception:
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def _bad_body() -> JSONResponse:
+    return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
+
+
 class ResponseHeaderMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        response = await call_next(request)
+        if _is_cross_site_write(request):
+            response = JSONResponse({"error": "cross-site request refused"}, status_code=403)
+        else:
+            response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = _CSP
@@ -163,7 +192,9 @@ async def pihole_stats(_request: Request) -> JSONResponse:
 
 
 async def pihole_toggle(request: Request) -> JSONResponse:
-    body = await request.json()
+    body = await _json_body(request)
+    if body is None:
+        return _bad_body()
     timer = body.get("timer")
     if timer is not None:
         try:
@@ -306,7 +337,9 @@ async def pihole_gravity_update(request: Request) -> JSONResponse:
 async def pihole2_toggle(request: Request) -> JSONResponse:
     if not TWO_PLAYER_LOCAL_CONFIGURED or not _http_client2:
         return JSONResponse({"error": "not configured"}, status_code=400)
-    body = await request.json()
+    body = await _json_body(request)
+    if body is None:
+        return _bad_body()
     timer = body.get("timer")
     if timer is not None:
         try:

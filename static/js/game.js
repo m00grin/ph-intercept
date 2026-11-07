@@ -3566,7 +3566,7 @@
     const prevGravity = P.hudGravity;
     const triggeredAt = performance.now();
     P.gravityState = 'updating';
-    fetch(`/api/${P.api}/gravity-update`, { method: 'POST' })
+    fetch(`/api/${P.api}/gravity-update`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
       .then(r => r.json())
       .then(d => {
         if (d.error || !d.ok) { P.gravityState = 'idle'; return; }
