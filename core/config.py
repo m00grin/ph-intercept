@@ -5,7 +5,7 @@ PROVIDER = os.environ.get("PROVIDER", "pihole").lower()
 if PROVIDER not in ("pihole", "adguard", "technitium"):
     import logging
     logging.getLogger("ph-intercept").warning(
-        "PROVIDER=%r is not recognised (expected pihole, adguard or technitium); running as pihole", PROVIDER
+        "PROVIDER=%r is not recognised (expected pihole, adguard, or technitium); running as pihole", PROVIDER
     )
 
 PIHOLE_BASE = os.environ.get("PIHOLE_URL", "http://pihole:8053/api")

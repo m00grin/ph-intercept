@@ -1,6 +1,6 @@
 # ph-intercept
 
-A Pi-hole, AdGuard Home and Technitium DNS dashboard that runs as a standalone Docker container. Streams live DNS query events from your Pi-hole v6 API and renders them as pixel-art friendlies and enemies. Blocked queries are destroyed by the ship, allowed queries fly through. Toggle blocking, set timed blocks, trigger gravity updates, and switch ships from the HUD.
+A Pi-hole, AdGuard Home, and Technitium DNS dashboard that runs as a standalone Docker container. Streams live DNS query events from your Pi-hole v6 API and renders them as pixel-art friendlies and enemies. Blocked queries are destroyed by the ship, allowed queries fly through. Toggle blocking, set timed blocks, trigger gravity updates, and switch ships from the HUD.
 
 Designed to be dropped in alongside an existing Pi-hole v6 setup with no extra dependencies. Two instances can run side by side in [local 2-player split-screen](#local-2-player-mode).
 
@@ -320,7 +320,7 @@ On a healthy setup that prints nothing. Otherwise ph-intercept logs one line whe
 | `Pi-hole: unexpected HTTP 404 reply from .../auth. Check PIHOLE_URL points at the Pi-hole v6 API (ends in /api)` | `PIHOLE_URL` must end in `/api`, not `/admin`. |
 | `Pi-hole: login rejected (password incorrect). Check PIHOLE_PASSWORD` | Use an app password from **Settings → Web interface / API → Configure app password**. |
 | `Pi-hole: login refused by rate limiting (...), retrying` | Pi-hole throttles logins after a few quick attempts. It clears on its own within a few seconds. |
-| `PROVIDER='...' is not recognised ...` | `PROVIDER` must be `pihole`, `adguard` or `technitium` (or leave it out for Pi-hole). |
+| `PROVIDER='...' is not recognised ...` | `PROVIDER` must be `pihole`, `adguard`, or `technitium` (or leave it out for Pi-hole). |
 
 In 2-player mode the second Pi-hole logs the same lines as `Pi-hole 2`, pointing at the `PIHOLE2_*` variables.
 
