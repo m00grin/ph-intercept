@@ -8,7 +8,7 @@ All notable changes to ph-intercept are documented here.
 
 ### Security
 
-- **Other websites can no longer control your DNS server through ph-intercept** -- any page you visited could send a background request that turned blocking off, started a gravity/filter update or changed 2-player mode. Cross-site requests to those controls are now refused. Scripts and integrations that call the API directly (curl, Home Assistant) work as before.
+- **Other websites can no longer control your DNS server through ph-intercept** -- any page you visited could send a background request that turned blocking off, started a gravity/filter update, or changed 2-player mode. Cross-site requests to those controls are now refused. Scripts and integrations that call the API directly (curl, Home Assistant) work as before.
 
 ### Fixed
 
@@ -20,7 +20,7 @@ All notable changes to ph-intercept are documented here.
 
 ### Changed
 
-- **Setup problems are now logged** -- a wrong password, an unreachable server, a wrong URL, a missing Technitium query-log app or an unrecognised `PROVIDER` each log one clear warning to `docker logs`, plus one line when it recovers. Passwords and tokens are never logged.
+- **Setup problems are now logged** -- a wrong password, an unreachable server, a wrong URL, a missing Technitium query-log app, or an unrecognised `PROVIDER` each log one clear warning to `docker logs`, plus one line when it recovers. Passwords and tokens are never logged.
 - **Base image bumped to Python 3.15** (`python:3.15-alpine3.24`). The image is about 7 MB larger, from upstream's 3.15 base.
 - **Docs** -- the Pi-hole README now lists the `PIHOLE2_*` variables, and the page description names the active provider.
 

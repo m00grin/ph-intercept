@@ -22,7 +22,7 @@ body:
     id: version
     attributes:
       label: ph-intercept version or tag
-      description: The tag you pull, like `latest`, `1.5` or `develop`.
+      description: The tag you pull, like `latest`, `1.5`, or `develop`.
       placeholder: latest
     validations:
       required: true
