@@ -141,7 +141,7 @@ Open `http://your-host:4663`.
 |-----|------------|
 | `:latest` | Latest stable release. |
 | `:X.Y.Z` | Pinned release (e.g. `1.5.5`). |
-| `:develop` | Built automatically on every push to the `develop` branch. May be unstable. |
+| `:develop` | Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
 
 ---
 
@@ -293,7 +293,7 @@ Setting a valid `ADGUARD2_URL` is all that is required to activate split-screen 
 
 ## Requirements
 
-- AdGuard Home (any recent version)
+- AdGuard Home v0.107.28 or newer
 - Docker with Compose
 - Network route from the container to your AdGuard Home instance
 - **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64` · `linux/ppc64le`

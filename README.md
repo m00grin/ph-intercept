@@ -328,7 +328,7 @@ In 2-player mode the second Pi-hole logs the same lines as `Pi-hole 2`, pointing
 
 ## Privacy
 
-ph-intercept only talks to your own Pi-hole (or AdGuard Home / Technitium). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your DNS server through ph-intercept.
+ph-intercept only talks to your own Pi-hole instance(s). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your DNS server through ph-intercept.
 
 ---
 
