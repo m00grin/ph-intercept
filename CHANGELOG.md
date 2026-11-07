@@ -4,6 +4,20 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.5.4] - 2026-11-07
+
+### Security
+
+- **Bundled CA certificates refreshed** -- the image now ships `certifi` 2026.10.19 or later, which drops the `emSign ECC Root CA - G3` root whose intermediate CAs had compromised keys ([GHSA-6q48-6c7w-9gw2](https://github.com/advisories/GHSA-6q48-6c7w-9gw2)). Only affects HTTPS connections to your DNS server with certificate verification on.
+- **GitHub Actions pinned to commit SHAs** across all workflows, so a moved upstream tag can't change what runs in CI.
+
+### Changed
+
+- **Dependency bumps** -- `starlette` 1.6.0 -> 1.10.0, `uvicorn` 0.52.4 -> 0.54.0.
+- **Main README compose example** now uses `intercept_net`, finishing the 1.5.3 network rename. Docs only, no functional change.
+
+---
+
 ## [1.5.3] - 2026-09-01
 
 ### Security
