@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>ph-intercept</title>
-  <meta name="description" content="Pi-hole network dashboard with an interceptor-class defense grid. Monitor DNS queries and block threats in real time.">
+  <meta name="description" content="{% if provider == 'adguard' %}AdGuard Home{% elif provider == 'technitium' %}Technitium DNS{% else %}Pi-hole{% endif %} network dashboard with an interceptor-class defense grid. Monitor DNS queries and block threats in real time.">
   <link rel="icon" href="/static/icons/favicon.svg" type="image/svg+xml">
 
   {% if bg_mode == 'starfield' %}

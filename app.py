@@ -112,9 +112,38 @@ _CSP = (
 )
 
 
+_CROSS_SITE_FETCH = frozenset(["cross-site", "same-site"])
+
+
+def _is_cross_site_write(request: Request) -> bool:
+    if request.method != "POST":
+        return False
+    if request.headers.get("sec-fetch-site", "").strip().lower() in _CROSS_SITE_FETCH:
+        return True
+    if "origin" in request.headers:
+        ctype = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
+        return ctype != "application/json"
+    return False
+
+
+async def _json_body(request: Request) -> dict | None:
+    try:
+        body = await request.json()
+    except Exception:
+        return None
+    return body if isinstance(body, dict) else None
+
+
+def _bad_body() -> JSONResponse:
+    return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
+
+
 class ResponseHeaderMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        response = await call_next(request)
+        if _is_cross_site_write(request):
+            response = JSONResponse({"error": "cross-site request refused"}, status_code=403)
+        else:
+            response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = _CSP
@@ -163,7 +192,9 @@ async def pihole_stats(_request: Request) -> JSONResponse:
 
 
 async def pihole_toggle(request: Request) -> JSONResponse:
-    body = await request.json()
+    body = await _json_body(request)
+    if body is None:
+        return _bad_body()
     timer = body.get("timer")
     if timer is not None:
         try:
@@ -235,15 +266,29 @@ async def _p2_config_error() -> str | None:
                 f"{PIHOLE2_URL}/auth",
                 json={"password": PIHOLE2_PASSWORD},
             )
-            if not resp.json().get("session", {}).get("valid"):
-                return "Pi-hole 2 authentication failed. Check PIHOLE2_PASSWORD"
+            session = resp.json().get("session", {})
         except Exception:
             return "Could not reach Pi-hole 2. Check PIHOLE2_URL"
+        if resp.status_code == 429:
+            return "Pi-hole 2 is rate-limiting logins. Wait a few seconds and try again"
+        if not session.get("valid"):
+            return "Pi-hole 2 authentication failed. Check PIHOLE2_PASSWORD"
+        if session.get("sid"):
+            try:
+                await _http_client2.delete(
+                    f"{PIHOLE2_URL}/auth",
+                    headers={"X-FTL-SID": session["sid"]},
+                    timeout=0.5,
+                )
+            except Exception:
+                pass
     return None
 
 
 async def two_player_set_mode(request: Request) -> JSONResponse:
-    body = await request.json()
+    body = await _json_body(request)
+    if body is None:
+        return _bad_body()
     mode = body.get("mode", "")
     if mode == "local":
         err = await _p2_config_error()
@@ -306,7 +351,9 @@ async def pihole_gravity_update(request: Request) -> JSONResponse:
 async def pihole2_toggle(request: Request) -> JSONResponse:
     if not TWO_PLAYER_LOCAL_CONFIGURED or not _http_client2:
         return JSONResponse({"error": "not configured"}, status_code=400)
-    body = await request.json()
+    body = await _json_body(request)
+    if body is None:
+        return _bad_body()
     timer = body.get("timer")
     if timer is not None:
         try:

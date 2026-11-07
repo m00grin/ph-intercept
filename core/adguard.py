@@ -7,6 +7,7 @@ from datetime import datetime
 import httpx
 
 from .config import ADGUARD_BASE, ADGUARD_IGNORE_DOMAIN_PATTERNS, ADGUARD2_BASE
+from .notice import clear, warn_once
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,28 @@ def _auth2() -> tuple[str, str]:
     )
 
 
+def _label(base: str) -> str:
+    return "AdGuard 2" if base == ADGUARD2_BASE and base != ADGUARD_BASE else "AdGuard"
+
+
+def _env(base: str) -> str:
+    return "ADGUARD2" if _label(base) == "AdGuard 2" else "ADGUARD"
+
+
+def _report(key: str, base: str, resp: httpx.Response | None) -> bool:
+    if resp is None:
+        warn_once(key, f"{key}: could not reach {base}. Check {_env(base)}_URL")
+        return False
+    if resp.status_code in (401, 403):
+        warn_once(key, f"{key}: login rejected (HTTP {resp.status_code}). Check {_env(base)}_USERNAME and {_env(base)}_PASSWORD")
+        return False
+    if resp.status_code != 200:
+        warn_once(key, f"{key}: unexpected HTTP {resp.status_code} from {base}. Check {_env(base)}_URL points at the control API (ends in /control)")
+        return False
+    clear(key)
+    return True
+
+
 def _parse_time(s: str) -> float:
     """Convert AdGuard's ISO 8601 timestamp (with nanoseconds) to a Unix float."""
     try:
@@ -56,13 +79,19 @@ def _parse_time(s: str) -> float:
 
 async def _fetch_stats(http_client: httpx.AsyncClient, base: str, auth: tuple[str, str]) -> dict | None:
     try:
-        stats_resp, status_resp, filtering_resp = await asyncio.gather(
-            http_client.get(f"{base}/stats", auth=auth),
-            http_client.get(f"{base}/status", auth=auth),
-            http_client.get(f"{base}/filtering/status", auth=auth),
-        )
-        if stats_resp.status_code == 401:
+        try:
+            stats_resp, status_resp, filtering_resp = await asyncio.gather(
+                http_client.get(f"{base}/stats", auth=auth),
+                http_client.get(f"{base}/status", auth=auth),
+                http_client.get(f"{base}/filtering/status", auth=auth),
+            )
+        except httpx.TransportError:
+            _report(_label(base), base, None)
             return None
+        if stats_resp.status_code == 401:
+            _report(_label(base), base, stats_resp)
+            return None
+        _report(_label(base), base, stats_resp)
         stats = stats_resp.json()
         status = status_resp.json()
         filtering = filtering_resp.json()
@@ -109,7 +138,7 @@ async def _reenable_after(http_client: httpx.AsyncClient, base: str, auth: tuple
     try:
         await http_client.post(
             f"{base}/protection",
-            content=json.dumps({"enabled": True, "duration_ms": 0}),
+            content=json.dumps({"enabled": True, "duration": 0}),
             headers={"Content-Type": "application/json"},
             auth=auth,
         )
@@ -117,10 +146,13 @@ async def _reenable_after(http_client: httpx.AsyncClient, base: str, auth: tuple
         logger.exception("scheduled re-enable failed")
 
 
-async def _post_protection(http_client: httpx.AsyncClient, base: str, auth: tuple[str, str], enable: bool) -> dict:
+async def _post_protection(
+    http_client: httpx.AsyncClient, base: str, auth: tuple[str, str], enable: bool, timer: int | None = None,
+) -> dict:
+    duration = timer * 1000 if not enable and timer and timer > 0 else 0
     resp = await http_client.post(
         f"{base}/protection",
-        content=json.dumps({"enabled": enable, "duration_ms": 0}),
+        content=json.dumps({"enabled": enable, "duration": duration}),
         headers={"Content-Type": "application/json"},
         auth=auth,
     )
@@ -137,7 +169,7 @@ async def toggle_blocking(http_client: httpx.AsyncClient, enable: bool, timer: i
         _reenable_task.cancel()
     _reenable_task = None
     try:
-        result = await _post_protection(http_client, ADGUARD_BASE, _auth(), enable)
+        result = await _post_protection(http_client, ADGUARD_BASE, _auth(), enable, timer)
         if "error" in result:
             return result
         if not enable and timer and timer > 0:
@@ -154,7 +186,7 @@ async def toggle_p2_blocking(http_client: httpx.AsyncClient, enable: bool, timer
         _reenable2_task.cancel()
     _reenable2_task = None
     try:
-        result = await _post_protection(http_client, ADGUARD2_BASE, _auth2(), enable)
+        result = await _post_protection(http_client, ADGUARD2_BASE, _auth2(), enable, timer)
         if "error" in result:
             return result
         if not enable and timer and timer > 0:
@@ -253,11 +285,17 @@ async def _poll_tick(
     events is None when there is nothing to broadcast (error, no data, first poll,
     or no newer queries); it may be an empty list when every new query was ignored.
     """
-    resp = await http_client.get(f"{base}/querylog?limit=50", auth=auth, timeout=1.5)
+    key = f"{_label(base)} query log"
+    try:
+        resp = await http_client.get(f"{base}/querylog?limit=50", auth=auth, timeout=1.5)
+    except httpx.TransportError:
+        _report(key, base, None)
+        raise
     if resp.status_code == 401:
         logger.debug("query_poller: 401 from AdGuard; check credentials")
+        _report(key, base, resp)
         return last_q_time, None
-    if resp.status_code != 200:
+    if not _report(key, base, resp):
         return last_q_time, None
 
     body = resp.json()

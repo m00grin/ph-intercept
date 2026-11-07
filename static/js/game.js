@@ -109,6 +109,10 @@
   let settingsMenuOpen = false;
   let mouseX = -1, mouseY = -1;
 
+  function _storeGet(area, key) { try { return window[area].getItem(key); } catch { return null; } }
+  function _storeSet(area, key, val) { try { window[area].setItem(key, val); } catch {} }
+  function _storeDel(area, key) { try { window[area].removeItem(key); } catch {} }
+
   // Display toggles (persisted to localStorage)
   let showFriendlies = true;
   let showDomain     = true;
@@ -258,7 +262,7 @@
     };
   }
   const P1 = makePlayer({});
-  const P2 = makePlayer({ api: 'pihole2', shipY: -300, currentShip: localStorage.getItem('ph_p2_ship') || 'falcon',});
+  const P2 = makePlayer({ api: 'pihole2', shipY: -300, currentShip: _storeGet('localStorage', 'ph_p2_ship') || 'falcon',});
   // Quintuple-click easter egg: embiggen the P1 ship to 3x for 5 seconds, then it
   // bounces back to normal on its own. A squash-and-stretch drives the grow/shrink.
   const SHIP_EGG_BIG = 3;
@@ -1037,7 +1041,7 @@
     if (P1.warpState === 'out' && t - P1.warpAt >= WARP_OUT_DUR) {
       P1.warpPrevShip = P1.currentShip;
       P1.currentShip = P1.warpNextShip; P1.warpNextShip = null;
-      localStorage.setItem('ph_ship', P1.currentShip);
+      _storeSet('localStorage', 'ph_ship', P1.currentShip);
       P1.warpState = 'in'; P1.warpAt = t;
       for (const c of P1.crewMembers) { if (c.state !== 'fleeing') { c.state = 'fleeing'; c.stateAt = t; c.wpIdx = 0; c.fromX = c.x; c.fromY = c.y; } }
     } else if (P1.warpState === 'in' && t - P1.warpAt >= WARP_IN_DUR) {
@@ -1048,7 +1052,7 @@
     if (P2.warpState === 'out' && t - P2.warpAt >= WARP_OUT_DUR) {
       P2.warpPrevShip = P2.currentShip;
       P2.currentShip = P2.warpNextShip; P2.warpNextShip = null;
-      localStorage.setItem('ph_p2_ship', P2.currentShip);
+      _storeSet('localStorage', 'ph_p2_ship', P2.currentShip);
       P2.warpState = 'in'; P2.warpAt = t;
       for (const c of P2.crewMembers) { if (c.state !== 'fleeing') { c.state = 'fleeing'; c.stateAt = t; c.wpIdx = 0; c.fromX = c.x; c.fromY = c.y; } }
     } else if (P2.warpState === 'in' && t - P2.warpAt >= WARP_IN_DUR) {
@@ -3327,14 +3331,15 @@
     P2.shieldMenuOpen = false; P2.shieldMenuItems = []; P2.shieldHovered = false; P2.shieldMenuPopupBox = null;
     P2.shipMenuOpen = false; P2.shipMenuItems = []; P2.shipMenuHovered = false; P2.shipMenuPopupBox = null;
     P2.arrowHovered = false;
-    { const _s2 = localStorage.getItem('ph_p2_ship'); P2.currentShip = (_s2 && _SHIP_CONFIGS[_s2]) ? _s2 : 'falcon'; }
+    { const _s2 = _storeGet('localStorage', 'ph_p2_ship'); P2.currentShip = (_s2 && _SHIP_CONFIGS[_s2]) ? _s2 : 'falcon'; }
     if (settingsBtnEl) { settingsBtnEl.style.display = 'block'; settingsBtnEl.classList.remove('menu-open'); }
-    { const _s = localStorage.getItem('ph_ship'); P1.currentShip = (_s && _SHIP_CONFIGS[_s]) ? _s : 'protector'; } P1.warpState = 'none'; P1.warpAt = 0; P1.warpNextShip = null; P1.warpPrevShip = null;
+    { const _s = _storeGet('localStorage', 'ph_ship'); P1.currentShip = (_s && _SHIP_CONFIGS[_s]) ? _s : 'protector'; } P1.warpState = 'none'; P1.warpAt = 0; P1.warpNextShip = null; P1.warpPrevShip = null;
     shakeAt = 0; shakeDur = 0; shakeAmp = 0;
     mouseX = -1; mouseY = -1;
     // Restore timed-block state that may have been set before navigating away
     _firstEnterFetch = true;
-    const _saved = JSON.parse(sessionStorage.getItem('ph_block_timer') || 'null');
+    let _saved = null;
+    try { _saved = JSON.parse(_storeGet('sessionStorage', 'ph_block_timer') || 'null'); } catch {}
     if (_saved && _saved.duration > 0) {
       const _elapsed = Date.now() - _saved.wallOffAt;
       if (_elapsed < _saved.duration) {
@@ -3348,7 +3353,7 @@
         { const _bi = CARRIER_SHIP_ORDER.indexOf(P1.currentShip); P1.shipX = P1._carrierSmoothX + (_bi >= 0 ? CARRIER_BAY_DX[_bi] : 0); P1.shipY = P1.carrierRestY + (_bi >= 0 ? CARRIER_BAY_DY[_bi] : 0); }
         _firstEnterFetch = false;
       } else {
-        sessionStorage.removeItem('ph_block_timer');
+        _storeDel('sessionStorage', 'ph_block_timer');
       }
     }
     function fetchPiholeStats() {
@@ -3398,7 +3403,7 @@
           } else if (_prev === false && !_wasFirst && shipPowerState === 'down') {
             // Blocking re-enabled remotely - start startup; carrier departs when startup completes (same as normal flow)
             P1.blockingDuration = 0;
-            sessionStorage.removeItem('ph_block_timer');
+            _storeDel('sessionStorage', 'ph_block_timer');
             gunCheckState = 0; P1.gunCheckFiredAt = [0, 0];
             P1.shipMenuOpen = false; P1.shipMenuItems = [];
             settingsMenuOpen = false;
@@ -3525,7 +3530,7 @@
       P1.blockingOffSince = performance.now();
       P1.blockingDuration = timerSec ? timerSec * 1000 : 0;
       if (P1.blockingDuration > 0)
-        sessionStorage.setItem('ph_block_timer', JSON.stringify({ wallOffAt: Date.now(), duration: P1.blockingDuration }));
+        _storeSet('sessionStorage', 'ph_block_timer', JSON.stringify({ wallOffAt: Date.now(), duration: P1.blockingDuration }));
       shipPowerState = 'powerdown'; P1.powerdownAt = performance.now();
       // If the ship is embiggened (triple-click egg), shrink it back with the bouncy
       // animation during the powerdown hold so it docks at normal size.
@@ -3537,7 +3542,7 @@
       if (drone2.state !== 'docked') drone2.state = 'docking';
     } else {
       P1.blockingDuration = 0;
-      sessionStorage.removeItem('ph_block_timer');
+      _storeDel('sessionStorage', 'ph_block_timer');
       gunCheckState = 0; P1.gunCheckFiredAt = [0, 0];
       shipPowerState = 'startup'; P1.startupAt = performance.now();
       if (P1.carrierState === 'arriving' && (twoPlayerMode === 'off' || P2.blockingEnabled !== false)) {
@@ -3566,7 +3571,7 @@
     const prevGravity = P.hudGravity;
     const triggeredAt = performance.now();
     P.gravityState = 'updating';
-    fetch(`/api/${P.api}/gravity-update`, { method: 'POST' })
+    fetch(`/api/${P.api}/gravity-update`, { method: 'POST', headers: { 'Content-Type': 'application/json' } })
       .then(r => r.json())
       .then(d => {
         if (d.error || !d.ok) { P.gravityState = 'idle'; return; }

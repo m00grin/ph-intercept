@@ -7,14 +7,15 @@
 
   // ── Cooldown check ────────────────────────────────────────────────
   // Deferred to 'load' so game.js is already parsed when we call enterPiholeMode.
-  const lastShown = parseInt(sessionStorage.getItem('ph_splash_t') || '0');
+  let lastShown = 0;
+  try { lastShown = parseInt(sessionStorage.getItem('ph_splash_t') || '0') || 0; } catch {}
   if (Date.now() - lastShown < COOLDOWN_MS) {
     window.addEventListener('load', () => {
       if (typeof window.enterPiholeMode === 'function') window.enterPiholeMode();
     });
     return;
   }
-  sessionStorage.setItem('ph_splash_t', String(Date.now()));
+  try { sessionStorage.setItem('ph_splash_t', String(Date.now())); } catch {}
 
   // ── Phase windows [start, end] in ms ─────────────────────────────
   const PH_IN      = [0,    450];

@@ -2,6 +2,11 @@ import os
 import re
 
 PROVIDER = os.environ.get("PROVIDER", "pihole").lower()
+if PROVIDER not in ("pihole", "adguard", "technitium"):
+    import logging
+    logging.getLogger("ph-intercept").warning(
+        "PROVIDER=%r is not recognised (expected pihole, adguard or technitium); running as pihole", PROVIDER
+    )
 
 PIHOLE_BASE = os.environ.get("PIHOLE_URL", "http://pihole:8053/api")
 _ssl_raw = os.environ.get("PIHOLE_VERIFY_SSL", "true").strip().lower()

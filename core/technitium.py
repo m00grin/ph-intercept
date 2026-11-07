@@ -13,6 +13,7 @@ from .config import (
     TECHNITIUM2_TOTP, TECHNITIUM2_LOG_APP, TECHNITIUM2_LOG_CLASS,
     TECHNITIUM_IGNORE_DOMAIN_PATTERNS,
 )
+from .notice import clear, warn_once
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,9 @@ class _Instance:
     per-instance state (session token, dedup set, re-enable task) than the other
     providers."""
 
-    def __init__(self, base, token, user, password, totp, log_app, log_class):
+    def __init__(self, label, env, base, token, user, password, totp, log_app, log_class):
+        self.label = label
+        self.env = env
         self.base = base
         self.static_token = token or None   # permanent API token, if configured
         self.user = user
@@ -56,16 +59,29 @@ class _Instance:
 
 
 _p1 = _Instance(
-    TECHNITIUM_BASE, TECHNITIUM_TOKEN, TECHNITIUM_USER, TECHNITIUM_PASSWORD,
+    "Technitium", "TECHNITIUM", TECHNITIUM_BASE, TECHNITIUM_TOKEN, TECHNITIUM_USER, TECHNITIUM_PASSWORD,
     TECHNITIUM_TOTP, TECHNITIUM_LOG_APP, TECHNITIUM_LOG_CLASS,
 )
 _p2 = _Instance(
-    TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
+    "Technitium 2", "TECHNITIUM2", TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
     TECHNITIUM2_TOTP, TECHNITIUM2_LOG_APP, TECHNITIUM2_LOG_CLASS,
 )
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
+
+def _problem(inst: _Instance, path: str, code: str) -> None:
+    if path.startswith("logs/"):
+        warn_once(f"{inst.label} query log", f"{inst.label} query log: API returned '{code}'. Install the 'Query Logs (Sqlite)' DNS app, or check {inst.env}_QUERY_LOG_APP / {inst.env}_QUERY_LOG_CLASS")
+        return
+    hints = {
+        "auth_required": f"set {inst.env}_TOKEN, or {inst.env}_USER and {inst.env}_PASSWORD",
+        "auth_failed": f"could not reach {inst.base}. Check {inst.env}_URL",
+        "unreachable": f"could not reach {inst.base}. Check {inst.env}_URL",
+        "invalid-token": f"token rejected. Check {inst.env}_TOKEN",
+    }
+    warn_once(inst.label, f"{inst.label}: " + hints.get(code, f"API returned '{code}'. Check {inst.env}_USER / {inst.env}_PASSWORD / {inst.env}_TOTP"))
+
 
 async def _ensure_auth(http_client: httpx.AsyncClient, inst: _Instance) -> bool:
     if inst.token:
@@ -75,6 +91,7 @@ async def _ensure_auth(http_client: httpx.AsyncClient, inst: _Instance) -> bool:
         return False
     if not (inst.user and inst.password):
         inst.last_error = "auth_required"
+        _problem(inst, "", "auth_required")
         return False
     async with inst.auth_lock:
         if inst.token:
@@ -88,6 +105,7 @@ async def _ensure_auth(http_client: httpx.AsyncClient, inst: _Instance) -> bool:
         except Exception:
             inst.last_error = "auth_failed"
             logger.debug("Technitium login failed", exc_info=True)
+            _problem(inst, "", "auth_failed")
             return False
         if data.get("status") == "ok" and data.get("token"):
             inst.token = str(data["token"])
@@ -95,6 +113,7 @@ async def _ensure_auth(http_client: httpx.AsyncClient, inst: _Instance) -> bool:
             inst.last_error = None
             return True
         inst.last_error = str(data.get("status") or "auth_rejected")
+        _problem(inst, "", inst.last_error)
         return False
 
 
@@ -140,17 +159,23 @@ async def _api_call(
     except Exception:
         inst.last_error = "unreachable"
         logger.debug("Technitium call failed: %s", path, exc_info=True)
+        _problem(inst, "", "unreachable")
         return None
     if data.get("status") == "invalid-token":
         inst.last_error = "invalid-token"
         if retry and inst.login_token:
             inst.token = None  # force a fresh login and retry once
             return await _api_call(http_client, inst, path, params, retry=False, timeout=timeout)
+        _problem(inst, "", "invalid-token")
         return None
     if data.get("status") not in (None, "ok"):
         inst.last_error = str(data.get("status") or "error")
+        _problem(inst, path, inst.last_error)
         return None
     inst.last_error = None
+    clear(inst.label)
+    if path.startswith("logs/"):
+        clear(f"{inst.label} query log")
     return data
 
 
