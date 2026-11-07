@@ -1,0 +1,61 @@
+name: Bug report
+description: Something isn't working right
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report this! A few details up front make it way easier to track down.
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: DNS server
+      options:
+        - Pi-hole
+        - AdGuard Home
+        - Technitium
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: ph-intercept version or tag
+      description: The tag you pull, like `latest`, `1.5` or `develop`.
+      placeholder: latest
+    validations:
+      required: true
+
+  - type: input
+    id: platform
+    attributes:
+      label: Platform
+      description: |
+        Run this where ph-intercept is running and paste the result:
+        `docker image inspect "$(docker inspect -f '{{.Image}}' ph-intercept)" -f '{{.Os}}/{{.Architecture}}{{if .Variant}}/{{.Variant}}{{end}}'`
+      placeholder: linux/amd64
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you expected, what you got instead, and how to make it happen if you know.
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Log lines
+      description: |
+        Output of `docker logs ph-intercept 2>&1 | grep -v '^INFO:'`. It's empty on a healthy setup, so anything here usually points right at the problem.
+        It never includes passwords or tokens, but give it a quick look for anything you'd rather not share before posting.
+      render: text
+
+  - type: textarea
+    id: browser
+    attributes:
+      label: Browser and device
+      description: Only if it's a display or in-game problem.
+      placeholder: Firefox on a Pi 4 touchscreen, Safari on an iPad, ...

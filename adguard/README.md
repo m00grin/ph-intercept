@@ -299,3 +299,33 @@ Setting a valid `ADGUARD2_URL` is all that is required to activate split-screen 
 - **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64` · `linux/ppc64le`
 
 The container listens on port 4653 internally, mapped to host port 4663 by default. The compose file includes an optional static IP block for existing Docker networks.
+
+Curious what everyone runs it on? I'm asking in a [quick poll](https://github.com/m00grin/ph-intercept/discussions/52) instead of collecting any data.
+
+---
+
+## Troubleshooting
+
+If something's off, check the logs first:
+
+```bash
+docker logs ph-intercept 2>&1 | grep -v '^INFO:'
+```
+
+On a healthy setup that prints nothing. Otherwise ph-intercept logs one line when a problem starts, and one line when it clears:
+
+| Log line | What to check |
+|----------|---------------|
+| `AdGuard: could not reach http://... Check ADGUARD_URL` | The URL and port, and that the container can reach AdGuard Home over the network. |
+| `AdGuard: login rejected (HTTP 401). Check ADGUARD_USERNAME and ADGUARD_PASSWORD` | The username (or email) and password you log in to AdGuard Home with. |
+| `AdGuard: unexpected HTTP 404 from ... Check ADGUARD_URL points at the control API (ends in /control)` | `ADGUARD_URL` must end in `/control`. |
+| `AdGuard query log: ...` | Same checks as the lines above, for the query log endpoint. |
+| `PROVIDER='...' is not recognised ...` | `PROVIDER` must be `adguard` here. |
+
+In 2-player mode the second instance logs the same lines as `AdGuard 2`, pointing at the `ADGUARD2_*` variables.
+
+---
+
+## Privacy
+
+ph-intercept only talks to your own AdGuard Home instance(s). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your DNS server through ph-intercept.

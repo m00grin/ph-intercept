@@ -300,6 +300,36 @@ PIHOLE2_PASSWORD=your_second_pihole_password
 
 The container listens on port 4653. The compose file includes an optional static IP block for existing Docker networks.
 
+Curious what everyone runs it on? I'm asking in a [quick poll](https://github.com/m00grin/ph-intercept/discussions/52) instead of collecting any data.
+
+---
+
+## Troubleshooting
+
+If something's off, check the logs first:
+
+```bash
+docker logs ph-intercept 2>&1 | grep -v '^INFO:'
+```
+
+On a healthy setup that prints nothing. Otherwise ph-intercept logs one line when a problem starts, and one line when it clears:
+
+| Log line | What to check |
+|----------|---------------|
+| `Pi-hole: could not reach http://... Check PIHOLE_URL` | The URL and port, and that the container can reach your Pi-hole over the network. |
+| `Pi-hole: unexpected HTTP 404 reply from .../auth. Check PIHOLE_URL points at the Pi-hole v6 API (ends in /api)` | `PIHOLE_URL` must end in `/api`, not `/admin`. |
+| `Pi-hole: login rejected (password incorrect). Check PIHOLE_PASSWORD` | Use an app password from **Settings → Web interface / API → Configure app password**. |
+| `Pi-hole: login refused by rate limiting (...), retrying` | Pi-hole throttles logins after a few quick attempts. It clears on its own within a few seconds. |
+| `PROVIDER='...' is not recognised ...` | `PROVIDER` must be `pihole`, `adguard` or `technitium` (or leave it out for Pi-hole). |
+
+In 2-player mode the second Pi-hole logs the same lines as `Pi-hole 2`, pointing at the `PIHOLE2_*` variables.
+
+---
+
+## Privacy
+
+ph-intercept only talks to your own Pi-hole (or AdGuard Home / Technitium). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your DNS server through ph-intercept.
+
 ---
 
 ## Testing
