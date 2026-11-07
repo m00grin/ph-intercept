@@ -260,6 +260,9 @@ All configuration is via environment variables in `compose.yaml`.
 | `BG_IMAGE` | `""` | Custom image URL or `/bg/filename.jpg`. When set, it's the default and enables the in-app `CUSTOM` option; blank leaves `CUSTOM` disabled. |
 | `PIHOLE_VERIFY_SSL` | `true` | Set to `false` if Pi-hole uses HTTPS with a self-signed certificate. |
 | `PIHOLE_IGNORE_DOMAINS` | _(unset)_ | Comma-separated regex patterns. Domains that match spawn no ships. Case-insensitive; escape literal dots (`\.local$`). Example: `.*\.local$,.*\.internal$` |
+| `PIHOLE2_URL` | _(unset)_ | Second Pi-hole v6 API base URL. Setting a valid URL activates local 2-player split-screen mode. See below. |
+| `PIHOLE2_PASSWORD` | `""` | App password for the second Pi-hole. Omit if it has none. |
+| `PIHOLE2_VERIFY_SSL` | `true` | Set to `false` if the second Pi-hole uses HTTPS with a self-signed certificate. |
 
 ---
 
