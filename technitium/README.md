@@ -229,3 +229,34 @@ The entities, ship roster, HUD panels, and background modes are identical across
 - **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64` · `linux/ppc64le`
 
 The container listens on port 4653 internally, mapped to host port 4673 by default. The compose file includes an optional static IP block for existing Docker networks.
+
+Curious what everyone runs it on? I'm asking in a [quick poll](https://github.com/m00grin/ph-intercept/discussions/52) instead of collecting any data.
+
+---
+
+## Troubleshooting
+
+If something's off, check the logs first:
+
+```bash
+docker logs ph-intercept 2>&1 | grep -v '^INFO:'
+```
+
+On a healthy setup that prints nothing. Otherwise ph-intercept logs one line when a problem starts, and one line when it clears:
+
+| Log line | What to check |
+|----------|---------------|
+| `Technitium: set TECHNITIUM_TOKEN, or TECHNITIUM_USER and TECHNITIUM_PASSWORD` | No credentials are set. An API token is easiest. |
+| `Technitium: could not reach http://... Check TECHNITIUM_URL` | The URL and port, and that the container can reach Technitium over the network. |
+| `Technitium: token rejected. Check TECHNITIUM_TOKEN` | Create a new API token in Technitium and update `TECHNITIUM_TOKEN`. |
+| `Technitium: API returned '...'. Check TECHNITIUM_USER / TECHNITIUM_PASSWORD / TECHNITIUM_TOTP` | The login was refused. Check the user, password, and TOTP code if you use one. |
+| `Technitium query log: API returned '...'. Install the 'Query Logs (Sqlite)' DNS app, ...` | Install the **Query Logs (Sqlite)** app, or check `TECHNITIUM_QUERY_LOG_APP` / `TECHNITIUM_QUERY_LOG_CLASS` if you renamed it. Stats still work without it, but no ships spawn. |
+| `PROVIDER='...' is not recognised ...` | `PROVIDER` must be `technitium` here. |
+
+In 2-player mode the second instance logs the same lines as `Technitium 2`, pointing at the `TECHNITIUM2_*` variables.
+
+---
+
+## Privacy
+
+ph-intercept only talks to your own Technitium instance(s). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your DNS server through ph-intercept.
