@@ -6,6 +6,7 @@ import os
 import httpx
 
 from .config import PIHOLE_BASE, PIHOLE2_URL, IGNORE_DOMAIN_PATTERNS
+from .notice import clear, warn_once
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,26 @@ _CACHE_STATUS_INT   = frozenset([3, 17])
 _CACHE_STATUS_STR   = frozenset(["CACHE"])
 
 
+def _login_problem(label: str, url: str, env: str, resp: httpx.Response | None, exc: Exception | None) -> None:
+    if exc is not None and resp is None:
+        warn_once(label, f"{label}: could not reach {url}. Check {env}_URL")
+        return
+    try:
+        body = resp.json()
+    except Exception:
+        warn_once(label, f"{label}: unexpected HTTP {resp.status_code} reply from {url}/auth. Check {env}_URL points at the Pi-hole v6 API (ends in /api)")
+        return
+    err = body.get("error") if isinstance(body, dict) else None
+    session = body.get("session") if isinstance(body, dict) else None
+    detail = (err.get("message") if isinstance(err, dict) else None) or (
+        session.get("message") if isinstance(session, dict) else None
+    )
+    if resp.status_code == 429:
+        warn_once(label, f"{label}: login refused by rate limiting" + (f" ({detail})" if detail else "") + ", retrying")
+        return
+    warn_once(label, f"{label}: login rejected" + (f" ({detail})" if detail else "") + f". Check {env}_PASSWORD")
+
+
 async def _pihole_ensure_auth(http_client: httpx.AsyncClient) -> bool:
     global _pihole_sid
     if _pihole_sid is not None:
@@ -27,6 +48,7 @@ async def _pihole_ensure_auth(http_client: httpx.AsyncClient) -> bool:
     async with _pihole_auth_lock:
         if _pihole_sid is not None:
             return True
+        resp = None
         try:
             resp = await http_client.post(
                 f"{PIHOLE_BASE}/auth",
@@ -37,9 +59,11 @@ async def _pihole_ensure_auth(http_client: httpx.AsyncClient) -> bool:
             if session.get("valid"):
                 # Pi-hole omits sid in passwordless/open mode
                 _pihole_sid = session.get("sid") or ""
+                clear("Pi-hole")
                 return True
-        except Exception:
-            pass
+            _login_problem("Pi-hole", PIHOLE_BASE, "PIHOLE", resp, None)
+        except Exception as exc:
+            _login_problem("Pi-hole", PIHOLE_BASE, "PIHOLE", resp, exc)
         return False
 
 
@@ -286,6 +310,7 @@ async def _p2_ensure_auth(http_client: httpx.AsyncClient) -> bool:
     async with _p2_pihole_auth_lock:
         if _p2_pihole_sid is not None:
             return True
+        resp = None
         try:
             resp = await http_client.post(
                 f"{PIHOLE2_URL}/auth",
@@ -295,9 +320,11 @@ async def _p2_ensure_auth(http_client: httpx.AsyncClient) -> bool:
             session = resp.json().get("session", {})
             if session.get("valid"):
                 _p2_pihole_sid = session.get("sid") or ""
+                clear("Pi-hole 2")
                 return True
-        except Exception:
-            pass
+            _login_problem("Pi-hole 2", PIHOLE2_URL, "PIHOLE2", resp, None)
+        except Exception as exc:
+            _login_problem("Pi-hole 2", PIHOLE2_URL, "PIHOLE2", resp, exc)
         return False
 
 
