@@ -1,8 +1,10 @@
 FROM python:3.15-alpine3.24
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
+ARG TARGETVARIANT
 RUN --mount=type=bind,source=requirements.txt,target=requirements.txt \
     apk upgrade --no-cache \
+    && if [ "$TARGETVARIANT" = "v6" ]; then export PIP_NO_BINARY=markupsafe; fi \
     && pip install --no-cache-dir --root-user-action=ignore -r requirements.txt \
     && pip uninstall --root-user-action=ignore -y pip \
     && PYLIB=$(python -c 'import sysconfig; print(sysconfig.get_path("stdlib"))') \
