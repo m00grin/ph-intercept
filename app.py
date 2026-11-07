@@ -266,15 +266,29 @@ async def _p2_config_error() -> str | None:
                 f"{PIHOLE2_URL}/auth",
                 json={"password": PIHOLE2_PASSWORD},
             )
-            if not resp.json().get("session", {}).get("valid"):
-                return "Pi-hole 2 authentication failed. Check PIHOLE2_PASSWORD"
+            session = resp.json().get("session", {})
         except Exception:
             return "Could not reach Pi-hole 2. Check PIHOLE2_URL"
+        if resp.status_code == 429:
+            return "Pi-hole 2 is rate-limiting logins. Wait a few seconds and try again"
+        if not session.get("valid"):
+            return "Pi-hole 2 authentication failed. Check PIHOLE2_PASSWORD"
+        if session.get("sid"):
+            try:
+                await _http_client2.delete(
+                    f"{PIHOLE2_URL}/auth",
+                    headers={"X-FTL-SID": session["sid"]},
+                    timeout=0.5,
+                )
+            except Exception:
+                pass
     return None
 
 
 async def two_player_set_mode(request: Request) -> JSONResponse:
-    body = await request.json()
+    body = await _json_body(request)
+    if body is None:
+        return _bad_body()
     mode = body.get("mode", "")
     if mode == "local":
         err = await _p2_config_error()
