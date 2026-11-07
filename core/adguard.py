@@ -109,7 +109,7 @@ async def _reenable_after(http_client: httpx.AsyncClient, base: str, auth: tuple
     try:
         await http_client.post(
             f"{base}/protection",
-            content=json.dumps({"enabled": True, "duration_ms": 0}),
+            content=json.dumps({"enabled": True, "duration": 0}),
             headers={"Content-Type": "application/json"},
             auth=auth,
         )
@@ -117,10 +117,13 @@ async def _reenable_after(http_client: httpx.AsyncClient, base: str, auth: tuple
         logger.exception("scheduled re-enable failed")
 
 
-async def _post_protection(http_client: httpx.AsyncClient, base: str, auth: tuple[str, str], enable: bool) -> dict:
+async def _post_protection(
+    http_client: httpx.AsyncClient, base: str, auth: tuple[str, str], enable: bool, timer: int | None = None,
+) -> dict:
+    duration = timer * 1000 if not enable and timer and timer > 0 else 0
     resp = await http_client.post(
         f"{base}/protection",
-        content=json.dumps({"enabled": enable, "duration_ms": 0}),
+        content=json.dumps({"enabled": enable, "duration": duration}),
         headers={"Content-Type": "application/json"},
         auth=auth,
     )
@@ -137,7 +140,7 @@ async def toggle_blocking(http_client: httpx.AsyncClient, enable: bool, timer: i
         _reenable_task.cancel()
     _reenable_task = None
     try:
-        result = await _post_protection(http_client, ADGUARD_BASE, _auth(), enable)
+        result = await _post_protection(http_client, ADGUARD_BASE, _auth(), enable, timer)
         if "error" in result:
             return result
         if not enable and timer and timer > 0:
@@ -154,7 +157,7 @@ async def toggle_p2_blocking(http_client: httpx.AsyncClient, enable: bool, timer
         _reenable2_task.cancel()
     _reenable2_task = None
     try:
-        result = await _post_protection(http_client, ADGUARD2_BASE, _auth2(), enable)
+        result = await _post_protection(http_client, ADGUARD2_BASE, _auth2(), enable, timer)
         if "error" in result:
             return result
         if not enable and timer and timer > 0:
