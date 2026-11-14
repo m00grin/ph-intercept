@@ -4,6 +4,25 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.5.6] - 2026-11-14
+
+### Added
+
+- **ph-intercept is now on [Docker Hub](https://hub.docker.com/r/m00grin/ph-intercept)** -- `docker pull m00grin/ph-intercept` works from this release on, and it's easier to find from Docker Hub search, Portainer, and other tools that browse Docker Hub. It's the same image as `ghcr.io/m00grin/ph-intercept`, with the same tags and platforms, so existing setups don't need to change. The Docker Hub page carries the full setup for Pi-hole, AdGuard Home, and Technitium. `:develop` stays on GHCR only.
+- **Bug report form** -- new issues ask for the DNS server, image tag, platform, and the `docker logs` lines that name most setup problems. Questions and ideas go to Discussions, security reports to the private advisory form.
+
+### Fixed
+
+- **HUD stats overlapping on mid-width screens** -- between roughly 960 and 1125 px wide (small laptops, tablets in landscape) the four STATS numbers ran into each other, and two columns could overlap below that. Columns are now fitted to the numbers actually on screen, so the HUD shows as many as fit and drops one before anything collides. Applies to both players in 2-player mode.
+- **Counts just under a million** briefly showed as `1000.00K`; they now switch to `1.00M`.
+
+### Changed
+
+- **Docs** -- a live demo GIF, a background gallery, and sharper 2x screenshots throughout. The AdGuard and Technitium guides now link to the main README for gameplay and list only what differs for their provider. Each README gained Troubleshooting and Privacy sections. The Docker Hub page carries all three providers' setup steps, so Docker Hub readers aren't sent to GitHub to install.
+- **Font license included** -- the bundled fonts (IBM Plex Mono, Orbitron, Press Start 2P) now ship with their SIL Open Font License text, as the license requires.
+
+---
+
 ## [1.5.5] - 2026-11-07
 
 ### Security
