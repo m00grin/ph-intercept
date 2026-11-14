@@ -1,4 +1,4 @@
-name: Publish to GHCR (self-hosted)
+name: Publish to GHCR + Docker Hub (self-hosted)
 
 on:
   push:
@@ -18,14 +18,38 @@ jobs:
       - name: Set up Docker Buildx
         run: docker buildx use vega-builder 2>/dev/null || docker buildx create --name vega-builder --driver docker-container --use
 
+      - name: Check Docker Hub settings
+        env:
+          DOCKERHUB_USERNAME: ${{ vars.DOCKERHUB_USERNAME }}
+          HAS_TOKEN: ${{ secrets.DOCKERHUB_TOKEN != '' }}
+        run: |
+          if [ -z "$DOCKERHUB_USERNAME" ] || [ "$HAS_TOKEN" != "true" ]; then
+            echo "::error::Set repo variable DOCKERHUB_USERNAME and secret DOCKERHUB_TOKEN before tagging a release."
+            exit 1
+          fi
+
+      # login-action logs out automatically in its post step, so credentials never linger on the runner
       - name: Log in to GHCR
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: docker.io
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
-          images: ghcr.io/m00grin/ph-intercept
+          images: |
+            ghcr.io/m00grin/ph-intercept
+            docker.io/${{ vars.DOCKERHUB_USERNAME }}/ph-intercept
           flavor: |
             latest=false
           tags: |
@@ -50,10 +74,6 @@ jobs:
           cache-from: type=local,src=/opt/buildx-cache/ph-intercept
           cache-to: type=local,dest=/opt/buildx-cache/ph-intercept-new,mode=max
           provenance: mode=max
-
-      - name: Log out of GHCR
-        if: always()
-        run: docker logout ghcr.io
 
       - name: Rotate build cache
         run: |

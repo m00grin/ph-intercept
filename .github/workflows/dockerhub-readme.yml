@@ -1,0 +1,32 @@
+name: Sync Docker Hub README
+
+# Keeps the Docker Hub page in step with README.md on main, between releases too.
+on:
+  push:
+    branches: ["main"]
+    paths: ["README.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dockerhub-readme
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@1b9a80c056b620d92cedb9d9b5a223409c68ddfa # v5.0.0
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ vars.DOCKERHUB_USERNAME }}/ph-intercept
+          short-description: "Real-time Pi-hole, AdGuard Home & Technitium dashboard. Blocked DNS queries get shot down."
+          readme-filepath: ./README.md
+          enable-url-completion: true

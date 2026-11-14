@@ -4,7 +4,7 @@ A DNS dashboard that runs as a standalone Docker container alongside your AdGuar
 
 Designed to be dropped in alongside an existing AdGuard Home setup with no extra dependencies.
 
-<img width="1713" height="1254" alt="image" src="https://github.com/user-attachments/assets/791ba70f-c6cd-4495-8135-0e0d2286668e" />
+<img alt="ph-intercept shooting down blocked DNS queries live" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/demo.gif" />
 
 ---
 
@@ -149,92 +149,15 @@ Open `http://your-host:4663`.
 
 - Drop image files into `/data/compose/<stack-id>/bg/` on the Portainer host (where the `./bg` bind mount resolves).
 
-## Entities
+## Gameplay, ship, HUD, and background
 
-Each DNS query spawns an entity. Tier scales with how many times that domain has queried while the entity is still on screen:
+The entities, ship roster, HUD, and background modes are shared across all providers. See the [main README](../README.md#entities) for the full walkthrough of entity tiers, the seven selectable ships, the four HUD panels, and the starfield / nebula / outrun / dark backgrounds.
 
-**Allowed queries:** friendly ships traveling across the screen. Cache-answered queries move faster than upstream-answered ones.
+With AdGuard Home, the HUD differs in three places:
 
-<img width="487" height="354" alt="image" src="https://github.com/user-attachments/assets/7c80bb93-6ccd-4ac2-b1c9-e34a1f54cc31" />
-
-| Tier | Condition | Shape | Color |
-|------|-----------|-------|-------|
-| 1 | First query | Rounded shuttle · Delta wing · X-wing | Green · Blue · Lime |
-| 2 | Queried again while on screen | Heavy transport | Cyan |
-| 3+ | Three or more queries while on screen | Capital ship | Gold |
-
-**Blocked queries:** enemies the ship targets and destroys. A domain blocked again while still on screen mutates its sprite to the next tier in place.
-
-<img width="621" height="471" alt="image" src="https://github.com/user-attachments/assets/a2da33be-7015-4b34-9c51-6904b06573d0" />
-
-| Tier | Condition | Shape | Color |
-|------|-----------|-------|-------|
-| 1 | First block | Crab invader · Squid | Red |
-| 2 | Blocked twice | Heavy drone | Orange |
-| 3+ | Three or more | Boss | Purple |
-
-Ship weapon color tracks tier: green for tier 1, cyan for tier 2, gold for tier 3+.
-
----
-
-## The ship
-
-The ship targets and destroys blocked entities autonomously. At five on-screen threats a support drone launches and flanks; at ten a second drone deploys. Drones are recalled when the threat count drops.
-
-Seven ships are selectable from the HUD, shown in an 8-slot 4×2 grid: **Protector** (NSEA Protector, default), **Falcon** (Millennium Falcon), **Swordfish** (Swordfish II), **Enterprise** (NCC-1701), **Serenity** (Firefly), **Normandy** (Mass Effect), and **PES** (Planet Express Ship). Switching ships triggers a warp-out/warp-in transition that pushes nearby entities aside.
-
-<img width="370" height="176" alt="ships" src="https://github.com/user-attachments/assets/694a3786-10b5-4427-8f35-7d160b28c67b" />
-
----
-
-## The HUD
-
-A strip across the bottom, divided into four panels:
-
-**INTERCEPT:** protection status and toggle. Click to open a menu with timed-disable options (30 sec, 1 min, 10 min, 1 hr, Tomorrow) or a full disable. A countdown shows when a timed block is active; the timer survives navigation and syncs correctly if protection is changed remotely.
-
-**STATS:** total queries, blocked, allowed, and block percentage. Updated live.
-
-**FILTER:** total rules across all active filter lists. The arrow triggers a filter list refresh and confirms when done.
-
-**SHIPS:** active ship name. Click to open the ship selector.
-
-<img width="1376" height="105" alt="download" src="https://github.com/user-attachments/assets/cc4adf89-ac1e-402f-aed2-68ed282b49a3" />
-
-A hamburger button at the left edge of the HUD opens the **Settings** panel, which includes:
-
-- **Friendlies** -- show or hide friendly (allowed) entities
-- **Client** -- show the requesting client (IP or hostname) as a label per entity
-- **Domain** -- show or hide the domain label beneath each entity
-- **AdGuard** -- link to the AdGuard Home web interface
-
-Display settings are saved to `localStorage` and restored on next load.
-
----
-
-## The background
-
-Four modes are available via `BG_MODE`:
-
-**`starfield` (default):** Renders a real section of the night sky from an accurate star catalog (~12,200 stars to magnitude 6.8, color-coded by spectral type). Positions use equatorial coordinates; what you see is where the stars actually are. The sky region is set by `SKY_PRESET`.
-
-<img width="684" height="487" alt="image" src="https://github.com/user-attachments/assets/d6a04374-9341-464b-8f24-71cafc8bbbeb" />
-
-Star data is from the **HYG Database** by David Nash ([astronexus.com](https://astronexus.com)), combining Hipparcos (ESA) and the Yale Bright Star Catalogue.
-
-**Planets:** Mars, Jupiter, Saturn (with ring), and the Moon are computed from real orbital elements and appear at their actual sky positions, updated hourly.
-
-**Transients:** occasional satellite passes and meteors, including the ISS.
-
-**`nebula`:** A procedurally generated nebula. Overlapping color lobes with value noise, dust lanes, and a synthetic star layer. Fully GPU-rendered, no catalog data.
-
-**`outrun`:** A retro synthwave scene. A banded sun setting on the horizon over a scrolling neon perspective grid, with a starry sky. Pairs especially well with the CRT filter.
-
-**`dark`:** Plain black background. No canvas rendering overhead.
-
-**`BG_IMAGE`:** A custom image (URL or a `/bg/your-file.jpg` mounted into the container).
-
-The env vars above set the **default** background. Each user can also switch it live from the in-app settings menu (**Background**), including sky presets and, when `BG_IMAGE` is configured, a **CUSTOM** option. That choice is remembered per-browser and never changes the default for anyone else. If no `BG_IMAGE` is set, CUSTOM simply shows greyed out. This is fully backward compatible: with no in-app choice, the env values drive everything exactly as before.
+- **INTERCEPT:** shows protection status. The timed-disable menu offers 30 sec, 1 min, 10 min, 1 hr, and Tomorrow, plus a full disable.
+- **FILTER** (in place of GRAVITY): total rules across all active filter lists. The arrow triggers a filter list refresh and confirms when done.
+- **Settings:** the provider link opens the AdGuard Home web interface.
 
 ---
 
