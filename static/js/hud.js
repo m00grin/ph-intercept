@@ -180,7 +180,24 @@
         ctx.textAlign = align; ctx.fillStyle = 'rgba(55,190,170,0.40)';
         ctx.fillText(text, x, _yLabel2);
       };
-      const _fmtN = n => n == null ? '—' : n >= 1e6 ? (n/1e6).toFixed(2)+'M' : n >= 1e4 ? (n/1e3).toFixed(2)+'K' : String(n);
+      // 999,995+ switches to M: toFixed(2) would round it up to an 8-glyph "1000.00K".
+      const _fmtN = n => n == null ? '—' : n >= 999995 ? (n/1e6).toFixed(2)+'M' : n >= 1e4 ? (n/1e3).toFixed(2)+'K' : String(n);
+      // STATS columns: pick the richest set (4, then 2, then 1) whose cells fit side by
+      // side without touching. Sized from the strings actually on screen, so small
+      // screens (800px Pi touchscreens) keep blocked + intercept while the counts are
+      // short, and drop a column before anything collides. Press Start 2P advances
+      // exactly 1em per glyph, so width = glyphs * font size (no font-load dependency).
+      // Values and the labels under them are each checked against their neighbours.
+      const _fitCols = (sets, w) => {
+        const gapOk = (ws, cw) => ws.every((x, i) => i === 0 || (ws[i - 1] + x) / 2 + 16 <= cw);
+        for (const cols of sets) {
+          const cw = w / cols.length;
+          const vw = cols.map(c => String(c.val).length * _fVal);
+          const lw = cols.map(c => c.label.length * _fLabel);
+          if (vw.every((x, i) => Math.max(x, lw[i]) + 4 <= cw) && gapOk(vw, cw) && gapOk(lw, cw)) return cols;
+        }
+        return sets[sets.length - 1];
+      };
       const _fmtGravity = n => {
         if (n == null) return '—';
         n = Math.round(n);
@@ -559,11 +576,7 @@
       }
 
       // ── INTEL ──────────────────────────────────────────────
-      // Column thresholds scale with _fSub so "intercept" (9 chars) always fits its cell.
-      // 2-col: need cell ≥ ~9 * _fSub * 0.75 + 8px padding  → 15 * _fSub per cell × 2
-      // 4-col: same logic × 4
       if (INTEL_W >= 50) {
-        const _i2Min = 15 * _fSub, _i4Min = 33 * _fSub;
         const hsBlocked = C.P1.hudStats.blocked;
         // Technitium mirrors its dashboard's "No Error" card; others show allowed (total - blocked).
         const _isTech = C.PROVIDER === 'technitium';
@@ -574,22 +587,22 @@
         const pct = C.P1.hudStats.percent;
         const _pctColor = pct == null ? 'rgba(150,150,150,0.50)' : pct >= 60 ? 'rgba(50,215,120,0.85)' : pct >= 40 ? 'rgba(210,220,70,0.85)' : 'rgba(255,110,50,0.85)';
         const _pctVal = pct != null ? pct.toFixed(1)+'%' : '—';
-        const intelCols = INTEL_W >= _i4Min
-          ? [
+        const intelCols = _fitCols([
+            [
               { val: _fmtN(hsTotal),   label: 'total',     color: 'rgba(130,185,255,0.90)' },
               { val: _fmtN(hsBlocked), label: 'blocked',   color: 'rgba(255,70,60,0.90)'   },
               { val: _fmtN(hsAllowed), label: _allowedLabel, color: 'rgba(50,215,120,0.90)'  },
               { val: _pctVal,          label: 'intercept', color: _pctColor },
-            ]
-          : INTEL_W >= _i2Min
-          ? [
+            ],
+            [
               { val: _fmtN(hsBlocked), label: 'blocked',   color: 'rgba(255,70,60,0.90)' },
               { val: _pctVal,          label: 'intercept', color: _pctColor },
-            ]
-          : [
+            ],
+            [
               { val: _fmtN(hsBlocked), label: 'blocked', color: 'rgba(255,70,60,0.90)' },
-            ];
-        if (INTEL_W >= _i4Min) _modLabel('STATS', INTEL_X + INTEL_W / 2, 'center');
+            ],
+          ], INTEL_W);
+        if (intelCols.length === 4) _modLabel('STATS', INTEL_X + INTEL_W / 2, 'center');
         ctx.save();
         ctx.beginPath(); ctx.rect(INTEL_X, SY, INTEL_W, _rowH + _lbExtra); ctx.clip();
         const cellW = INTEL_W / intelCols.length;
@@ -765,7 +778,7 @@
 
       // ── P2 HUD ROW ─────────────────────────────────────────────────────
       if (_isP2) {
-        const _fmtP2 = n => n == null ? '—' : n >= 1e6 ? (n/1e6).toFixed(2)+'M' : n >= 1e4 ? (n/1e3).toFixed(2)+'K' : String(n);
+        const _fmtP2 = n => n == null ? '—' : n >= 999995 ? (n/1e6).toFixed(2)+'M' : n >= 1e4 ? (n/1e3).toFixed(2)+'K' : String(n);
         const _canSelectP2Ship = C.P2.blockingEnabled === true && C.P2.warpState === 'none' && S._p2ShipVisible;
 
         // ── P2 INTERCEPT ───────────────────────────────────────
@@ -861,7 +874,6 @@
 
         // ── P2 STATS (INTEL) ───────────────────────────────────
         if (INTEL_W >= 50) {
-          const _p2i2Min = 15 * _fSub, _p2i4Min = 33 * _fSub;
           const _p2Blocked = C.P2.hudStats.blocked;
           const _p2Allowed = C.PROVIDER === 'technitium' ? C.P2.hudStats.no_error
             : (C.P2.hudStats.queries != null && _p2Blocked != null ? C.P2.hudStats.queries - _p2Blocked : null);
@@ -870,19 +882,19 @@
           const _p2Pct     = C.P2.hudStats.percent;
           const _p2PctColor = _p2Pct == null ? 'rgba(150,150,150,0.50)' : _p2Pct >= 60 ? 'rgba(50,215,120,0.85)' : _p2Pct >= 40 ? 'rgba(210,220,70,0.85)' : 'rgba(255,110,50,0.85)';
           const _p2PctVal = _p2Pct != null ? _p2Pct.toFixed(1)+'%' : '—';
-          const _p2Cols = INTEL_W >= _p2i4Min
-            ? [
+          const _p2Cols = _fitCols([
+              [
                 { val: _fmtP2(_p2Total),   label: 'total',     color: 'rgba(130,185,255,0.90)' },
                 { val: _fmtP2(_p2Blocked), label: 'blocked',   color: 'rgba(255,70,60,0.90)'   },
                 { val: _fmtP2(_p2Allowed), label: _p2AllowedLabel, color: 'rgba(50,215,120,0.90)'  },
                 { val: _p2PctVal,           label: 'intercept', color: _p2PctColor },
-              ]
-            : INTEL_W >= _p2i2Min
-            ? [
+              ],
+              [
                 { val: _fmtP2(_p2Blocked), label: 'blocked',   color: 'rgba(255,70,60,0.90)'  },
                 { val: _p2PctVal,           label: 'intercept', color: _p2PctColor },
-              ]
-            : [{ val: _fmtP2(_p2Blocked), label: 'blocked', color: 'rgba(255,70,60,0.90)'  }];
+              ],
+              [{ val: _fmtP2(_p2Blocked), label: 'blocked', color: 'rgba(255,70,60,0.90)'  }],
+            ], INTEL_W);
           ctx.save();
           ctx.beginPath(); ctx.rect(INTEL_X, _p2RowSY, INTEL_W, _rowH); ctx.clip();
           const _p2CellW = INTEL_W / _p2Cols.length;

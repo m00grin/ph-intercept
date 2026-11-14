@@ -143,7 +143,7 @@ Open `http://your-host:4653`.
 | Tag | What it is |
 |-----|------------|
 | `:latest` | Latest stable release. |
-| `:X.Y.Z` | Pinned release (e.g. `1.5.5`). |
+| `:X.Y.Z` | Pinned release (e.g. `1.5.6`). |
 | `:develop` | Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
 
 Release tags are published to both registries, so `ghcr.io/m00grin/ph-intercept` and `docker.io/m00grin/ph-intercept` (Docker Hub) are interchangeable. `:develop` is GHCR only.
