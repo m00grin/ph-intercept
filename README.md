@@ -4,7 +4,11 @@ A Pi-hole, AdGuard Home, and Technitium DNS dashboard that runs as a standalone 
 
 Designed to be dropped in alongside an existing Pi-hole v6 setup with no extra dependencies. Two instances can run side by side in [local 2-player split-screen](#local-2-player-mode).
 
-<img width="1713" height="1254" alt="image" src="https://github.com/user-attachments/assets/791ba70f-c6cd-4495-8135-0e0d2286668e" />
+<img alt="ph-intercept shooting down blocked DNS queries live" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/demo.gif" />
+
+| Starfield | Nebula | Outrun |
+|:---:|:---:|:---:|
+| <img alt="Starfield background" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/screenshot-starfield.png" /> | <img alt="Nebula background" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/screenshot-nebula.png" /> | <img alt="Outrun background" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/screenshot-outrun.png" /> |
 
 ---
 
@@ -142,6 +146,8 @@ Open `http://your-host:4653`.
 | `:X.Y.Z` | Pinned release (e.g. `1.5.5`). |
 | `:develop` | Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
 
+Release tags are published to both registries, so `ghcr.io/m00grin/ph-intercept` and `docker.io/m00grin/ph-intercept` (Docker Hub) are interchangeable. `:develop` is GHCR only.
+
 ---
 
 ## Portainer Note for BG
@@ -154,7 +160,7 @@ Each DNS query spawns an entity. Tier scales with how many times that domain has
 
 **Allowed queries:** friendly ships traveling across the screen. Cache-answered queries move faster than upstream-answered ones.
 
-<img width="487" height="354" alt="image" src="https://github.com/user-attachments/assets/7c80bb93-6ccd-4ac2-b1c9-e34a1f54cc31" />
+<img width="800" alt="Friendly ships for allowed queries, including a heavy transport and a capital ship" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/friendlies.png" />
 
 | Tier | Condition | Shape | Color |
 |------|-----------|-------|-------|
@@ -164,7 +170,7 @@ Each DNS query spawns an entity. Tier scales with how many times that domain has
 
 **Blocked queries:** enemies the ship targets and destroys. A domain blocked again while still on screen mutates its sprite to the next tier in place.
 
-<img width="621" height="471" alt="image" src="https://github.com/user-attachments/assets/a2da33be-7015-4b34-9c51-6904b06573d0" />
+<img width="800" alt="Targeted enemies for blocked queries: crab (tier 1), heavy drone (tier 2), boss (tier 3)" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/enemies.png" />
 
 | Tier | Condition | Shape | Color |
 |------|-----------|-------|-------|
@@ -182,7 +188,7 @@ The ship targets and destroys blocked entities autonomously. At five on-screen t
 
 Seven ships are selectable from the HUD, shown in an 8-slot 4×2 grid: **Protector** (NSEA Protector, default), **Falcon** (Millennium Falcon), **Swordfish** (Swordfish II), **Enterprise** (NCC-1701), **Serenity** (Firefly), **Normandy** (Mass Effect), and **PES** (Planet Express Ship). Switching ships triggers a warp-out/warp-in transition that pushes nearby entities aside.
 
-<img width="370" height="176" alt="ships" src="https://github.com/user-attachments/assets/694a3786-10b5-4427-8f35-7d160b28c67b" />
+<img width="388" alt="Ship selector" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/ships.png" />
 
 ---
 
@@ -198,7 +204,7 @@ A strip across the bottom, divided into four panels:
 
 **SHIPS:** active ship name. Click to open the ship selector.
 
-<img width="1376" height="105" alt="download" src="https://github.com/user-attachments/assets/cc4adf89-ac1e-402f-aed2-68ed282b49a3" />
+<img width="100%" alt="HUD strip: intercept, stats, gravity, ship" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/hud.png" />
 
 A hamburger button at the left edge of the HUD opens the **Settings** panel, which includes:
 
@@ -217,7 +223,7 @@ Four modes are available via `BG_MODE`:
 
 **`starfield` (default):** Renders a real section of the night sky from an accurate star catalog (~12,200 stars to magnitude 6.8, color-coded by spectral type). Positions use equatorial coordinates; what you see is where the stars actually are. The sky region is set by `SKY_PRESET`.
 
-<img width="684" height="487" alt="image" src="https://github.com/user-attachments/assets/d6a04374-9341-464b-8f24-71cafc8bbbeb" />
+<img width="800" alt="Starfield background (Orion preset)" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/starfield.png" />
 
 Star data is from the **HYG Database** by David Nash ([astronexus.com](https://astronexus.com)), combining Hipparcos (ESA) and the Yale Bright Star Catalogue.
 

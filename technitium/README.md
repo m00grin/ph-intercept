@@ -217,7 +217,13 @@ Technitium tags each answer with a response type, which ph-intercept maps to the
 
 ## Gameplay, ship, HUD, and background
 
-The entities, ship roster, HUD panels, and background modes are identical across all providers. See the [main README](../README.md) for the full walkthrough of entity tiers, the seven selectable ships, the four HUD panels, and the starfield / nebula / outrun / dark backgrounds.
+The entities, ship roster, HUD, and background modes are shared across all providers. See the [main README](../README.md#entities) for the full walkthrough of entity tiers, the seven selectable ships, the four HUD panels, and the starfield / nebula / outrun / dark backgrounds.
+
+With Technitium, the HUD differs in three places:
+
+- **STATS:** shows **no error** (Technitium's own dashboard count) in place of allowed.
+- **BLOCK LIST** (in place of GRAVITY): the arrow forces a block-list update and confirms when done.
+- **Settings:** the provider link opens the Technitium web console.
 
 ---
 
