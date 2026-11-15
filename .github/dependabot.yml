@@ -5,6 +5,11 @@ updates:
     schedule:
       interval: "weekly"
 
+  - package-ecosystem: "pip"
+    directory: "/casaos"
+    schedule:
+      interval: "weekly"
+
   - package-ecosystem: "docker"
     directory: "/"
     schedule:

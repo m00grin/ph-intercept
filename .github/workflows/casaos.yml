@@ -1,0 +1,228 @@
+name: Check CasaOS app
+
+on:
+  push:
+    branches: ["develop", "main"]
+    paths:
+      - "app.py"
+      - "core/**"
+      - "static/**"
+      - "templates/**"
+      - "Dockerfile"
+      - "requirements.txt"
+      - "CHANGELOG.md"
+      - "README.md"
+      - "adguard/README.md"
+      - "technitium/README.md"
+      - "docs/brand/social-preview.png"
+      - "docs/screenshot-*.png"
+      - "casaos/**"
+      - ".github/scripts/casaos_store.py"
+      - ".github/scripts/unraid_template_check.py"
+      - ".github/workflows/casaos.yml"
+      - ".github/workflows/publish.yml"
+  pull_request:
+    paths:
+      - "casaos/requirements.txt"
+  schedule:
+    - cron: "41 6 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: casaos-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  BUILDER_REPO: IceWhaleTech/build-appstore-action
+  BUILDER_SHA: c9bb47fad5b32d7928a07978fad68801f52e910f
+  BUILDER_SHA256: 3225131772786ca30d0f2edfe89815a718ec7c8307584f9f6b1acfefa5d4d003
+  STORE_REPO: IceWhaleTech/CasaOS-AppStore
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+jobs:
+  drift:
+    name: App file matches the code
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
+    timeout-minutes: 5
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned packages
+        run: |
+          if ! python3 -m venv "$RUNNER_TEMP/venv"; then
+            echo "::error title=Python venv::The runner cannot create a Python venv. On vega: sudo apt install python3-venv"
+            exit 1
+          fi
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --require-hashes --only-binary :all: -r casaos/requirements.txt
+
+      - name: Compare the app file with the code
+        run: '"$RUNNER_TEMP/venv/bin/python" -I .github/scripts/casaos_store.py check'
+
+      - name: Validate with Docker Compose
+        run: AppID=ph-intercept docker compose -f casaos/docker-compose.yml config --quiet
+
+      - name: Compare the builder pin with the store's CI
+        run: |
+          live=$(curl -fsSL --retry 3 "https://raw.githubusercontent.com/${STORE_REPO}/main/.github/actions/build-store-v2/action.yml" | grep -oE "${BUILDER_REPO}@[0-9a-f]{40}" | cut -d@ -f2 || true)
+          if [ -z "$live" ]; then
+            echo "::warning title=Builder pin::Could not read the builder pin from ${STORE_REPO}; check it by hand."
+          elif [ "$live" != "$BUILDER_SHA" ]; then
+            echo "::warning title=Builder pin::${STORE_REPO} CI now builds with ${BUILDER_REPO}@${live}. Update BUILDER_SHA and BUILDER_SHA256 in casaos.yml."
+          else
+            echo "Builder pin matches ${STORE_REPO} CI (${BUILDER_SHA:0:7})."
+          fi
+
+  store:
+    name: Store builder accepts it
+    needs: drift
+    runs-on: self-hosted
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned packages
+        run: |
+          if ! python3 -m venv "$RUNNER_TEMP/venv"; then
+            echo "::error title=Python venv::The runner cannot create a Python venv. On vega: sudo apt install python3-venv"
+            exit 1
+          fi
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --require-hashes --only-binary :all: -r casaos/requirements.txt
+
+      - name: Fetch the store builder
+        run: |
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/build_appstore.py" \
+            "https://raw.githubusercontent.com/${BUILDER_REPO}/${BUILDER_SHA}/scripts/build_appstore.py"
+          echo "${BUILDER_SHA256}  ${RUNNER_TEMP}/build_appstore.py" | sha256sum --check --strict
+
+      - name: Build a throwaway store
+        run: |
+          py="$RUNNER_TEMP/venv/bin/python"
+          "$py" -I .github/scripts/casaos_store.py render "$RUNNER_TEMP/store/src" --store
+          "$py" -I "$RUNNER_TEMP/build_appstore.py" \
+            --source "$RUNNER_TEMP/store/src" \
+            --output "$RUNNER_TEMP/store/dist" \
+            --cache-file "$RUNNER_TEMP/store/size-cache.json" \
+            --digest-cache-file "$RUNNER_TEMP/store/digest-cache.json" \
+            --base-url "https://example.invalid" 2>&1 | tee "$RUNNER_TEMP/store/build.log"
+          grep -qE '^\s+OK\s+io\.github\.m00grin\.phintercept$' "$RUNNER_TEMP/store/build.log"
+          if grep -nE 'WARN|ERROR|FAIL' "$RUNNER_TEMP/store/build.log"; then
+            echo "::error title=Store builder::The builder reported problems; see the log above."
+            exit 1
+          fi
+
+      - name: Check the built listing
+        run: '"$RUNNER_TEMP/venv/bin/python" -I .github/scripts/casaos_store.py verify-dist "$RUNNER_TEMP/store/dist"'
+
+      - name: Keep the built listing
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: casaos-store-${{ github.run_id }}
+          path: ${{ runner.temp }}/store/dist
+          retention-days: 7
+          if-no-files-found: error
+
+  smoke:
+    name: Container runs from the app file
+    needs: drift
+    runs-on: self-hosted
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      PROJECT: casaos-ci-${{ github.run_id }}-${{ github.run_attempt }}
+      IMAGE: ph-intercept-casaos-ci:${{ github.run_id }}-${{ github.run_attempt }}
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned packages
+        run: |
+          if ! python3 -m venv "$RUNNER_TEMP/venv"; then
+            echo "::error title=Python venv::The runner cannot create a Python venv. On vega: sudo apt install python3-venv"
+            exit 1
+          fi
+          "$RUNNER_TEMP/venv/bin/pip" install --quiet --require-hashes --only-binary :all: -r casaos/requirements.txt
+
+      - name: Build this commit
+        run: docker build --pull --tag "$IMAGE" .
+
+      - name: Write a CI copy of the app file
+        run: '"$RUNNER_TEMP/venv/bin/python" -I .github/scripts/casaos_store.py ci-compose "$RUNNER_TEMP/smoke" --image "$IMAGE" --name "$PROJECT"'
+
+      - name: Start it like CasaOS does
+        run: docker compose -p "$PROJECT" -f "$RUNNER_TEMP/smoke/docker-compose.yml" up --detach --wait --wait-timeout 120
+
+      - name: Probe the app
+        run: |
+          set -euo pipefail
+          addr=$(docker compose -p "$PROJECT" -f "$RUNNER_TEMP/smoke/docker-compose.yml" port ph-intercept 4653)
+          base="http://${addr}"
+          curl -fsS --retry 5 --retry-all-errors -o /dev/null "$base/"
+          curl -fsS "$base/api/2p/status" | python3 -I -c 'import json,sys; d=json.load(sys.stdin); assert "mode" in d, d'
+          python3 -I -c 'import base64,sys; open(sys.argv[1],"wb").write(base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="))' "$RUNNER_TEMP/smoke/bg/ci.png"
+          curl -fsS -o /dev/null "$base/bg/ci.png"
+          docker exec "$PROJECT" sh -c 'touch /app/data/.ci && rm /app/data/.ci'
+          docker inspect "$PROJECT" --format '{{.Config.User}} {{json .HostConfig.CapDrop}} {{json .HostConfig.SecurityOpt}} {{.HostConfig.Memory}} {{.HostConfig.MemoryReservation}} {{.HostConfig.Privileged}}' > "$RUNNER_TEMP/smoke/inspect.txt"
+          python3 -I - "$RUNNER_TEMP/smoke/inspect.txt" <<'PY'
+          import sys
+          user, caps, sec, limit, reserve, priv = open(sys.argv[1]).read().split()
+          problems = []
+          if user != "1000":
+              problems.append(f"runs as {user}, expected 1000")
+          if caps != '["ALL"]':
+              problems.append(f"cap_drop is {caps}")
+          if "no-new-privileges" not in sec:
+              problems.append(f"security_opt is {sec}")
+          if int(limit) != 128 * 2**20 or int(reserve) != 64 * 2**20:
+              problems.append(f"memory limit/reservation are {limit}/{reserve}")
+          if priv != "false":
+              problems.append("container is privileged")
+          if problems:
+              print("::error title=Hardening::" + "; ".join(problems))
+              sys.exit(1)
+          print("Hardening applied as written.")
+          PY
+
+      - name: Measure memory
+        run: |
+          used=$(docker stats --no-stream --format '{{.MemUsage}}' "$PROJECT" | cut -d/ -f1 | tr -d ' ')
+          python3 -I - "$used" <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import re
+          import sys
+          value = sys.argv[1]
+          number, unit = re.fullmatch(r"([\d.]+)(B|KiB|MiB|GiB)", value).groups()
+          mib = float(number) * {"B": 2**-20, "KiB": 2**-10, "MiB": 1, "GiB": 1024}[unit]
+          print(f"Idle memory: {mib:.1f} MiB (the store lists a 64 MiB minimum and the cap is 128 MiB)")
+          if mib >= 64:
+              print("::error title=Memory::Idle use is over the 64 MiB the store lists; raise the reservation in casaos/docker-compose.yml.")
+              sys.exit(1)
+          PY
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose -p "$PROJECT" -f "$RUNNER_TEMP/smoke/docker-compose.yml" logs --no-color --tail 100 || true
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker compose -p "$PROJECT" -f "$RUNNER_TEMP/smoke/docker-compose.yml" down --volumes --remove-orphans --timeout 10 || true
+          docker image rm --force "$IMAGE" || true
