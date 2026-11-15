@@ -24,6 +24,7 @@ env:
   STORE_REPO: IceWhaleTech/CasaOS-AppStore
   FORK_REPO: m00grin/CasaOS-AppStore
   APP_PATH: Apps/ph-intercept
+  FIRST_BRANCH: add-ph-intercept
 
 jobs:
   sync:
@@ -48,7 +49,6 @@ jobs:
           {
             echo "tag=$TAG"
             echo "version=${BASH_REMATCH[1]}"
-            echo "branch=ph-intercept-${BASH_REMATCH[1]}"
           } >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -64,8 +64,27 @@ jobs:
           code=$(curl -sS --retry 3 -o "$RUNNER_TEMP/live.yml" -w '%{http_code}' \
             "https://raw.githubusercontent.com/${STORE_REPO}/main/${APP_PATH}/docker-compose.yml")
           if [ "$code" = "404" ]; then
-            echo "ph-intercept is not in ${STORE_REPO} yet, so there is nothing to bump. Open the first PR by hand; this workflow takes over after it merges." | tee -a "$GITHUB_STEP_SUMMARY"
-            echo "skip=true" >> "$GITHUB_OUTPUT"
+            pr=$(curl -fsS --retry 3 "https://api.github.com/repos/${STORE_REPO}/pulls?state=open&head=${FORK_REPO%%/*}:${FIRST_BRANCH}" \
+              | python3 -I -c 'import json,sys; p=json.load(sys.stdin); print(p[0]["number"] if p else "")')
+            if [ -z "$pr" ]; then
+              echo "ph-intercept is not in ${STORE_REPO} yet and there is no open PR from ${FORK_REPO}:${FIRST_BRANCH}, so there is nothing to update. This workflow takes over once the first PR merges." | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            pending=$({ curl -fsS --retry 3 "https://raw.githubusercontent.com/${FORK_REPO}/${FIRST_BRANCH}/${APP_PATH}/docker-compose.yml" || true; } \
+              | sed -nE 's/^  version: "([^"]+)"$/\1/p')
+            echo "The first PR (#${pr}) is still open at ${pending:-an unknown version}; this release is ${VERSION}."
+            if [ "$pending" = "$VERSION" ]; then
+              echo "The open PR #${pr} already has ${VERSION}; nothing to do." | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            {
+              echo "mode=first"
+              echo "branch=${FIRST_BRANCH}"
+              echo "pr=${pr}"
+              echo "skip=false"
+            } >> "$GITHUB_OUTPUT"
             exit 0
           fi
           [ "$code" = "200" ] || { echo "::error title=Store::Could not read the store's copy (HTTP $code)."; exit 1; }
@@ -78,8 +97,12 @@ jobs:
           fi
           last=$(curl -fsS --retry 3 "https://api.github.com/repos/${STORE_REPO}/commits?path=${APP_PATH}&per_page=1" \
             | python3 -I -c 'import json,sys; c=json.load(sys.stdin)[0]; print((c.get("author") or {}).get("login",""), c["sha"][:7])')
-          echo "last=$last" >> "$GITHUB_OUTPUT"
-          echo "skip=false" >> "$GITHUB_OUTPUT"
+          {
+            echo "mode=update"
+            echo "branch=ph-intercept-${VERSION}"
+            echo "last=$last"
+            echo "skip=false"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Check the fork token
         if: steps.store.outputs.skip != 'true'
@@ -140,7 +163,8 @@ jobs:
         if: steps.store.outputs.skip != 'true'
         env:
           VERSION: ${{ steps.release.outputs.version }}
-          BRANCH: ${{ steps.release.outputs.branch }}
+          BRANCH: ${{ steps.store.outputs.branch }}
+          MODE: ${{ steps.store.outputs.mode }}
         run: |
           git clone --quiet --filter=blob:none --branch main "https://github.com/${STORE_REPO}.git" "$RUNNER_TEMP/store"
           cd "$RUNNER_TEMP/store"
@@ -154,16 +178,21 @@ jobs:
             exit 0
           fi
           git diff --cached --stat > "$RUNNER_TEMP/diffstat.txt"
+          if [ "$MODE" = "first" ]; then
+            message="feat(appstore): add ph-intercept ${VERSION}"
+          else
+            message="chore(ph-intercept): update to ${VERSION}"
+          fi
           git -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit --quiet -m "chore(ph-intercept): update to ${VERSION}"
+              commit --quiet -m "$message"
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Push the branch to the fork
         if: steps.commit.outputs.changed == 'true'
         env:
           TOKEN: ${{ secrets.CASAOS_FORK_TOKEN }}
-          BRANCH: ${{ steps.release.outputs.branch }}
+          BRANCH: ${{ steps.store.outputs.branch }}
         run: |
           cd "$RUNNER_TEMP/store"
           auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
@@ -178,7 +207,9 @@ jobs:
         env:
           VERSION: ${{ steps.release.outputs.version }}
           TAG: ${{ steps.release.outputs.tag }}
-          BRANCH: ${{ steps.release.outputs.branch }}
+          BRANCH: ${{ steps.store.outputs.branch }}
+          MODE: ${{ steps.store.outputs.mode }}
+          PR: ${{ steps.store.outputs.pr }}
           LAST: ${{ steps.store.outputs.last }}
           SERVER: ${{ github.server_url }}
           REPO: ${{ github.repository }}
@@ -200,14 +231,23 @@ jobs:
               "Checked in ph-intercept's CI: `docker compose config`, a build with "
               "build-appstore-action at the same commit as this repo's CI, and a container smoke test."
           )
-          query = urllib.parse.urlencode({"expand": "1", "title": f"chore(ph-intercept): update to {version}", "body": body})
-          url = f"https://github.com/{env['STORE_REPO']}/compare/main...{env['FORK_REPO'].replace('/', ':')}:{branch}?{query}"
-          print(f"### ph-intercept {version} is ready for the CasaOS/ZimaOS store\n")
-          print(f"**[Open the pull request]({url})**\n")
+          if env.get("MODE") == "first":
+              url = f"https://github.com/{env['STORE_REPO']}/pull/{env['PR']}"
+              print(f"### The open store PR now has ph-intercept {version}\n")
+              print(f"**[Pull request #{env['PR']}]({url})** was updated in place. If its title or description names the old version, edit them to {version}.\n")
+          else:
+              query = urllib.parse.urlencode({"expand": "1", "title": f"chore(ph-intercept): update to {version}", "body": body})
+              url = f"https://github.com/{env['STORE_REPO']}/compare/main...{env['FORK_REPO'].replace('/', ':')}:{branch}?{query}"
+              print(f"### ph-intercept {version} is ready for the CasaOS/ZimaOS store\n")
+              print(f"**[Open the pull request]({url})**\n")
           if login and login not in {"m00grin", "github-actions[bot]"}:
               print(f"> **Check the diff first:** the store's last change to this app was by {login} in {sha}. Make sure this update keeps it.\n")
           print("```")
           print(open(sys.argv[2]).read().rstrip())
           print("```")
           PY
-          echo "::notice title=CasaOS store::ph-intercept ${VERSION} is on ${FORK_REPO}:${BRANCH}. Open the PR from this run's summary."
+          if [ "$MODE" = "first" ]; then
+            echo "::notice title=CasaOS store::Updated the open store PR #${PR} to ${VERSION}."
+          else
+            echo "::notice title=CasaOS store::ph-intercept ${VERSION} is on ${FORK_REPO}:${BRANCH}. Open the PR from this run's summary."
+          fi
