@@ -230,6 +230,8 @@ def check() -> list[str]:
     vols = svc.get("volumes") or []
     if len(vols) != 1 or vols[0].get("type") != "bind" or vols[0].get("source") != DATA_SOURCE or vols[0].get("target") != BG_TARGET:
         errors.append(f"volumes: expected one bind {DATA_SOURCE} -> {BG_TARGET}")
+    elif vols[0].get("read_only") is not True:
+        errors.append("volumes: the backgrounds folder must be read_only: true; the app only reads it")
     if 'Mount("/bg"' not in (ROOT / "app.py").read_text():
         errors.append("app.py no longer serves /bg; the backgrounds folder and BG_IMAGE text need updating")
     if [v.get("container") for v in sx.get("volumes") or []] != [BG_TARGET]:
@@ -245,6 +247,9 @@ def check() -> list[str]:
     limit, reserve = mem((res.get("limits") or {}).get("memory")), mem((res.get("reservations") or {}).get("memory"))
     if limit <= 0 or reserve <= 0 or reserve > limit:
         errors.append("deploy.resources: needs a memory limit and a smaller memory reservation")
+    pids = (res.get("limits") or {}).get("pids")
+    if not isinstance(pids, int) or not 0 < pids <= 64:
+        errors.append("deploy.resources.limits.pids: needs a process limit (the other installs use 20)")
 
     env = {k: ("" if v is None else str(v)) for k, v in (svc.get("environment") or {}).items()}
     for name in sorted(ESSENTIAL - set(env)):

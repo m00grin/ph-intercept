@@ -9,6 +9,7 @@ services:
       resources:
         limits:
           memory: 128M
+          pids: 20
         reservations:
           memory: 64M
     ports:
@@ -32,6 +33,7 @@ services:
       - type: bind
         source: /DATA/AppData/$AppID/bg
         target: /app/static/bg
+        read_only: true
     cap_drop:
       - ALL
     security_opt:

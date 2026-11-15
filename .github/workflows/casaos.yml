@@ -181,10 +181,14 @@ jobs:
           python3 -I -c 'import base64,sys; open(sys.argv[1],"wb").write(base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="))' "$RUNNER_TEMP/smoke/bg/ci.png"
           curl -fsS -o /dev/null "$base/bg/ci.png"
           docker exec "$PROJECT" sh -c 'touch /app/data/.ci && rm /app/data/.ci'
-          docker inspect "$PROJECT" --format '{{.Config.User}} {{json .HostConfig.CapDrop}} {{json .HostConfig.SecurityOpt}} {{.HostConfig.Memory}} {{.HostConfig.MemoryReservation}} {{.HostConfig.Privileged}}' > "$RUNNER_TEMP/smoke/inspect.txt"
+          docker inspect "$PROJECT" --format '{{.Config.User}} {{json .HostConfig.CapDrop}} {{json .HostConfig.SecurityOpt}} {{.HostConfig.Memory}} {{.HostConfig.MemoryReservation}} {{.HostConfig.Privileged}} {{.HostConfig.PidsLimit}} {{range .Mounts}}{{if eq .Destination "/app/static/bg"}}{{.RW}}{{end}}{{end}}' > "$RUNNER_TEMP/smoke/inspect.txt"
+          if docker exec "$PROJECT" sh -c 'touch /app/static/bg/.ci' 2>/dev/null; then
+            echo "::error title=Hardening::The backgrounds folder is writable from inside the container."
+            exit 1
+          fi
           python3 -I - "$RUNNER_TEMP/smoke/inspect.txt" <<'PY'
           import sys
-          user, caps, sec, limit, reserve, priv = open(sys.argv[1]).read().split()
+          user, caps, sec, limit, reserve, priv, pids, bg_rw = open(sys.argv[1]).read().split()
           problems = []
           if user != "1000":
               problems.append(f"runs as {user}, expected 1000")
@@ -196,6 +200,10 @@ jobs:
               problems.append(f"memory limit/reservation are {limit}/{reserve}")
           if priv != "false":
               problems.append("container is privileged")
+          if pids != "20":
+              problems.append(f"pids limit is {pids}, expected 20")
+          if bg_rw != "false":
+              problems.append("backgrounds folder is mounted read-write")
           if problems:
               print("::error title=Hardening::" + "; ".join(problems))
               sys.exit(1)
