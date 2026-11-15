@@ -1,0 +1,29 @@
+name: Check Unraid template
+
+on:
+  push:
+    branches: ["develop", "main"]
+    paths:
+      - "app.py"
+      - "core/**"
+      - "Dockerfile"
+      - ".github/scripts/unraid_template_check.py"
+      - ".github/workflows/unraid-template.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: unraid-template-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Compare the published template with the code
+        run: python3 -I .github/scripts/unraid_template_check.py
