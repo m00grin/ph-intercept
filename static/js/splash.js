@@ -349,5 +349,14 @@
   const fonts = document.fonts
     ? Promise.all([document.fonts.load('900 40px Orbitron'), document.fonts.load('16px "Press Start 2P"')])
     : Promise.resolve();
-  Promise.race([fonts, new Promise(r => setTimeout(r, 800))]).catch(() => {}).then(() => requestAnimationFrame(frame));
+  const loaded = document.readyState === 'complete'
+    ? Promise.resolve()
+    : new Promise(r => window.addEventListener('load', r, { once: true }));
+  const ready = Promise.all([fonts.catch(() => {}), loaded]);
+  const settle = () => {
+    const go = () => requestAnimationFrame(() => requestAnimationFrame(frame));
+    if (window.requestIdleCallback) window.requestIdleCallback(go, { timeout: 400 });
+    else go();
+  };
+  Promise.race([ready, new Promise(r => setTimeout(r, 1500))]).then(settle);
 })();
