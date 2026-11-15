@@ -5,7 +5,7 @@
 @font-face { font-family: 'Press Start 2P'; src: url('/static/fonts/PressStart2P.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
 
 :root {
-  --bg:   #08080b;
+  --bg:   #000;
   --mono: 'IBM Plex Mono', monospace;
   --sab:  env(safe-area-inset-bottom, 0px);
 }
