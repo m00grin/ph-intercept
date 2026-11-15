@@ -9,10 +9,11 @@ on:
       - "Dockerfile"
       - ".github/scripts/unraid_template_check.py"
       - ".github/workflows/unraid-template.yml"
+  schedule:
+    - cron: "23 6 * * 1"
   workflow_dispatch:
 
-permissions:
-  contents: read
+permissions: {}
 
 concurrency:
   group: unraid-template-${{ github.ref }}
@@ -20,10 +21,16 @@ concurrency:
 
 jobs:
   check:
+    name: Template matches code
     runs-on: self-hosted
+    timeout-minutes: 5
+    permissions:
+      contents: read
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Compare the published template with the code
         run: python3 -I .github/scripts/unraid_template_check.py
