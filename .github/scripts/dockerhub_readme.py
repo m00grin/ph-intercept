@@ -25,8 +25,6 @@ PROVIDERS = [
 ]
 # GitHub-only sections left out of the Docker Hub page
 DROP = ["Testing"]
-# The README's badge row (one linked shields.io badge per line) is left off too:
-# the badges point at GitHub, and Docker Hub shows pulls and tags on its own.
 BADGE_LINE = re.compile(r'^<a href="[^"]+"><img [^>]*src="https://img\.shields\.io/[^"]*"[^>]*></a>\n', re.MULTILINE)
 
 
