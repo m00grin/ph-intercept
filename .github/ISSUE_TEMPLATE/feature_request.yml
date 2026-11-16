@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest something for ph-intercept
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Half-formed ideas can go in [Discussions](https://github.com/m00grin/ph-intercept/discussions) instead.
+
+  - type: dropdown
+    id: provider
+    attributes:
+      label: DNS server
+      description: If it's about a specific one.
+      options:
+        - Pi-hole
+        - AdGuard Home
+        - Technitium
+        - Other / not about one server
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What's the problem or use case?
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you want it to do?
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Anything you've tried instead?
