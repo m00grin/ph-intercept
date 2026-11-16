@@ -4,6 +4,8 @@ on:
   push:
     tags: ["v*"]
 
+permissions: {}
+
 jobs:
   build-and-push:
     runs-on: self-hosted

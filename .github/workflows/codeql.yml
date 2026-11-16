@@ -7,6 +7,8 @@ on:
     - cron: '35 5 * * 1'
   workflow_dispatch:
 
+permissions: {}
+
 jobs:
   dockerfile:
     name: Lint Dockerfile

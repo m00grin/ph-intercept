@@ -23,6 +23,8 @@ on:
       - ".github/workflows/unraid-template.yml"
       - ".github/scripts/unraid_template_check.py"
 
+permissions: {}
+
 jobs:
   build-and-push:
     runs-on: self-hosted
