@@ -1,5 +1,9 @@
 # ph-intercept
 
+<a href="https://github.com/m00grin/ph-intercept/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/m00grin/ph-intercept?style=for-the-badge&label=release&color=3b74ff"></a>
+<a href="https://github.com/m00grin/ph-intercept/actions/workflows/publish.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/m00grin/ph-intercept/publish.yml?style=for-the-badge&label=build"></a>
+<a href="https://github.com/m00grin/ph-intercept/actions/workflows/codeql.yml"><img alt="CodeQL status" src="https://img.shields.io/github/actions/workflow/status/m00grin/ph-intercept/codeql.yml?style=for-the-badge&label=CodeQL"></a>
+
 A Pi-hole, AdGuard Home, and Technitium DNS dashboard that runs as a standalone Docker container. Streams live DNS query events from your Pi-hole v6 API and renders them as pixel-art friendlies and enemies. Blocked queries are destroyed by the ship, allowed queries fly through. Toggle blocking, set timed blocks, trigger gravity updates, and switch ships from the HUD.
 
 Designed to be dropped in alongside an existing Pi-hole v6 setup with no extra dependencies. Two instances can run side by side in [local 2-player split-screen](#local-2-player-mode).

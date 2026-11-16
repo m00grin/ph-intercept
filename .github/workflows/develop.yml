@@ -27,6 +27,8 @@ on:
       - ".github/scripts/casaos_store.py"
       - "casaos/**"
 
+permissions: {}
+
 jobs:
   build-and-push:
     runs-on: self-hosted
