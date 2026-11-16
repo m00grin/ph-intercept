@@ -25,6 +25,9 @@ PROVIDERS = [
 ]
 # GitHub-only sections left out of the Docker Hub page
 DROP = ["Testing"]
+# The README's badge row (one linked shields.io badge per line) is left off too:
+# the badges point at GitHub, and Docker Hub shows pulls and tags on its own.
+BADGE_LINE = re.compile(r'^<a href="[^"]+"><img [^>]*src="https://img\.shields\.io/[^"]*"[^>]*></a>\n', re.MULTILINE)
 
 
 def slug(title: str) -> str:
@@ -151,6 +154,7 @@ def build() -> str:
     main_text = (ROOT / "README.md").read_text()
     shared = fenced_comments(main_text)
     pre, sections = split_sections(main_text)
+    pre = re.sub(r"\n{3,}", "\n\n", BADGE_LINE.sub("", pre))
     sections = [(h, b) for h, b in sections if title_of(h) not in DROP]
 
     blocks = []
