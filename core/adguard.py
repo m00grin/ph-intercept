@@ -6,7 +6,10 @@ from datetime import datetime
 
 import httpx
 
-from .config import ADGUARD_BASE, ADGUARD_IGNORE_DOMAIN_PATTERNS, ADGUARD2_BASE, HIDE_CLIENT
+from .config import (
+    ADGUARD_BASE, ADGUARD_IGNORE_DOMAIN_PATTERNS, ADGUARD_IGNORE_CLIENT_PATTERNS, ADGUARD2_BASE,
+    HIDE_CLIENT,
+)
 from .notice import clear, warn_once
 
 logger = logging.getLogger(__name__)
@@ -324,7 +327,13 @@ async def _poll_tick(
         reason = q.get("reason", "")
         is_blocked = reason in _BLOCKED_REASONS
         is_cached = q.get("cached", False)
-        client_label = q.get("client_info", {}).get("name") or q.get("client", "")
+        client_name = q.get("client_info", {}).get("name") or ""
+        client_ip = q.get("client", "")
+        if ADGUARD_IGNORE_CLIENT_PATTERNS and any(
+            p.search(c) for p in ADGUARD_IGNORE_CLIENT_PATTERNS for c in (client_name, client_ip) if c
+        ):
+            continue
+        client_label = client_name or client_ip
         if is_blocked:
             source = "blocked"
         elif is_cached:

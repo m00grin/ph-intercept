@@ -69,6 +69,10 @@ services:
       # so it never reaches the browser. Also hides the in-app CLIENT toggle.
       # HIDE_CLIENT: "true"
 
+      # Optional: comma-separated regex patterns matched against the client IP.
+      # Queries from matching clients spawn no ships. Case-insensitive.
+      # TECHNITIUM_IGNORE_CLIENTS: ^192\.168\.1\.99$
+
       # 2-player local mode: set the URL and a token (or user + password) to enable
       # a second Technitium ship on the right half. The second instance also needs
       # the Query Logs (Sqlite) app installed.

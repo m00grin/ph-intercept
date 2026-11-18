@@ -5,7 +5,7 @@ import os
 
 import httpx
 
-from .config import PIHOLE_BASE, PIHOLE2_URL, IGNORE_DOMAIN_PATTERNS, HIDE_CLIENT
+from .config import PIHOLE_BASE, PIHOLE2_URL, IGNORE_DOMAIN_PATTERNS, IGNORE_CLIENT_PATTERNS, HIDE_CLIENT
 from .notice import clear, warn_once
 
 logger = logging.getLogger(__name__)
@@ -271,8 +271,14 @@ async def query_poller(http_client: httpx.AsyncClient) -> None:
                 client_raw = q.get("client", {})
                 if isinstance(client_raw, dict):
                     client_label = client_raw.get("name") or client_raw.get("ip") or ""
+                    client_ids = (client_raw.get("name") or "", client_raw.get("ip") or "")
                 else:
                     client_label = str(client_raw) if client_raw else ""
+                    client_ids = (client_label,)
+                if IGNORE_CLIENT_PATTERNS and any(
+                    p.search(c) for p in IGNORE_CLIENT_PATTERNS for c in client_ids if c
+                ):
+                    continue
                 if not is_blocked:
                     if isinstance(status_raw, int):
                         is_cache = status_raw in _CACHE_STATUS_INT
@@ -450,8 +456,14 @@ async def query_p2_poller(http_client: httpx.AsyncClient) -> None:
                 client_raw = qq.get("client", {})
                 if isinstance(client_raw, dict):
                     client_label = client_raw.get("name") or client_raw.get("ip") or ""
+                    client_ids = (client_raw.get("name") or "", client_raw.get("ip") or "")
                 else:
                     client_label = str(client_raw) if client_raw else ""
+                    client_ids = (client_label,)
+                if IGNORE_CLIENT_PATTERNS and any(
+                    p.search(c) for p in IGNORE_CLIENT_PATTERNS for c in client_ids if c
+                ):
+                    continue
                 if not is_blocked:
                     if isinstance(status_raw, int):
                         is_cache = status_raw in _CACHE_STATUS_INT

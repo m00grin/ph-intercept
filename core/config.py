@@ -132,3 +132,12 @@ ADGUARD_IGNORE_DOMAIN_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
 TECHNITIUM_IGNORE_DOMAIN_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
     os.environ.get("TECHNITIUM_IGNORE_DOMAINS", ""), "TECHNITIUM_IGNORE_DOMAINS"
 )
+IGNORE_CLIENT_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
+    os.environ.get("PIHOLE_IGNORE_CLIENTS", ""), "PIHOLE_IGNORE_CLIENTS"
+)
+ADGUARD_IGNORE_CLIENT_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
+    os.environ.get("ADGUARD_IGNORE_CLIENTS", ""), "ADGUARD_IGNORE_CLIENTS"
+)
+TECHNITIUM_IGNORE_CLIENT_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
+    os.environ.get("TECHNITIUM_IGNORE_CLIENTS", ""), "TECHNITIUM_IGNORE_CLIENTS"
+)

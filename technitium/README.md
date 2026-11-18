@@ -171,6 +171,7 @@ All configuration is via environment variables in `compose.yaml`.
 | `TECHNITIUM_QUERY_LOG_CLASS` | `QueryLogsSqlite.App` | Class path of the query-log DNS app. |
 | `TECHNITIUM_VERIFY_SSL` | `true` | Set to `false` if Technitium uses HTTPS with a self-signed certificate. |
 | `TECHNITIUM_IGNORE_DOMAINS` | _(unset)_ | Comma-separated regex patterns. Domains that match spawn no ships. Case-insensitive; escape literal dots (`\.local$`). Example: `.*\.local$,.*\.internal$` |
+| `TECHNITIUM_IGNORE_CLIENTS` | _(unset)_ | Comma-separated regex patterns, matched against the client IP (Technitium logs no client name). Queries from matching clients spawn no ships. Escape literal dots. Example: `^192\.168\.1\.99$,^10\.0\.0\.` |
 | `RETURN_URL` | `""` | URL that ESC navigates to. Accepts `http://`, `https://`, protocol-relative (`//`), relative paths, and custom app schemes. Leave blank to disable ESC. |
 | `BG_MODE` | `starfield` | Default background: `starfield` · `nebula` · `outrun` · `dark`. Switchable live in-app. |
 | `SKY_PRESET` | `summer_triangle` | Default sky region: `summer_triangle` · `orion` · `scorpius` · `southern_cross`. Switchable live in-app. |
