@@ -14,7 +14,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
 from core.config import (
-    BG_MODE, BG_IMAGE, PROVIDER, RETURN_URL, SKY_PRESET, SKY_PRESETS,
+    BG_MODE, BG_IMAGE, PROVIDER, READ_ONLY, RETURN_URL, SKY_PRESET, SKY_PRESETS,
     TWO_PLAYER_LOCAL_CONFIGURED, TWO_PLAYER_ENABLED, P2_DASHBOARD, P2_VERIFY_SSL,
     PIHOLE2_URL, PIHOLE2_PASSWORD,
     ADGUARD2_BASE, ADGUARD2_USERNAME, ADGUARD2_PASSWORD,
@@ -142,6 +142,9 @@ class ResponseHeaderMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         if _is_cross_site_write(request):
             response = JSONResponse({"error": "cross-site request refused"}, status_code=403)
+        elif READ_ONLY and request.method == "POST":
+            # Every POST route changes the DNS server or the 2-player mode.
+            response = JSONResponse({"error": "read-only mode"}, status_code=403)
         else:
             response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -163,6 +166,7 @@ async def index(request: Request) -> HTMLResponse:
         "pihole_dashboard": _DASHBOARD,
         "p2_dashboard": P2_DASHBOARD,
         "two_player_enabled": TWO_PLAYER_ENABLED,
+        "read_only": READ_ONLY,
         "bg_config": {
             "bg_mode": BG_MODE,
             "bg_image": BG_IMAGE,

@@ -175,6 +175,7 @@ All configuration is via environment variables in `compose.yaml`.
 | `BG_MODE` | `starfield` | Default background: `starfield` · `nebula` · `outrun` · `dark`. Switchable live in-app. |
 | `SKY_PRESET` | `summer_triangle` | Default sky region: `summer_triangle` · `orion` · `scorpius` · `southern_cross`. Switchable live in-app. |
 | `BG_IMAGE` | `""` | Custom image URL or `/bg/filename.jpg`. When set, it's the default and enables the in-app `CUSTOM` option; blank leaves `CUSTOM` disabled. |
+| `READ_ONLY` | `false` | Set to `true` for a wall display or a page others can open: the server refuses every request that changes something (blocking toggle, filter update, 2-player mode) with HTTP 403, and the HUD leaves those controls inert. Status and stats stay visible. |
 | `TECHNITIUM2_URL` | _(unset)_ | Second Technitium console URL. Setting a valid URL activates local 2-player split-screen mode. See below. |
 | `TECHNITIUM2_TOKEN` | `""` | API token for the second instance (or use user + password below). |
 | `TECHNITIUM2_USER` / `TECHNITIUM2_PASSWORD` | `""` | Console credentials for the second instance. |
