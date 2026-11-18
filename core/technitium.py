@@ -12,6 +12,7 @@ from .config import (
     TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
     TECHNITIUM2_TOTP, TECHNITIUM2_LOG_APP, TECHNITIUM2_LOG_CLASS,
     TECHNITIUM_IGNORE_DOMAIN_PATTERNS,
+    HIDE_CLIENT,
 )
 from .notice import clear, warn_once
 
@@ -325,7 +326,7 @@ def _entry_to_event(entry: dict) -> dict | None:
         "domain": domain,
         "status": "blocked" if source == "blocked" else "allowed",
         "source": source,
-        "client": entry.get("clientIpAddress") or "",
+        "client": "" if HIDE_CLIENT else (entry.get("clientIpAddress") or ""),
     }
 
 

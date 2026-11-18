@@ -101,6 +101,7 @@ BG_IMAGE = os.environ.get("BG_IMAGE", "")
 BG_MODE = "image" if BG_IMAGE else os.environ.get("BG_MODE", "starfield").lower()
 SKY_PRESET = os.environ.get("SKY_PRESET", "summer_triangle").lower()
 READ_ONLY = os.environ.get("READ_ONLY", "false").strip().lower() in ("true", "1", "yes")
+HIDE_CLIENT = os.environ.get("HIDE_CLIENT", "false").strip().lower() in ("true", "1", "yes")
 
 SKY_PRESETS = {
     "summer_triangle": {"ra": 19.27, "dec": 15.86},
