@@ -230,7 +230,7 @@ Four modes are available via `BG_MODE`:
 
 <img width="800" alt="Starfield background (Orion preset)" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/starfield.png" />
 
-Star data is from the **HYG Database** by David Nash ([astronexus.com](https://astronexus.com)), combining Hipparcos (ESA) and the Yale Bright Star Catalogue.
+Star data is from the **HYG Database** by David Nash ([astronexus.com](https://astronexus.com)), combining Hipparcos (ESA) and the Yale Bright Star Catalogue, and is licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/).
 
 **Planets:** Mars, Jupiter, Saturn (with ring), and the Moon are computed from real orbital elements and appear at their actual sky positions, updated hourly.
 
