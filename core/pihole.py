@@ -7,6 +7,7 @@ import httpx
 
 from .config import PIHOLE_BASE, PIHOLE2_URL, IGNORE_DOMAIN_PATTERNS, IGNORE_CLIENT_PATTERNS, HIDE_CLIENT
 from .notice import clear, warn_once
+from .redact import public_domain
 
 logger = logging.getLogger(__name__)
 
@@ -288,7 +289,7 @@ async def query_poller(http_client: httpx.AsyncClient) -> None:
                 else:
                     source = "blocked"
                 events.append({
-                    "domain": domain,
+                    "domain": public_domain(domain),
                     "status": "blocked" if is_blocked else "allowed",
                     "source": source,
                     "client": "" if HIDE_CLIENT else client_label,
@@ -473,7 +474,7 @@ async def query_p2_poller(http_client: httpx.AsyncClient) -> None:
                 else:
                     source = "blocked"
                 events.append({
-                    "domain": domain,
+                    "domain": public_domain(domain),
                     "status": "blocked" if is_blocked else "allowed",
                     "source": source,
                     "client": "" if HIDE_CLIENT else client_label,

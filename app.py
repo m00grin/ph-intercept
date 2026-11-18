@@ -15,7 +15,7 @@ from starlette.templating import Jinja2Templates
 
 from core.config import (
     BG_MODE, BG_IMAGE, PROVIDER, READ_ONLY, RETURN_URL, SKY_PRESET, SKY_PRESETS,
-    HIDE_CLIENT,
+    HIDE_CLIENT, HIDE_DOMAIN,
     TWO_PLAYER_LOCAL_CONFIGURED, TWO_PLAYER_ENABLED, P2_DASHBOARD, P2_VERIFY_SSL,
     PIHOLE2_URL, PIHOLE2_PASSWORD,
     ADGUARD2_BASE, ADGUARD2_USERNAME, ADGUARD2_PASSWORD,
@@ -169,6 +169,7 @@ async def index(request: Request) -> HTMLResponse:
         "two_player_enabled": TWO_PLAYER_ENABLED,
         "read_only": READ_ONLY,
         "hide_client": HIDE_CLIENT,
+        "hide_domain": HIDE_DOMAIN,
         "bg_config": {
             "bg_mode": BG_MODE,
             "bg_image": BG_IMAGE,
