@@ -32,7 +32,7 @@ ASSETS = {
 CATEGORIES = {"Media", "Productivity", "Home", "Networking", "AI", "Finance", "Social", "Developer", "Others"}
 STORE_ARCH = {"linux/amd64": "amd64", "linux/arm64": "arm64", "linux/arm/v7": "arm", "linux/386": "386"}
 NAME_RE = re.compile(r"^[a-z0-9_-]+$")
-ID_RE = re.compile(r"^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\.[a-z0-9]+(?:[._-][a-z0-9]+)*)+$")
+ID_RE = re.compile(r"^(?=[a-z0-9._-]*\.)[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 SEMVER = re.compile(r"\d+\.\d+\.\d+")
 ENV_NAME = re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b")
 SECRET = re.compile(r"PASSWORD|TOKEN|TOTP")
