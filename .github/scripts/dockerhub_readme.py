@@ -16,6 +16,10 @@ from pathlib import Path
 
 LIMIT = 25_000  # Docker Hub's full-description cap, in bytes
 BLOB = "https://github.com/m00grin/ph-intercept/blob/main/"
+# README images on GitHub, and the same files on the project site. The site's shorter
+# URLs keep the page under the cap; the site build copies these images over.
+RAW = "https://raw.githubusercontent.com/m00grin/ph-intercept/main/"
+SITE = "https://ph-intercept.com/"
 ROOT = Path(__file__).resolve().parents[2]
 
 # (folder, heading on Docker Hub, sections to bring over, in order)
@@ -122,6 +126,21 @@ def docker_hub_image(text: str) -> str:
     return "".join(out)
 
 
+def site_images(text: str) -> str:
+    """Load README images from the project site instead of raw GitHub, and drop the blank
+    lines that dropped sections leave behind. Code blocks are left alone."""
+    out, fence = [], False
+    for line in text.splitlines(keepends=True):
+        if line.lstrip().startswith("```"):
+            fence = not fence
+        elif not fence:
+            line = line.replace(f'src="{RAW}docs/', f'src="{SITE}docs/')
+        out.append(line)
+    text = "".join(out)
+    parts = re.split(r"(```.*?```)", text, flags=re.S)
+    return "".join(p if p.startswith("```") else re.sub(r"\n{3,}", "\n\n", p) for p in parts)
+
+
 def fix_links(text: str) -> str:
     """Make every link work from Docker Hub.
 
@@ -185,7 +204,7 @@ def build() -> str:
             inserted = True
     if not inserted:
         sys.exit("README.md has no '## Quick Start' section to anchor the provider setups after")
-    return fix_links(docker_hub_image("".join(out)))
+    return site_images(fix_links(docker_hub_image("".join(out))))
 
 
 def main() -> None:
