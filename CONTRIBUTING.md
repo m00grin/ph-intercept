@@ -19,11 +19,11 @@ Thanks for wanting to help. Bug reports, ideas, and pull requests are all welcom
 
 ### If you add or change an environment variable
 
-Update the configuration tables in all three READMEs, since each provider has its own:
+Each provider has its own README and compose file. In all three, update the configuration table, the example compose in the README, and the `compose.yaml` it copies:
 
-- [README.md](README.md) (Pi-hole)
-- [adguard/README.md](adguard/README.md)
-- [technitium/README.md](technitium/README.md)
+- [README.md](README.md) and [compose.yaml](compose.yaml) (Pi-hole)
+- [adguard/README.md](adguard/README.md) and [adguard/compose.yaml](adguard/compose.yaml)
+- [technitium/README.md](technitium/README.md) and [technitium/compose.yaml](technitium/compose.yaml)
 
 Don't edit [CHANGELOG.md](CHANGELOG.md). I write it when cutting a release, and contributors are credited there. Just describe the user-facing change in the PR description.
 

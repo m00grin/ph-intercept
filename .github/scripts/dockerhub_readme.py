@@ -6,7 +6,9 @@ sends AdGuard Home and Technitium users to their own guides, which would bounce
 Docker Hub readers out to GitHub. This folds each guide's setup sections into
 the page instead and points the links at them, so the whole install stays on
 Docker Hub. Everything is pulled from the source files on each run, so it never
-drifts: edit the READMEs as usual and this output follows.
+drifts: edit the READMEs as usual and this output follows. To stay under the
+cap, the compose examples here leave out the commented-out optional settings;
+the Configuration table on the same page lists them all.
 
 Usage: dockerhub_readme.py OUTPUT_PATH
 """
@@ -110,6 +112,44 @@ def drop_shared_comments(text: str, shared: set) -> str:
     return "".join(out)
 
 
+OPTIONAL_HINT = re.compile(r"\s*# Optional:")
+COMMENTED_SETTING = re.compile(r"\s*# [A-Z][A-Z0-9_]*:")
+
+
+def drop_optional_examples(text: str) -> str:
+    """Remove the commented-out optional settings from compose examples.
+
+    Each optional setting ships as a "# Optional: ..." note followed by the setting
+    commented out. They're all in the Configuration table on the same page, and a
+    copied compose runs the same without them, so on Docker Hub they only cost bytes.
+    A comment run is dropped only when it starts with "# Optional:" and ends with a
+    commented-out setting; every other comment and every active line stays. The
+    blank line that separated a dropped run goes with it.
+    """
+    out, fence, run = [], False, []
+
+    def flush():
+        if run and OPTIONAL_HINT.match(run[0]) and COMMENTED_SETTING.match(run[-1]):
+            if out and out[-1].strip() == "":
+                out.pop()
+        else:
+            out.extend(run)
+        run.clear()
+
+    for line in text.splitlines(keepends=True):
+        if line.lstrip().startswith("```"):
+            flush()
+            fence = not fence
+            out.append(line)
+        elif fence and line.strip().startswith("#"):
+            run.append(line)
+        else:
+            flush()
+            out.append(line)
+    flush()
+    return "".join(out)
+
+
 def strip_trailing_rule(body: str) -> str:
     return re.sub(r"\n---\s*$", "\n", body.rstrip() + "\n")
 
@@ -184,7 +224,7 @@ def build() -> str:
         body = "".join(strip_trailing_rule(demote(found[w][0] + found[w][1])) + "\n" for w in wanted)
         body = drop_shared_comments(body, shared)
         note = ("> Compose comments shared with the Pi-hole setup are trimmed here. "
-                "See the Pi-hole compose above for the full notes.\n\n")
+                "Optional settings are listed under [Configuration](#configuration).\n\n")
         # Links inside a guide are relative to its folder.
         body = re.sub(r"\]\((?!https?:|#|/)([^)]+)\)", lambda m: f"]({folder}/{m.group(1)})", body)
         body = body.replace(f"]({folder}/../", "](")
@@ -204,7 +244,7 @@ def build() -> str:
             inserted = True
     if not inserted:
         sys.exit("README.md has no '## Quick Start' section to anchor the provider setups after")
-    return site_images(fix_links(docker_hub_image("".join(out))))
+    return site_images(fix_links(drop_optional_examples(docker_hub_image("".join(out)))))
 
 
 def main() -> None:
