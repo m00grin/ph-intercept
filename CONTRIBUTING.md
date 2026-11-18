@@ -1,6 +1,6 @@
 # Contributing to ph-intercept
 
-Thanks for wanting to help. Bug reports, ideas, and pull requests are all welcome.
+Thanks for wanting to help. Bug reports, ideas, and pull requests are all welcome. Everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Before you start
 
