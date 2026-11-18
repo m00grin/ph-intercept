@@ -3866,7 +3866,7 @@
     }
 
     // Shield toggle - also closes settings menu
-    if (_inBox(mx, my, P1.shieldHitbox)) {
+    if (!window.READ_ONLY && _inBox(mx, my, P1.shieldHitbox)) {
       e.stopPropagation();
       settingsMenuOpen = false;
       _closeSettingsBtnAnimated();
@@ -3876,7 +3876,7 @@
     }
 
     // Gravity arrow
-    if (P1.gravityState === 'idle' && _inBox(mx, my, P1.arrowHitbox)) {
+    if (!window.READ_ONLY && P1.gravityState === 'idle' && _inBox(mx, my, P1.arrowHitbox)) {
       e.stopPropagation();
       triggerGravityUpdate(P1);
       return;
@@ -3890,7 +3890,7 @@
     }
 
     // P2 shield toggle
-    if (_isP2Active && _inBox(mx, my, P2.shieldHitbox)) {
+    if (!window.READ_ONLY && _isP2Active && _inBox(mx, my, P2.shieldHitbox)) {
       e.stopPropagation();
       if (P2.blockingEnabled === false) setP2Blocking(true);
       else if (P2.blockingEnabled === true) P2.shieldMenuOpen = true;
@@ -3898,7 +3898,7 @@
     }
 
     // P2 gravity arrow
-    if (_isP2Active && P2.gravityState === 'idle' && _inBox(mx, my, P2.arrowHitbox)) {
+    if (!window.READ_ONLY && _isP2Active && P2.gravityState === 'idle' && _inBox(mx, my, P2.arrowHitbox)) {
       e.stopPropagation();
       triggerGravityUpdate(P2);
     }
@@ -3909,11 +3909,12 @@
     const rect = canvas.getBoundingClientRect();
     mouseX = e.clientX - rect.left; mouseY = e.clientY - rect.top;
     const _p2mv = twoPlayerMode !== 'off' && _p2ShipVisible;
-    P1.arrowHovered = P1.gravityState === 'idle' && _inBox(mouseX, mouseY, P1.arrowHitbox);
-    P1.shieldHovered = _inBox(mouseX, mouseY, P1.shieldHitbox);
+    const _rw = !window.READ_ONLY;
+    P1.arrowHovered = _rw && P1.gravityState === 'idle' && _inBox(mouseX, mouseY, P1.arrowHitbox);
+    P1.shieldHovered = _rw && _inBox(mouseX, mouseY, P1.shieldHitbox);
     P1.shipMenuHovered = _inBox(mouseX, mouseY, P1.shipMenuHitbox) && P1.blockingEnabled === true && shipPowerState === 'up' && P1.warpState === 'none';
-    P2.arrowHovered = _p2mv && P2.gravityState === 'idle' && _inBox(mouseX, mouseY, P2.arrowHitbox);
-    P2.shieldHovered = _p2mv && _inBox(mouseX, mouseY, P2.shieldHitbox);
+    P2.arrowHovered = _rw && _p2mv && P2.gravityState === 'idle' && _inBox(mouseX, mouseY, P2.arrowHitbox);
+    P2.shieldHovered = _rw && _p2mv && _inBox(mouseX, mouseY, P2.shieldHitbox);
     P2.shipMenuHovered = _p2mv && _inBox(mouseX, mouseY, P2.shipMenuHitbox) && P2.blockingEnabled === true && P2.warpState === 'none';
     const overShieldMenu   = P1.shieldMenuOpen   && P1.shieldMenuItems.some(item => _inBox(mouseX, mouseY, item.hitbox));
     const overShipMenu     = P1.shipMenuOpen     && P1.shipMenuItems.some(item => !item.active && !item.locked && _inBox(mouseX, mouseY, item.hitbox));
