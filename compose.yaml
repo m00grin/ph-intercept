@@ -59,6 +59,10 @@ services:
       # Queries from matching clients spawn no ships. Case-insensitive.
       # PIHOLE_IGNORE_CLIENTS: ^uptime-kuma$,^192\.168\.1\.99$
 
+      # Optional: "true" replaces every domain with an opaque per-start token on the
+      # server. Repeat queries still group; domain labels and the DOMAIN toggle go away.
+      # HIDE_DOMAIN: "true"
+
       # 2-player local mode: set the URL (and password if the second Pi-hole has one)
       # to enable a second Pi-hole ship on the right half
       # PIHOLE2_URL: "http://192.168.1.3:8053/api"

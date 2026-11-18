@@ -11,6 +11,7 @@ from .config import (
     HIDE_CLIENT,
 )
 from .notice import clear, warn_once
+from .redact import public_domain
 
 logger = logging.getLogger(__name__)
 
@@ -341,7 +342,7 @@ async def _poll_tick(
         else:
             source = "upstream"
         events.append({
-            "domain": domain,
+            "domain": public_domain(domain),
             "status": "blocked" if is_blocked else "allowed",
             "source": source,
             "client": "" if HIDE_CLIENT else client_label,

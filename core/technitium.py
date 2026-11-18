@@ -15,6 +15,7 @@ from .config import (
     HIDE_CLIENT,
 )
 from .notice import clear, warn_once
+from .redact import public_domain
 
 logger = logging.getLogger(__name__)
 
@@ -328,7 +329,7 @@ def _entry_to_event(entry: dict) -> dict | None:
         return None
     source = _source_for(str(entry.get("responseType") or ""))
     return {
-        "domain": domain,
+        "domain": public_domain(domain),
         "status": "blocked" if source == "blocked" else "allowed",
         "source": source,
         "client": "" if HIDE_CLIENT else client,

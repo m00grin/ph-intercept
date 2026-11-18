@@ -132,8 +132,12 @@
     } catch {}
     if (crtEnabled && document.body) document.body.classList.add('crt-on');
   })();
+  // With HIDE_DOMAIN the server sends opaque tokens: never draw them, but keep the stored preference.
+  const _domainPref = showDomain;
+  if (window.HIDE_DOMAIN) showDomain = false;
   function _saveDisplaySettings() {
-    try { localStorage.setItem('ph_display', JSON.stringify({ friendlies: showFriendlies, domain: showDomain, client: showClient, autohide: hudAutoHide, crt: crtEnabled })); } catch {}
+    const domain = window.HIDE_DOMAIN ? _domainPref : showDomain;
+    try { localStorage.setItem('ph_display', JSON.stringify({ friendlies: showFriendlies, domain: domain, client: showClient, autohide: hudAutoHide, crt: crtEnabled })); } catch {}
   }
   // ── Background settings (mode + sky preset) ───────────────────────
   // Persisted under ph_bg and applied live via window.applyBgMode / window.applySkyPreset
