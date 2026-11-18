@@ -273,6 +273,7 @@ All configuration is via environment variables in `compose.yaml`.
 | `HIDE_CLIENT` | `false` | Set to `true` to drop the client name or IP from every query before it is sent to the browser. The in-app `CLIENT` toggle is hidden. |
 | `PIHOLE_VERIFY_SSL` | `true` | Set to `false` if Pi-hole uses HTTPS with a self-signed certificate. |
 | `PIHOLE_IGNORE_DOMAINS` | _(unset)_ | Comma-separated regex patterns. Domains that match spawn no ships. Case-insensitive; escape literal dots (`\.local$`). Example: `.*\.local$,.*\.internal$` |
+| `PIHOLE_IGNORE_CLIENTS` | _(unset)_ | Comma-separated regex patterns, matched against the client name and IP. Queries from matching clients spawn no ships. Case-insensitive; escape literal dots (`^192\.168\.1\.99$`). Example: `^uptime-kuma$,^10\.0\.0\.5$` |
 | `PIHOLE2_URL` | _(unset)_ | Second Pi-hole v6 API base URL. Setting a valid URL activates local 2-player split-screen mode. See below. |
 | `PIHOLE2_PASSWORD` | `""` | App password for the second Pi-hole. Omit if it has none. |
 | `PIHOLE2_VERIFY_SSL` | `true` | Set to `false` if the second Pi-hole uses HTTPS with a self-signed certificate. |
