@@ -85,6 +85,22 @@ services:
       # Optional: comma-separated regex patterns. Matching domains spawn no ships. Case-insensitive.
       # PIHOLE_IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
+      # Optional: "true" makes the page view-only. The server refuses the blocking
+      # toggle, filter update and 2-player mode switch; the HUD controls go inert.
+      # READ_ONLY: "true"
+
+      # Optional: "true" drops the client name/IP from every query on the server,
+      # so it never reaches the browser. Also hides the in-app CLIENT toggle.
+      # HIDE_CLIENT: "true"
+
+      # Optional: comma-separated regex patterns matched against the client name or IP.
+      # Queries from matching clients spawn no ships. Case-insensitive.
+      # PIHOLE_IGNORE_CLIENTS: ^uptime-kuma$,^192\.168\.1\.99$
+
+      # Optional: "true" replaces every domain with an opaque per-start token on the
+      # server. Repeat queries still group; domain labels and the DOMAIN toggle go away.
+      # HIDE_DOMAIN: "true"
+
       # 2-player local mode: set the URL (and password if the second Pi-hole has one)
       # to enable a second Pi-hole ship on the right half
       # PIHOLE2_URL: "http://192.168.1.3:8053/api"
@@ -344,6 +360,8 @@ In 2-player mode the second Pi-hole logs the same lines as `Pi-hole 2`, pointing
 ## Privacy
 
 ph-intercept only talks to your own Pi-hole instance(s). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your DNS server through ph-intercept.
+
+**Shared screens:** on a wall display or a page other people can open, `READ_ONLY` stops anyone from changing your DNS server, and `HIDE_CLIENT` and `HIDE_DOMAIN` keep client names and domains out of the browser. See [Optional settings](#optional).
 
 ---
 

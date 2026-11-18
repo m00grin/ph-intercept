@@ -91,11 +91,29 @@ services:
       # Optional: comma-separated regex patterns. Matching domains spawn no ships.
       # TECHNITIUM_IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
+      # Optional: "true" makes the page view-only. The server refuses the blocking
+      # toggle, filter update and 2-player mode switch; the HUD controls go inert.
+      # READ_ONLY: "true"
+
+      # Optional: "true" drops the client name/IP from every query on the server,
+      # so it never reaches the browser. Also hides the in-app CLIENT toggle.
+      # HIDE_CLIENT: "true"
+
+      # Optional: comma-separated regex patterns matched against the client IP.
+      # Queries from matching clients spawn no ships. Case-insensitive.
+      # TECHNITIUM_IGNORE_CLIENTS: ^192\.168\.1\.99$
+
+      # Optional: "true" replaces every domain with an opaque per-start token on the
+      # server. Repeat queries still group; domain labels and the DOMAIN toggle go away.
+      # HIDE_DOMAIN: "true"
+
       # 2-player local mode: set the URL and a token (or user + password) to enable
       # a second Technitium ship on the right half. The second instance also needs
       # the Query Logs (Sqlite) app installed.
       # TECHNITIUM2_URL: "http://192.168.1.3:5380"
       # TECHNITIUM2_TOKEN: ${TECHNITIUM2_TOKEN}
+      # TECHNITIUM2_USER: "admin"
+      # TECHNITIUM2_PASSWORD: ${TECHNITIUM2_PASSWORD}
       # TECHNITIUM2_VERIFY_SSL: "true"
 
     volumes:
@@ -270,3 +288,5 @@ In 2-player mode the second instance logs the same lines as `Technitium 2`, poin
 ## Privacy
 
 ph-intercept only talks to your own Technitium instance(s). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your DNS server through ph-intercept.
+
+**Shared screens:** on a wall display or a page other people can open, `READ_ONLY` stops anyone from changing your DNS server, and `HIDE_CLIENT` and `HIDE_DOMAIN` keep client names and domains out of the browser. See [Optional settings](#optional).
