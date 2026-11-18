@@ -6,7 +6,7 @@ from datetime import datetime
 
 import httpx
 
-from .config import ADGUARD_BASE, ADGUARD_IGNORE_DOMAIN_PATTERNS, ADGUARD2_BASE
+from .config import ADGUARD_BASE, ADGUARD_IGNORE_DOMAIN_PATTERNS, ADGUARD2_BASE, HIDE_CLIENT
 from .notice import clear, warn_once
 
 logger = logging.getLogger(__name__)
@@ -335,7 +335,7 @@ async def _poll_tick(
             "domain": domain,
             "status": "blocked" if is_blocked else "allowed",
             "source": source,
-            "client": client_label,
+            "client": "" if HIDE_CLIENT else client_label,
         })
     return new_watermark, events
 

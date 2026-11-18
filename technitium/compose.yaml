@@ -65,6 +65,10 @@ services:
       # toggle, filter update and 2-player mode switch; the HUD controls go inert.
       # READ_ONLY: "true"
 
+      # Optional: "true" drops the client name/IP from every query on the server,
+      # so it never reaches the browser. Also hides the in-app CLIENT toggle.
+      # HIDE_CLIENT: "true"
+
       # 2-player local mode: set the URL and a token (or user + password) to enable
       # a second Technitium ship on the right half. The second instance also needs
       # the Query Logs (Sqlite) app installed.

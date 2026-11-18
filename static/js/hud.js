@@ -311,7 +311,7 @@
           { key: 'domain',     label: 'DOMAIN',     state: S.showDomain, divAfter: true },
           { key: 'crt',        label: 'CRT FILTER',  state: S.crtEnabled },
           { key: 'autohide',   label: 'AUTO-HIDE',   state: S.hudAutoHide },
-        ];
+        ].filter(it => !(it.key === 'client' && window.HIDE_CLIENT));
         const smw = 186, smItemH = 28, smPad = 10, smDivH = 10, smPhRowH = 34;
         const _has2P = window.TWO_PLAYER_ENABLED !== false && !window.READ_ONLY;
         let _togH = 0;
