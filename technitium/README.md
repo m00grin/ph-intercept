@@ -139,7 +139,7 @@ Open `http://your-host:4673`.
 | Tag | What it is |
 |-----|------------|
 | `:latest` | Latest stable release. |
-| `:X.Y.Z` | Pinned release (e.g. `1.5.6`). |
+| `:X.Y.Z` | Pinned release (e.g. `1.5.7`). |
 | `:develop` | Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
 
 ---
@@ -171,10 +171,14 @@ All configuration is via environment variables in `compose.yaml`.
 | `TECHNITIUM_QUERY_LOG_CLASS` | `QueryLogsSqlite.App` | Class path of the query-log DNS app. |
 | `TECHNITIUM_VERIFY_SSL` | `true` | Set to `false` if Technitium uses HTTPS with a self-signed certificate. |
 | `TECHNITIUM_IGNORE_DOMAINS` | _(unset)_ | Comma-separated regex patterns. Domains that match spawn no ships. Case-insensitive; escape literal dots (`\.local$`). Example: `.*\.local$,.*\.internal$` |
+| `TECHNITIUM_IGNORE_CLIENTS` | _(unset)_ | Comma-separated regex patterns, matched against the client IP (Technitium logs no client name). Queries from matching clients spawn no ships. Escape literal dots. Example: `^192\.168\.1\.99$,^10\.0\.0\.` |
 | `RETURN_URL` | `""` | URL that ESC navigates to. Accepts `http://`, `https://`, protocol-relative (`//`), relative paths, and custom app schemes. Leave blank to disable ESC. |
 | `BG_MODE` | `starfield` | Default background: `starfield` · `nebula` · `outrun` · `dark`. Switchable live in-app. |
 | `SKY_PRESET` | `summer_triangle` | Default sky region: `summer_triangle` · `orion` · `scorpius` · `southern_cross`. Switchable live in-app. |
 | `BG_IMAGE` | `""` | Custom image URL or `/bg/filename.jpg`. When set, it's the default and enables the in-app `CUSTOM` option; blank leaves `CUSTOM` disabled. |
+| `READ_ONLY` | `false` | Set to `true` for a wall display or a page others can open: the server refuses every request that changes something (blocking toggle, filter update, 2-player mode) with HTTP 403, and the HUD leaves those controls inert. Status and stats stay visible. |
+| `HIDE_CLIENT` | `false` | Set to `true` to drop the client name or IP from every query before it is sent to the browser. The in-app `CLIENT` toggle is hidden. |
+| `HIDE_DOMAIN` | `false` | Set to `true` to replace every domain with an opaque token before it is sent to the browser (HMAC-SHA256 with a random key generated at each start, so tokens can't be looked up from a list of common domains). Repeat queries still group into tiers; domain labels, the letter fragments on a kill and the in-app `DOMAIN` toggle are left out. |
 | `TECHNITIUM2_URL` | _(unset)_ | Second Technitium console URL. Setting a valid URL activates local 2-player split-screen mode. See below. |
 | `TECHNITIUM2_TOKEN` | `""` | API token for the second instance (or use user + password below). |
 | `TECHNITIUM2_USER` / `TECHNITIUM2_PASSWORD` | `""` | Console credentials for the second instance. |

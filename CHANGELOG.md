@@ -4,6 +4,29 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.5.7] - 2026-11-18
+
+ph-intercept's first outside contribution! The four new settings below come from Mattheus ([@tioan](https://github.com/tioan)), who wrote up how ph-intercept behaves on shared screens in [#53](https://github.com/m00grin/ph-intercept/issues/53) and then built every piece of it in four small, careful PRs. All four are off by default, so nothing changes until you turn them on. Thank you, Mattheus!
+
+Also new since 1.5.6: ph-intercept is in **Unraid Community Apps** (search "ph-intercept" in the Apps tab; the template includes the new settings), and there's a **live demo at [ph-intercept.com](https://ph-intercept.com)**, the real dashboard running on made-up traffic in your browser, in Pi-hole, AdGuard Home, and Technitium versions.
+
+### Added
+
+- **`READ_ONLY` for wall displays and shared pages** -- set it to `true` and the server refuses anything that would change your DNS server (the blocking toggle, filter/gravity updates, 2-player mode) with a 403, while status and stats keep updating. The HUD leaves those controls inert. Until now, anyone who could open the page could turn blocking off. By [@tioan](https://github.com/tioan) in [#55](https://github.com/m00grin/ph-intercept/pull/55).
+- **`HIDE_CLIENT` keeps client names out of the browser** -- the server drops each query's client name or IP before sending it, so it can't be read from the page or the browser's network tab, and the in-app `CLIENT` toggle is hidden. By [@tioan](https://github.com/tioan) in [#54](https://github.com/m00grin/ph-intercept/pull/54).
+- **`HIDE_DOMAIN` sends opaque tokens instead of domains** -- every domain is replaced with a token before it reaches the browser (HMAC-SHA256 with a fresh random key at each start, so tokens can't be matched against a list of common domains). Repeat queries still group into tiers; domain labels, the letters on a kill, and the `DOMAIN` toggle are left out. `*_IGNORE_DOMAINS` still matches the real domain. By [@tioan](https://github.com/tioan) in [#57](https://github.com/m00grin/ph-intercept/pull/57).
+- **`PIHOLE_IGNORE_CLIENTS`, `ADGUARD_IGNORE_CLIENTS`, `TECHNITIUM_IGNORE_CLIENTS`** -- like `*_IGNORE_DOMAINS`, but for whole clients: comma-separated regex patterns matched against the client name and IP (just the IP for Technitium, which logs no name). Queries from a match spawn no ships. Handy for uptime monitors or the box the dashboard runs on. By [@tioan](https://github.com/tioan) in [#56](https://github.com/m00grin/ph-intercept/pull/56).
+- **New logo and intro** -- a new logo, favicon, and iOS home-screen icon, and a new intro: the flagship flies through, burns its thrusters, and warps out into the live background. With "reduce motion" on, the intro is a still title card. Dashboards that link to `/static/icons/favicon.svg` get the new logo.
+
+### Changed
+
+- **True black background** -- the page background is now `#000` (was `#08080b`), so nothing shows through before the background draws.
+- **Smaller star data** -- the starfield's star file drops from 452 KB to 402 KB by removing notes the app never read.
+- **Docs** -- the README now names the star data's license (HYG Database, CC BY-SA 4.0). New SVG logos in `docs/brand/` for dashboards and icon sets. New contributing guide, code of conduct, pull request template, and feature request form, plus status badges on the README. The Docker Hub page now loads its images from ph-intercept.com, which keeps it under Docker Hub's size limit without dropping any setup steps.
+- **CI** -- workflow tokens now default to no permissions, and new checks fail when the Unraid template or the CasaOS/ZimaOS app falls out of step with the code (a renamed setting, a wrong default or port, and for Unraid, any missing setting).
+
+---
+
 ## [1.5.6] - 2026-11-14
 
 ### Added

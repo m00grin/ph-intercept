@@ -11,9 +11,11 @@ from .config import (
     TECHNITIUM_TOTP, TECHNITIUM_LOG_APP, TECHNITIUM_LOG_CLASS,
     TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
     TECHNITIUM2_TOTP, TECHNITIUM2_LOG_APP, TECHNITIUM2_LOG_CLASS,
-    TECHNITIUM_IGNORE_DOMAIN_PATTERNS,
+    TECHNITIUM_IGNORE_DOMAIN_PATTERNS, TECHNITIUM_IGNORE_CLIENT_PATTERNS,
+    HIDE_CLIENT,
 )
 from .notice import clear, warn_once
+from .redact import public_domain
 
 logger = logging.getLogger(__name__)
 
@@ -320,12 +322,17 @@ def _entry_to_event(entry: dict) -> dict | None:
         p.search(domain) for p in TECHNITIUM_IGNORE_DOMAIN_PATTERNS
     ):
         return None
+    client = entry.get("clientIpAddress") or ""
+    if TECHNITIUM_IGNORE_CLIENT_PATTERNS and client and any(
+        p.search(client) for p in TECHNITIUM_IGNORE_CLIENT_PATTERNS
+    ):
+        return None
     source = _source_for(str(entry.get("responseType") or ""))
     return {
-        "domain": domain,
+        "domain": public_domain(domain),
         "status": "blocked" if source == "blocked" else "allowed",
         "source": source,
-        "client": entry.get("clientIpAddress") or "",
+        "client": "" if HIDE_CLIENT else client,
     }
 
 

@@ -1,0 +1,253 @@
+name: Sync CasaOS app store
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to sync, like v1.5.7"
+        required: true
+        type: string
+
+permissions: {}
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: casaos-release
+  cancel-in-progress: false
+
+env:
+  STORE_REPO: IceWhaleTech/CasaOS-AppStore
+  FORK_REPO: m00grin/CasaOS-AppStore
+  APP_PATH: Apps/ph-intercept
+  FIRST_BRANCH: add-ph-intercept
+
+jobs:
+  sync:
+    name: Push the version bump to the fork
+    if: github.event_name == 'workflow_dispatch' || !github.event.release.prerelease
+    runs-on: self-hosted
+    timeout-minutes: 10
+    environment: casaos-store
+    permissions:
+      contents: read
+
+    steps:
+      - name: Resolve the release
+        id: release
+        env:
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: |
+          if [[ ! "$TAG" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error title=Tag::'$TAG' is not a vX.Y.Z release tag."
+            exit 1
+          fi
+          {
+            echo "tag=$TAG"
+            echo "version=${BASH_REMATCH[1]}"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          persist-credentials: false
+
+      - name: Check what the store has
+        id: store
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          code=$(curl -sS --retry 3 -o "$RUNNER_TEMP/live.yml" -w '%{http_code}' \
+            "https://raw.githubusercontent.com/${STORE_REPO}/main/${APP_PATH}/docker-compose.yml")
+          if [ "$code" = "404" ]; then
+            pr=$(curl -fsS --retry 3 "https://api.github.com/repos/${STORE_REPO}/pulls?state=open&head=${FORK_REPO%%/*}:${FIRST_BRANCH}" \
+              | python3 -I -c 'import json,sys; p=json.load(sys.stdin); print(p[0]["number"] if p else "")')
+            if [ -z "$pr" ]; then
+              echo "ph-intercept is not in ${STORE_REPO} yet and there is no open PR from ${FORK_REPO}:${FIRST_BRANCH}, so there is nothing to update. This workflow takes over once the first PR merges." | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            pending=$({ curl -fsS --retry 3 "https://raw.githubusercontent.com/${FORK_REPO}/${FIRST_BRANCH}/${APP_PATH}/docker-compose.yml" || true; } \
+              | sed -nE 's/^  version: "([^"]+)"$/\1/p')
+            echo "The first PR (#${pr}) is still open at ${pending:-an unknown version}; this release is ${VERSION}."
+            if [ "$pending" = "$VERSION" ]; then
+              echo "The open PR #${pr} already has ${VERSION}; nothing to do." | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            {
+              echo "mode=first"
+              echo "branch=${FIRST_BRANCH}"
+              echo "pr=${pr}"
+              echo "skip=false"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          [ "$code" = "200" ] || { echo "::error title=Store::Could not read the store's copy (HTTP $code)."; exit 1; }
+          live=$(sed -nE 's/^  version: "([^"]+)"$/\1/p' "$RUNNER_TEMP/live.yml")
+          echo "The store lists ${live:-an unknown version}; this release is ${VERSION}."
+          if [ "$live" = "$VERSION" ]; then
+            echo "The store already lists ${VERSION}; nothing to do." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          last=$(curl -fsS --retry 3 "https://api.github.com/repos/${STORE_REPO}/commits?path=${APP_PATH}&per_page=1" \
+            | python3 -I -c 'import json,sys; c=json.load(sys.stdin)[0]; print((c.get("author") or {}).get("login",""), c["sha"][:7])')
+          {
+            echo "mode=update"
+            echo "branch=ph-intercept-${VERSION}"
+            echo "last=$last"
+            echo "skip=false"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check the fork token
+        if: steps.store.outputs.skip != 'true'
+        env:
+          HAS_TOKEN: ${{ secrets.CASAOS_FORK_TOKEN != '' }}
+        run: |
+          if [ "$HAS_TOKEN" != "true" ]; then
+            echo "::error title=Token::Add CASAOS_FORK_TOKEN to the casaos-store environment: a fine-grained token for ${FORK_REPO} only, with Contents read and write. See .claude/RELEASING.md."
+            exit 1
+          fi
+
+      - name: Confirm the image is on Docker Hub
+        if: steps.store.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          docker buildx imagetools inspect "docker.io/m00grin/ph-intercept:${VERSION}" --format '{{json .Manifest}}' > "$RUNNER_TEMP/manifest.json"
+          python3 -I .github/scripts/casaos_store.py platforms > "$RUNNER_TEMP/platforms.txt"
+          python3 -I - "$RUNNER_TEMP/manifest.json" "$RUNNER_TEMP/platforms.txt" <<'PY'
+          import json
+          import sys
+          manifest = json.load(open(sys.argv[1]))
+          have = {"/".join(filter(None, (m["platform"]["os"], m["platform"]["architecture"], m["platform"].get("variant"))))
+                  for m in manifest.get("manifests", []) if "platform" in m}
+          need = set(open(sys.argv[2]).read().split())
+          missing = sorted(need - have)
+          if missing:
+              print(f"::error title=Image::Docker Hub is missing {missing} for this release.")
+              sys.exit(1)
+          print(f"Docker Hub has every platform the store lists: {sorted(need)}")
+          PY
+
+      - name: Build the app folder
+        if: steps.store.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+        run: python3 -I .github/scripts/casaos_store.py render "$RUNNER_TEMP/out" --expect-version "$VERSION"
+
+      - name: Bring the fork up to date
+        if: steps.store.outputs.skip != 'true'
+        env:
+          TOKEN: ${{ secrets.CASAOS_FORK_TOKEN }}
+        run: |
+          code=$(curl -sS --retry 3 -o "$RUNNER_TEMP/sync.json" -w '%{http_code}' -X POST \
+            -H "Authorization: Bearer ${TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/${FORK_REPO}/merge-upstream" \
+            -d '{"branch":"main"}')
+          case "$code" in
+            200) echo "Fork main is in step with ${STORE_REPO}." ;;
+            401|403|404) echo "::error title=Fork::The token cannot reach ${FORK_REPO} (HTTP $code). Check that the fork exists and the token has Contents read and write on it."; exit 1 ;;
+            *) echo "::warning title=Fork::Could not sync ${FORK_REPO} main (HTTP $code); the branch is based on the store's main either way." ;;
+          esac
+
+      - name: Commit on top of the store's main
+        id: commit
+        if: steps.store.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          BRANCH: ${{ steps.store.outputs.branch }}
+          MODE: ${{ steps.store.outputs.mode }}
+        run: |
+          git clone --quiet --filter=blob:none --branch main "https://github.com/${STORE_REPO}.git" "$RUNNER_TEMP/store"
+          cd "$RUNNER_TEMP/store"
+          git switch --quiet -c "$BRANCH"
+          rm -rf "$APP_PATH"
+          cp -r "$RUNNER_TEMP/out/$APP_PATH" "$APP_PATH"
+          git add -A "$APP_PATH"
+          if git diff --cached --quiet; then
+            echo "The store's copy already matches ${VERSION}." | tee -a "$GITHUB_STEP_SUMMARY"
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git diff --cached --stat > "$RUNNER_TEMP/diffstat.txt"
+          if [ "$MODE" = "first" ]; then
+            message="feat(appstore): add ph-intercept ${VERSION}"
+          else
+            message="chore(ph-intercept): update to ${VERSION}"
+          fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit --quiet -m "$message"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Push the branch to the fork
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          TOKEN: ${{ secrets.CASAOS_FORK_TOKEN }}
+          BRANCH: ${{ steps.store.outputs.branch }}
+        run: |
+          cd "$RUNNER_TEMP/store"
+          auth=$(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          fork="https://github.com/${FORK_REPO}.git"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0="http.https://github.com/.extraheader" GIT_CONFIG_VALUE_0="AUTHORIZATION: basic ${auth}"
+          current=$(git ls-remote "$fork" "refs/heads/${BRANCH}" | cut -f1)
+          git push --quiet --force-with-lease="refs/heads/${BRANCH}:${current}" "$fork" "HEAD:refs/heads/${BRANCH}"
+
+      - name: Write the PR link
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.release.outputs.version }}
+          TAG: ${{ steps.release.outputs.tag }}
+          BRANCH: ${{ steps.store.outputs.branch }}
+          MODE: ${{ steps.store.outputs.mode }}
+          PR: ${{ steps.store.outputs.pr }}
+          LAST: ${{ steps.store.outputs.last }}
+          SERVER: ${{ github.server_url }}
+          REPO: ${{ github.repository }}
+        run: |
+          notes=$(python3 -I .github/scripts/casaos_store.py notes "$VERSION")
+          python3 -I - "$notes" "$RUNNER_TEMP/diffstat.txt" <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import os
+          import sys
+          import urllib.parse
+          env = os.environ
+          version, branch = env["VERSION"], env["BRANCH"]
+          login, sha = (env.get("LAST", "").split() + ["", ""])[:2]
+          release = f"{env['SERVER']}/{env['REPO']}/releases/tag/{env['TAG']}"
+          body = (
+              f"Updates ph-intercept to {version}.\n\n"
+              f"- Image: `m00grin/ph-intercept:{version}`\n"
+              f"- Changes: {sys.argv[1]}\n"
+              f"- Release notes: {release}\n\n"
+              "Checked in ph-intercept's CI: `docker compose config`, a build with "
+              "build-appstore-action at the same commit as this repo's CI, and a container smoke test."
+          )
+          if env.get("MODE") == "first":
+              url = f"https://github.com/{env['STORE_REPO']}/pull/{env['PR']}"
+              print(f"### The open store PR now has ph-intercept {version}\n")
+              print(f"**[Pull request #{env['PR']}]({url})** was updated in place. If its title or description names the old version, edit them to {version}.\n")
+          else:
+              query = urllib.parse.urlencode({"expand": "1", "title": f"chore(ph-intercept): update to {version}", "body": body})
+              url = f"https://github.com/{env['STORE_REPO']}/compare/main...{env['FORK_REPO'].replace('/', ':')}:{branch}?{query}"
+              print(f"### ph-intercept {version} is ready for the CasaOS/ZimaOS store\n")
+              print(f"**[Open the pull request]({url})**\n")
+          if login and login not in {"m00grin", "github-actions[bot]"}:
+              print(f"> **Check the diff first:** the store's last change to this app was by {login} in {sha}. Make sure this update keeps it.\n")
+          print("```")
+          print(open(sys.argv[2]).read().rstrip())
+          print("```")
+          PY
+          if [ "$MODE" = "first" ]; then
+            echo "::notice title=CasaOS store::Updated the open store PR #${PR} to ${VERSION}."
+          else
+            echo "::notice title=CasaOS store::ph-intercept ${VERSION} is on ${FORK_REPO}:${BRANCH}. Open the PR from this run's summary."
+          fi

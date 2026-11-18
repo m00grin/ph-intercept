@@ -22,6 +22,10 @@ on:
       - ".github/workflows/publish.yml"
       - ".github/workflows/unraid-template.yml"
       - ".github/scripts/unraid_template_check.py"
+      - ".github/workflows/casaos.yml"
+      - ".github/workflows/casaos-release.yml"
+      - ".github/scripts/casaos_store.py"
+      - "casaos/**"
 
 permissions: {}
 

@@ -100,6 +100,9 @@ RETURN_URL = os.environ.get("RETURN_URL", "")
 BG_IMAGE = os.environ.get("BG_IMAGE", "")
 BG_MODE = "image" if BG_IMAGE else os.environ.get("BG_MODE", "starfield").lower()
 SKY_PRESET = os.environ.get("SKY_PRESET", "summer_triangle").lower()
+READ_ONLY = os.environ.get("READ_ONLY", "false").strip().lower() in ("true", "1", "yes")
+HIDE_CLIENT = os.environ.get("HIDE_CLIENT", "false").strip().lower() in ("true", "1", "yes")
+HIDE_DOMAIN = os.environ.get("HIDE_DOMAIN", "false").strip().lower() in ("true", "1", "yes")
 
 SKY_PRESETS = {
     "summer_triangle": {"ra": 19.27, "dec": 15.86},
@@ -129,4 +132,13 @@ ADGUARD_IGNORE_DOMAIN_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
 )
 TECHNITIUM_IGNORE_DOMAIN_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
     os.environ.get("TECHNITIUM_IGNORE_DOMAINS", ""), "TECHNITIUM_IGNORE_DOMAINS"
+)
+IGNORE_CLIENT_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
+    os.environ.get("PIHOLE_IGNORE_CLIENTS", ""), "PIHOLE_IGNORE_CLIENTS"
+)
+ADGUARD_IGNORE_CLIENT_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
+    os.environ.get("ADGUARD_IGNORE_CLIENTS", ""), "ADGUARD_IGNORE_CLIENTS"
+)
+TECHNITIUM_IGNORE_CLIENT_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
+    os.environ.get("TECHNITIUM_IGNORE_CLIENTS", ""), "TECHNITIUM_IGNORE_CLIENTS"
 )
