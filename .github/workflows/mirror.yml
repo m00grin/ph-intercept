@@ -62,13 +62,24 @@ jobs:
 
       - name: Copy to Codeberg
         env:
-          SRC: ghcr.io/m00grin/ph-intercept@${{ steps.src.outputs.digest }}
+          SRC: ghcr.io/m00grin/ph-intercept
           DEST: codeberg.org/m00grin/ph-intercept
           VERSION: ${{ steps.ver.outputs.version }}
           MINOR: ${{ steps.ver.outputs.minor }}
           DIGEST: ${{ steps.src.outputs.digest }}
+          CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN }}
         run: |
-          docker buildx imagetools create --tag "$DEST:$VERSION" --tag "$DEST:$MINOR" --tag "$DEST:latest" "$SRC"
+          remove_seed() {
+            printf 'header = "Authorization: token %s"\n' "$CODEBERG_TOKEN" \
+              | curl -sS -K - -X DELETE -o /dev/null "https://codeberg.org/api/v1/packages/m00grin/container/ph-intercept/seed"
+          }
+          trap remove_seed EXIT
+          kids=$(docker buildx imagetools inspect "$SRC@$DIGEST" --format '{{json .Manifest}}' | jq -r '.manifests[].digest')
+          [ -n "$kids" ] || { echo "::error::Could not list the platform manifests"; exit 1; }
+          for kid in $kids; do
+            docker buildx imagetools create --tag "$DEST:seed" "$SRC@$kid"
+          done
+          docker buildx imagetools create --tag "$DEST:$VERSION" --tag "$DEST:$MINOR" --tag "$DEST:latest" "$SRC@$DIGEST"
           for tag in "$VERSION" "$MINOR" latest; do
             got=$(docker buildx imagetools inspect "$DEST:$tag" --format '{{.Manifest.Digest}}')
             [ "$got" = "$DIGEST" ] || { echo "::error::$DEST:$tag is $got, expected $DIGEST"; exit 1; }
