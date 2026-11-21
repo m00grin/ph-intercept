@@ -158,19 +158,17 @@ Open `http://your-host:4673`.
 |-----|------------|
 | `:latest` | Latest stable release. |
 | `:X.Y.Z` | Pinned release (e.g. `1.5.8`). |
-| `:develop` | Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
+| `:develop` | GHCR only. Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
+
+Images are also published to other registries, and you can build from source. See [Other Ways to Get It](../README.md#other-ways-to-get-it).
 
 ---
-
-## Portainer Note for BG
-
-- Drop image files into `/data/compose/<stack-id>/bg/` on the Portainer host (where the `./bg` bind mount resolves).
 
 ## Configuration
 
 All configuration is via environment variables in `compose.yaml`.
 
-> **Upgrading?** Pulling the latest `compose.yaml` is recommended so you have all current environment variables on hand. Anything you don't set falls back to a sensible default, so an older compose keeps working, you just might be missing newer options.
+> **Upgrading?** Pull the latest `compose.yaml` to see all current options. Anything you don't set uses its default, so an older compose keeps working.
 
 ### Required
 
@@ -246,6 +244,8 @@ With Technitium, the HUD differs in three places:
 - **STATS:** shows **no error** (Technitium's own dashboard count) in place of allowed.
 - **BLOCK LIST** (in place of GRAVITY): the arrow forces a block-list update and confirms when done.
 - **Settings:** the provider link opens the Technitium web console.
+
+**Portainer:** drop image files into `/data/compose/<stack-id>/bg/` on the Portainer host (where the `./bg` bind mount resolves).
 
 ---
 

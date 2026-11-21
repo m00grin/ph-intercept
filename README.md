@@ -167,15 +167,45 @@ Open `http://your-host:4653`.
 |-----|------------|
 | `:latest` | Latest stable release. |
 | `:X.Y.Z` | Pinned release (e.g. `1.5.8`). |
-| `:develop` | Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
-
-Release tags are published to both registries, so `ghcr.io/m00grin/ph-intercept` and `docker.io/m00grin/ph-intercept` (Docker Hub) are interchangeable. `:develop` is GHCR only.
+| `:develop` | GHCR only. Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
 
 ---
 
-## Portainer Note for BG
+## Other Ways to Get It
 
-- Drop image files into `/data/compose/<stack-id>/bg/` on the Portainer host (where the `./bg` bind mount resolves).
+### Registries
+
+GitHub is where the work happens and where every image is built. Each release is published, unchanged, to every registry below, so the digest is identical everywhere. Pull from whichever you prefer.
+
+| Registry | Image | Notes |
+|----------|-------|-------|
+| GitHub (GHCR) | `ghcr.io/m00grin/ph-intercept` | Home. Also carries `:develop`. |
+| [Docker Hub](https://hub.docker.com/r/m00grin/ph-intercept) | `docker.io/m00grin/ph-intercept` | Release tags. |
+| [Codeberg](https://codeberg.org/m00grin/-/packages/container/ph-intercept) | `codeberg.org/m00grin/ph-intercept` | `:latest` and the last few releases. |
+| [GitLab](https://gitlab.com/m00grin/ph-intercept/container_registry) | `registry.gitlab.com/m00grin/ph-intercept` | Release tags. |
+
+Use the tags from [Image Tags](#image-tags).
+
+### Build from source
+
+Prefer to build it yourself? Clone a release tag, check that I signed it, and build. The image builds natively for whatever architecture your machine is, with no buildx needed.
+
+```bash
+tag=v1.5.8
+git clone --depth 1 --branch "$tag" https://github.com/m00grin/ph-intercept.git
+cd ph-intercept
+
+echo '* ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMdnYVfo4t2Ag1LkmaQ5nKiN66g23hyHHfWRlsaV93tZ' > /tmp/ph-intercept-signers
+git -c gpg.ssh.allowedSignersFile=/tmp/ph-intercept-signers tag -v "$tag"
+
+docker build -t ph-intercept .
+```
+
+`tag -v` should report a good signature with key `SHA256:34Xm5zcAM5p/n6QZD3nJ7p/bbzp21Mh3/e8sHkGk+co`. Set `tag` to the [latest release](https://github.com/m00grin/ph-intercept/releases/latest).
+
+Then use the [Quick Start](#quick-start) compose file, replacing its `image:` line with `image: ph-intercept`, and run `docker compose up -d`.
+
+---
 
 ## Entities
 
@@ -219,7 +249,7 @@ Seven ships are selectable from the HUD, shown in an 8-slot 4×2 grid: **Protect
 
 A strip across the bottom, divided into four panels:
 
-**INTERCEPT:** blocking status and toggle. Click to open a menu with timed-disable options (10 sec, 30 sec, 5 min) or a full disable. A countdown shows when a timed block is active; the timer survives navigation and syncs correctly if blocking is changed remotely.
+**INTERCEPT:** blocking status and toggle. Click to open a menu with timed-disable options (10 sec, 30 sec, 5 min) or a full disable. A countdown shows during a timed block; it survives navigation and syncs if blocking changes remotely.
 
 **STATS:** total queries, blocked, allowed, and block percentage. Updated live.
 
@@ -231,10 +261,11 @@ A strip across the bottom, divided into four panels:
 
 A hamburger button at the left edge of the HUD opens the **Settings** panel, which includes:
 
-- **Friendlies** -- show or hide friendly (allowed) entities
-- **Client** -- show the requesting client (IP or hostname) as a label per entity
-- **Domain** -- show or hide the domain label beneath each entity
-- **Pi-hole** -- link to the Pi-hole admin panel
+- **Friendlies**, **Client**, **Domain**: show or hide friendly entities, the requesting client label, and the domain label
+- **CRT filter**: a scanline overlay
+- **Auto-hide**: slides the HUD away until you hover it
+- **Background**: switch style and sky region live
+- **Pi-hole**: link to the Pi-hole admin panel
 
 Display settings are saved to `localStorage` and restored on next load.
 
@@ -262,7 +293,9 @@ Star data is from the **HYG Database** by David Nash ([astronexus.com](https://a
 
 **`BG_IMAGE`:** A custom image (URL or a `/bg/your-file.jpg` mounted into the container).
 
-The env vars above set the **default** background. Each user can also switch it live from the in-app settings menu (**Background**), including sky presets and, when `BG_IMAGE` is configured, a **CUSTOM** option. That choice is remembered per-browser and never changes the default for anyone else. If no `BG_IMAGE` is set, CUSTOM simply shows greyed out. This is fully backward compatible: with no in-app choice, the env values drive everything exactly as before.
+The env vars set the **default** background. Each user can also switch it live from the in-app settings menu (**Background**), including sky presets and, when `BG_IMAGE` is set, a **CUSTOM** option. That choice is remembered per browser and never changes anyone else's default.
+
+**Portainer:** drop image files into `/data/compose/<stack-id>/bg/` on the Portainer host (where the `./bg` bind mount resolves).
 
 ---
 
@@ -270,7 +303,7 @@ The env vars above set the **default** background. Each user can also switch it 
 
 All configuration is via environment variables in `compose.yaml`.
 
-> **Upgrading?** Pulling the latest `compose.yaml` is recommended so you have all current environment variables on hand. Anything you don't set falls back to a sensible default, so an older compose keeps working, you just might be missing newer options.
+> **Upgrading?** Pull the latest `compose.yaml` to see all current options. Anything you don't set uses its default, so an older compose keeps working.
 
 ### Required
 
@@ -301,7 +334,7 @@ All configuration is via environment variables in `compose.yaml`.
 
 ## Local 2-Player Mode
 
-Two DNS instances can run side by side in split-screen. Player 1's ship occupies the left half of the canvas, Player 2's ship the right. Each instance streams its own query events, stats, blocking toggle, and gravity/filter updates independently.
+Two DNS instances can run side by side in split-screen. Player 1's ship occupies the left half of the canvas, Player 2's ship the right. Each instance streams its own events, stats, and controls.
 
 Add the second Pi-hole to your `compose.yaml` environment block:
 
@@ -371,9 +404,12 @@ ph-intercept only talks to your own Pi-hole instance(s). It never phones home, h
 
 I may have gone a little overboard.
 
-ph-intercept is developed against a full test suite covering four layers:
+ph-intercept is developed against a suite of about 700 tests that I run locally before every release. The suite lives on my machine, not in this repository. CI builds the images and scans them (CodeQL and Trivy). The tests cover these layers:
 
-- **Pi-hole client** -- async unit tests for every auth path (including passwordless and lock contention), session management, query status classification, the broadcast queue, and the live query poller
-- **API layer** -- endpoint tests for every route, security headers, cache-control rules, and input validation
-- **Browser** -- Playwright integration tests across Chromium, Firefox, and WebKit covering page load, canvas sizing, SSE connection and reconnect, settings persistence, font loading, and bfcache reentry
-- **Devices** -- the same Playwright suite run against 40+ real device profiles: RPi touchscreens, Fire tablets, iPads, Android tablets, HiDPI displays, 4K, ultrawides, and orientation changes
+- **DNS providers:** async unit tests for the Pi-hole, AdGuard Home, and Technitium clients: every auth path, session handling, query classification, the broadcast queue, and the live query pollers
+- **API and config:** every route, security headers, cache-control rules, input validation, environment parsing, and the `READ_ONLY`, `HIDE_CLIENT`, and `HIDE_DOMAIN` modes
+- **2-player mode:** routes, state persistence, and the races between two instances
+- **Browser:** Playwright tests in Chromium, Firefox, and WebKit for page load, canvas sizing, SSE connection and reconnect, settings persistence, blocked storage, sprite recovery, and bfcache reentry
+- **Devices:** emulated device profiles and viewports, including Raspberry Pi touchscreens, Fire tablets, iPads, Android tablets, HiDPI displays, 4K, ultrawides, and orientation changes
+- **Pixels:** a canvas baseline that hashes rendered scenes, so a drawing regression can't hide behind passing behavior tests
+- **Docs and listings:** checks that the READMEs, example composes, and the Unraid template stay in step

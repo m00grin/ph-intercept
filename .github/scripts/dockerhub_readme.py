@@ -30,7 +30,7 @@ PROVIDERS = [
     ("technitium", "Technitium DNS setup", ["What you need first", "Quick Start"]),
 ]
 # GitHub-only sections left out of the Docker Hub page
-DROP = ["Testing"]
+DROP = ["Other Ways to Get It", "Testing"]
 BADGE_LINE = re.compile(r'^<a href="[^"]+"><img [^>]*src="https://img\.shields\.io/[^"]*"[^>]*></a>\n', re.MULTILINE)
 
 

@@ -1,0 +1,98 @@
+name: Mirror release to Codeberg + GitLab (self-hosted)
+
+on:
+  workflow_run:
+    workflows: ["Publish to GHCR + Docker Hub (self-hosted)"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to mirror (for example v1.5.8)"
+        required: true
+        type: string
+
+permissions: {}
+
+jobs:
+  mirror:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: self-hosted
+
+    steps:
+      - name: Resolve release version
+        id: ver
+        env:
+          TAG: ${{ github.event.inputs.tag || github.event.workflow_run.head_branch }}
+        run: |
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::'$TAG' is not a release tag like v1.5.8."
+            exit 1
+          fi
+          version="${TAG#v}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "minor=${version%.*}" >> "$GITHUB_OUTPUT"
+
+      - name: Check registry settings
+        env:
+          CODEBERG_USERNAME: ${{ vars.CODEBERG_USERNAME }}
+          GITLAB_USERNAME: ${{ vars.GITLAB_USERNAME }}
+          HAS_CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN != '' }}
+          HAS_GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN != '' }}
+        run: |
+          if [ -z "$CODEBERG_USERNAME" ] || [ "$HAS_CODEBERG_TOKEN" != "true" ] || [ -z "$GITLAB_USERNAME" ] || [ "$HAS_GITLAB_TOKEN" != "true" ]; then
+            echo "::error::Set CODEBERG_USERNAME and GITLAB_USERNAME variables and CODEBERG_TOKEN and GITLAB_TOKEN secrets first."
+            exit 1
+          fi
+
+      - name: Resolve source digest
+        id: src
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          digest=$(docker buildx imagetools inspect "ghcr.io/m00grin/ph-intercept:$VERSION" --format '{{.Manifest.Digest}}')
+          case "$digest" in sha256:*) ;; *) echo "::error::Could not resolve ghcr.io/m00grin/ph-intercept:$VERSION"; exit 1 ;; esac
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to Codeberg
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: codeberg.org
+          username: ${{ vars.CODEBERG_USERNAME }}
+          password: ${{ secrets.CODEBERG_TOKEN }}
+
+      - name: Copy to Codeberg
+        env:
+          SRC: ghcr.io/m00grin/ph-intercept@${{ steps.src.outputs.digest }}
+          DEST: codeberg.org/m00grin/ph-intercept
+          VERSION: ${{ steps.ver.outputs.version }}
+          MINOR: ${{ steps.ver.outputs.minor }}
+          DIGEST: ${{ steps.src.outputs.digest }}
+        run: |
+          docker buildx imagetools create --tag "$DEST:$VERSION" --tag "$DEST:$MINOR" --tag "$DEST:latest" "$SRC"
+          for tag in "$VERSION" "$MINOR" latest; do
+            got=$(docker buildx imagetools inspect "$DEST:$tag" --format '{{.Manifest.Digest}}')
+            [ "$got" = "$DIGEST" ] || { echo "::error::$DEST:$tag is $got, expected $DIGEST"; exit 1; }
+          done
+
+      - name: Log in to GitLab
+        if: ${{ !cancelled() }}
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: registry.gitlab.com
+          username: ${{ vars.GITLAB_USERNAME }}
+          password: ${{ secrets.GITLAB_TOKEN }}
+
+      - name: Copy to GitLab
+        if: ${{ !cancelled() }}
+        env:
+          SRC: ghcr.io/m00grin/ph-intercept@${{ steps.src.outputs.digest }}
+          DEST: registry.gitlab.com/m00grin/ph-intercept
+          VERSION: ${{ steps.ver.outputs.version }}
+          MINOR: ${{ steps.ver.outputs.minor }}
+          DIGEST: ${{ steps.src.outputs.digest }}
+        run: |
+          docker buildx imagetools create --tag "$DEST:$VERSION" --tag "$DEST:$MINOR" --tag "$DEST:latest" "$SRC"
+          for tag in "$VERSION" "$MINOR" latest; do
+            got=$(docker buildx imagetools inspect "$DEST:$tag" --format '{{.Manifest.Digest}}')
+            [ "$got" = "$DIGEST" ] || { echo "::error::$DEST:$tag is $got, expected $DIGEST"; exit 1; }
+          done
