@@ -191,7 +191,7 @@ Use the tags from [Image Tags](#image-tags).
 Prefer to build it yourself? Clone a release tag, check that I signed it, and build. The image builds natively for whatever architecture your machine is, with no buildx needed.
 
 ```bash
-tag=v1.5.8
+tag=$(git ls-remote --tags --refs --sort=-v:refname https://github.com/m00grin/ph-intercept.git 'v*' | head -n1 | sed 's|.*refs/tags/||')
 git clone --depth 1 --branch "$tag" https://github.com/m00grin/ph-intercept.git
 cd ph-intercept
 
@@ -201,9 +201,9 @@ git -c gpg.ssh.allowedSignersFile=/tmp/ph-intercept-signers tag -v "$tag"
 docker build -t ph-intercept .
 ```
 
-`tag -v` should report a good signature with key `SHA256:34Xm5zcAM5p/n6QZD3nJ7p/bbzp21Mh3/e8sHkGk+co`. Set `tag` to the [latest release](https://github.com/m00grin/ph-intercept/releases/latest).
+`tag -v` should report a good signature with key `SHA256:34Xm5zcAM5p/n6QZD3nJ7p/bbzp21Mh3/e8sHkGk+co`. The first line picks the newest release. To build a specific one, set `tag` yourself, for example `tag=v1.5.8`.
 
-Then use the [Quick Start](#quick-start) compose file, replacing its `image:` line with `image: ph-intercept`, and run `docker compose up -d`.
+Then use the [Quick Start](#quick-start) compose file, replacing its `image:` line with `image: ph-intercept`. Compose uses the image you just built, so there is nothing to pull. Then run `docker compose up -d`.
 
 ---
 
