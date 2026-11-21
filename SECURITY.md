@@ -24,6 +24,12 @@ docker buildx imagetools inspect ghcr.io/m00grin/ph-intercept:latest --format '{
 
 The output names the Actions run (`runDetails.builder.id`) and the commit it built from (the `org.opencontainers.image.revision` label). That commit should match the one the signed tag points to, which ties the image to the source I signed.
 
+Releases after 1.5.8 also include an SBOM, the list of packages inside each image:
+
+```bash
+docker buildx imagetools inspect ghcr.io/m00grin/ph-intercept:latest --format '{{json .SBOM}}'
+```
+
 ## Build and Release Infrastructure
 
 Release images are built by GitHub Actions on a self-hosted runner, a persistent machine at my home that I operate and maintain. I use it for a few reasons:

@@ -76,6 +76,7 @@ jobs:
           cache-from: type=local,src=/opt/buildx-cache/ph-intercept
           cache-to: type=local,dest=/opt/buildx-cache/ph-intercept-new,mode=max
           provenance: mode=max
+          sbom: generator=docker/buildkit-syft-scanner@sha256:873a7458c3c8ac8e32c7b796c10e1600b07b963d2aa000a72a2d97aaaa2d6315
 
       - name: Rotate build cache
         run: |
