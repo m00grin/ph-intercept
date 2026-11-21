@@ -9,6 +9,8 @@ A Pi-hole, AdGuard Home, and Technitium DNS dashboard that runs as a standalone 
 
 Designed to be dropped in alongside an existing Pi-hole v6 setup with no extra dependencies. Two instances can run side by side in [local 2-player split-screen](#local-2-player-mode).
 
+Try the [live demo](https://ph-intercept.com/demo/) in your browser first, no install needed.
+
 <img alt="ph-intercept shooting down blocked DNS queries live" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/demo.gif" />
 
 | Starfield | Nebula | Outrun |
@@ -164,7 +166,7 @@ Open `http://your-host:4653`.
 | Tag | What it is |
 |-----|------------|
 | `:latest` | Latest stable release. |
-| `:X.Y.Z` | Pinned release (e.g. `1.5.7`). |
+| `:X.Y.Z` | Pinned release (e.g. `1.5.8`). |
 | `:develop` | Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
 
 Release tags are published to both registries, so `ghcr.io/m00grin/ph-intercept` and `docker.io/m00grin/ph-intercept` (Docker Hub) are interchangeable. `:develop` is GHCR only.

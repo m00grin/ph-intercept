@@ -1,7 +1,7 @@
 name: ph-intercept
 services:
   ph-intercept:
-    image: m00grin/ph-intercept:1.5.7
+    image: m00grin/ph-intercept:1.5.8
     container_name: ph-intercept
     restart: unless-stopped
     network_mode: bridge
@@ -157,10 +157,10 @@ x-casaos:
     - amd64
     - arm64
     - arm
-  version: "1.5.7"
-  update_at: "2026-11-18"
+  version: "1.5.8"
+  update_at: "2026-11-21"
   release_notes:
-    en_US: "Added: READ_ONLY for wall displays and shared pages; HIDE_CLIENT keeps client names out of the browser; HIDE_DOMAIN sends opaque tokens instead of domains; PIHOLE_IGNORE_CLIENTS, ADGUARD_IGNORE_CLIENTS, TECHNITIUM_IGNORE_CLIENTS; New logo and intro. Changed: True black background; Smaller star data; Docs; CI."
+    en_US: "Fixed: High AdGuard Home CPU use while the dashboard is open. Changed: Docs; CI."
   website: https://hub.docker.com/r/m00grin/ph-intercept
   repo: https://github.com/m00grin/ph-intercept
   support: https://github.com/m00grin/ph-intercept/issues

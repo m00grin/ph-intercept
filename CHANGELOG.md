@@ -4,6 +4,21 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.5.8] - 2026-11-21
+
+A fix for AdGuard Home users, found by [@21mtd](https://github.com/21mtd) in [#58](https://github.com/m00grin/ph-intercept/issues/58). They noticed AdGuard Home working hard whenever ph-intercept was open (a load average jumping from 1 to 6 on a low-powered box) and tracked it to ph-intercept's requests. Thank you!
+
+### Fixed
+
+- **High AdGuard Home CPU use while the dashboard is open** -- ph-intercept used Basic Auth, so AdGuard Home re-verified the login on every request with a deliberately slow password check (bcrypt), several times a second per open page. ph-intercept now logs in once and reuses the session, like the AdGuard web UI does, and logs in again only when AdGuard asks. In testing, AdGuard Home's CPU use dropped from about 23% of a core to under 1%, with no change to how live the dashboard is. Setups where login gives no session (AdGuard with no users, or a reverse proxy that only accepts Basic Auth) fall back to Basic Auth, so nothing needs to change. Reported by [@21mtd](https://github.com/21mtd) in [#58](https://github.com/m00grin/ph-intercept/issues/58).
+
+### Changed
+
+- **Docs** -- the README links the [live demo](https://ph-intercept.com/demo/).
+- **CI** -- CodeQL action updated to v4.39.4.
+
+---
+
 ## [1.5.7] - 2026-11-18
 
 ph-intercept's first outside contribution! The four new settings below come from Mattheus ([@tioan](https://github.com/tioan)), who wrote up how ph-intercept behaves on shared screens in [#53](https://github.com/m00grin/ph-intercept/issues/53) and then built every piece of it in four small, careful PRs. All four are off by default, so nothing changes until you turn them on. Thank you, Mattheus!

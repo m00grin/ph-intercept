@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from datetime import datetime
 
 import httpx
@@ -45,6 +46,70 @@ def _auth2() -> tuple[str, str]:
     )
 
 
+class _SessionAuth(httpx.Auth):
+    """Log in once and reuse AdGuard's session cookie.
+
+    AdGuard Home checks a Basic Auth password with bcrypt on every request, which
+    pins the CPU on small devices at our poll rate. A session cookie is a cheap
+    lookup. Falls back to Basic Auth for a minute when login gives no cookie
+    (auth disabled, or a proxy in front that only speaks Basic Auth).
+    """
+
+    _FALLBACK_SECONDS = 60
+
+    def __init__(self, base: str, creds: tuple[str, str]):
+        self.base = base
+        self.creds = creds
+        self.cookie: str | None = None
+        self._basic_until = 0.0
+        self._lock = asyncio.Lock()
+
+    def _with_cookie(self, request: httpx.Request, cookie: str) -> httpx.Request:
+        request.headers["Cookie"] = f"agh_session={cookie}"
+        return request
+
+    async def async_auth_flow(self, request: httpx.Request):
+        cookie = self.cookie
+        if cookie:
+            response = yield self._with_cookie(request, cookie)
+            if response.status_code not in (401, 403):
+                return
+        if time.monotonic() >= self._basic_until:
+            async with self._lock:
+                if self.cookie == cookie and time.monotonic() >= self._basic_until:
+                    login = yield httpx.Request(
+                        "POST", f"{self.base}/login",
+                        json={"name": self.creds[0], "password": self.creds[1]},
+                        headers={"User-Agent": request.headers.get("User-Agent", "ph-intercept")},
+                    )
+                    self.cookie = login.cookies.get("agh_session") if login.status_code == 200 else None
+                    if not self.cookie:
+                        self._basic_until = time.monotonic() + self._FALLBACK_SECONDS
+        if self.cookie:
+            yield self._with_cookie(request, self.cookie)
+        else:
+            request.headers.pop("Cookie", None)
+            yield next(httpx.BasicAuth(*self.creds).auth_flow(request))
+
+
+_sessions: dict[tuple[str, tuple[str, str]], _SessionAuth] = {}
+
+
+def _session(base: str, creds: tuple[str, str]) -> _SessionAuth:
+    s = _sessions.get((base, creds))
+    if s is None:
+        s = _sessions[(base, creds)] = _SessionAuth(base, creds)
+    return s
+
+
+def _p1_auth() -> _SessionAuth:
+    return _session(ADGUARD_BASE, _auth())
+
+
+def _p2_auth() -> _SessionAuth:
+    return _session(ADGUARD2_BASE, _auth2())
+
+
 def _label(base: str) -> str:
     return "AdGuard 2" if base == ADGUARD2_BASE and base != ADGUARD_BASE else "AdGuard"
 
@@ -81,7 +146,7 @@ def _parse_time(s: str) -> float:
         return 0.0
 
 
-async def _fetch_stats(http_client: httpx.AsyncClient, base: str, auth: tuple[str, str]) -> dict | None:
+async def _fetch_stats(http_client: httpx.AsyncClient, base: str, auth: httpx.Auth) -> dict | None:
     try:
         try:
             stats_resp, status_resp, filtering_resp = await asyncio.gather(
@@ -126,18 +191,18 @@ async def _fetch_stats(http_client: httpx.AsyncClient, base: str, auth: tuple[st
 
 
 async def get_stats(http_client: httpx.AsyncClient) -> dict | None:
-    return await _fetch_stats(http_client, ADGUARD_BASE, _auth())
+    return await _fetch_stats(http_client, ADGUARD_BASE, _p1_auth())
 
 
 async def get_p2_stats(http_client: httpx.AsyncClient) -> dict | None:
-    return await _fetch_stats(http_client, ADGUARD2_BASE, _auth2())
+    return await _fetch_stats(http_client, ADGUARD2_BASE, _p2_auth())
 
 
 _reenable_task: asyncio.Task | None = None
 _reenable2_task: asyncio.Task | None = None
 
 
-async def _reenable_after(http_client: httpx.AsyncClient, base: str, auth: tuple[str, str], delay: int) -> None:
+async def _reenable_after(http_client: httpx.AsyncClient, base: str, auth: httpx.Auth, delay: int) -> None:
     await asyncio.sleep(delay)
     try:
         await http_client.post(
@@ -151,7 +216,7 @@ async def _reenable_after(http_client: httpx.AsyncClient, base: str, auth: tuple
 
 
 async def _post_protection(
-    http_client: httpx.AsyncClient, base: str, auth: tuple[str, str], enable: bool, timer: int | None = None,
+    http_client: httpx.AsyncClient, base: str, auth: httpx.Auth, enable: bool, timer: int | None = None,
 ) -> dict:
     duration = timer * 1000 if not enable and timer and timer > 0 else 0
     resp = await http_client.post(
@@ -173,11 +238,11 @@ async def toggle_blocking(http_client: httpx.AsyncClient, enable: bool, timer: i
         _reenable_task.cancel()
     _reenable_task = None
     try:
-        result = await _post_protection(http_client, ADGUARD_BASE, _auth(), enable, timer)
+        result = await _post_protection(http_client, ADGUARD_BASE, _p1_auth(), enable, timer)
         if "error" in result:
             return result
         if not enable and timer and timer > 0:
-            _reenable_task = asyncio.create_task(_reenable_after(http_client, ADGUARD_BASE, _auth(), timer))
+            _reenable_task = asyncio.create_task(_reenable_after(http_client, ADGUARD_BASE, _p1_auth(), timer))
         return result
     except Exception:
         logger.exception("toggle_blocking failed")
@@ -190,18 +255,18 @@ async def toggle_p2_blocking(http_client: httpx.AsyncClient, enable: bool, timer
         _reenable2_task.cancel()
     _reenable2_task = None
     try:
-        result = await _post_protection(http_client, ADGUARD2_BASE, _auth2(), enable, timer)
+        result = await _post_protection(http_client, ADGUARD2_BASE, _p2_auth(), enable, timer)
         if "error" in result:
             return result
         if not enable and timer and timer > 0:
-            _reenable2_task = asyncio.create_task(_reenable_after(http_client, ADGUARD2_BASE, _auth2(), timer))
+            _reenable2_task = asyncio.create_task(_reenable_after(http_client, ADGUARD2_BASE, _p2_auth(), timer))
         return result
     except Exception:
         logger.exception("toggle_p2_blocking failed")
         return {"error": "internal error"}
 
 
-async def _do_filter_update(http_client: httpx.AsyncClient, base: str, auth: tuple[str, str]) -> dict:
+async def _do_filter_update(http_client: httpx.AsyncClient, base: str, auth: httpx.Auth) -> dict:
     try:
         resp = await http_client.post(
             f"{base}/filtering/refresh",
@@ -223,11 +288,11 @@ async def _do_filter_update(http_client: httpx.AsyncClient, base: str, auth: tup
 
 
 async def trigger_filter_update(http_client: httpx.AsyncClient) -> dict:
-    return await _do_filter_update(http_client, ADGUARD_BASE, _auth())
+    return await _do_filter_update(http_client, ADGUARD_BASE, _p1_auth())
 
 
 async def trigger_p2_gravity_update(http_client: httpx.AsyncClient) -> dict:
-    return await _do_filter_update(http_client, ADGUARD2_BASE, _auth2())
+    return await _do_filter_update(http_client, ADGUARD2_BASE, _p2_auth())
 
 
 async def _broadcast(events: list[dict], clients: set | None = None) -> None:
@@ -263,12 +328,23 @@ def remove_p2_ws_client(q: asyncio.Queue) -> None:
     _adguard2_ws_clients.discard(q)
 
 
-async def drop_session(_http_client: httpx.AsyncClient) -> None:
-    pass  # Basic Auth is stateless; nothing to invalidate
+async def _logout(http_client: httpx.AsyncClient, base: str, creds: tuple[str, str]) -> None:
+    s = _sessions.get((base, creds))
+    if not s or not s.cookie:
+        return
+    cookie, s.cookie = s.cookie, None
+    try:
+        await http_client.get(f"{base}/logout", headers={"Cookie": f"agh_session={cookie}"}, timeout=1.5)
+    except Exception:
+        pass
 
 
-async def drop_p2_session(_http_client: httpx.AsyncClient) -> None:
-    pass  # Basic Auth is stateless; nothing to invalidate
+async def drop_session(http_client: httpx.AsyncClient) -> None:
+    await _logout(http_client, ADGUARD_BASE, _auth())
+
+
+async def drop_p2_session(http_client: httpx.AsyncClient) -> None:
+    await _logout(http_client, ADGUARD2_BASE, _auth2())
 
 
 def reset_watermark() -> None:
@@ -282,7 +358,7 @@ def reset_p2_watermark() -> None:
 
 
 async def _poll_tick(
-    http_client: httpx.AsyncClient, base: str, auth: tuple[str, str], last_q_time: float
+    http_client: httpx.AsyncClient, base: str, auth: httpx.Auth, last_q_time: float
 ) -> tuple[float, list[dict] | None]:
     """Run one query-log poll. Returns (new_watermark, events).
 
@@ -358,7 +434,7 @@ async def query_poller(http_client: httpx.AsyncClient) -> None:
             continue
         try:
             _adguard_last_q_time, events = await _poll_tick(
-                http_client, ADGUARD_BASE, _auth(), _adguard_last_q_time
+                http_client, ADGUARD_BASE, _p1_auth(), _adguard_last_q_time
             )
             if events:
                 await _broadcast(events, _adguard_ws_clients)
@@ -376,7 +452,7 @@ async def query_p2_poller(http_client: httpx.AsyncClient) -> None:
             continue
         try:
             _adguard2_last_q_time, events = await _poll_tick(
-                http_client, ADGUARD2_BASE, _auth2(), _adguard2_last_q_time
+                http_client, ADGUARD2_BASE, _p2_auth(), _adguard2_last_q_time
             )
             if events:
                 await _broadcast(events, _adguard2_ws_clients)
