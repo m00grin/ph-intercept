@@ -9,6 +9,8 @@ A Pi-hole, AdGuard Home, and Technitium DNS dashboard that runs as a standalone 
 
 Designed to be dropped in alongside an existing Pi-hole v6 setup with no extra dependencies. Two instances can run side by side in [local 2-player split-screen](#local-2-player-mode).
 
+Try the [live demo](https://ph-intercept.com/demo/) in your browser first, no install needed.
+
 <img alt="ph-intercept shooting down blocked DNS queries live" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/demo.gif" />
 
 | Starfield | Nebula | Outrun |
