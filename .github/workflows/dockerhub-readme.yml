@@ -36,5 +36,5 @@ jobs:
           username: ${{ vars.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
           repository: ${{ vars.DOCKERHUB_USERNAME }}/ph-intercept
-          short-description: "Real-time Pi-hole, AdGuard Home & Technitium dashboard. Blocked DNS queries get shot down."
+          short-description: "Live Pi-hole, AdGuard Home & Technitium visualizer and dashboard. Blocked DNS queries get shot down."
           readme-filepath: ${{ runner.temp }}/dockerhub-README.md
