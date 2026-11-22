@@ -19,6 +19,7 @@ All notable changes to ph-intercept are documented here.
 
 - **One compose for every DNS server** -- the main `compose.yaml` now works for Pi-hole, AdGuard Home, Technitium, and Blocky. The AdGuard and Technitium guides keep their copy-paste composes, filled in for each, and shrink to what's specific to that server.
 - **AdGuard Home's list panel reads BLOCKLIST** -- it said FILTER. AdGuard Home 1.0 calls these lists "Blocklists" (under Filters), with a "Check for updates" button, so the HUD now uses AdGuard's own word, as it already did for Pi-hole (GRAVITY), Technitium (BLOCK LIST), and Blocky (DENYLIST).
+- **Reproducible, verified image builds** -- every Python package in the image, including the ones the app's libraries pull in, is now installed from a lock file with exact versions and checksums (`--require-hashes`), and the base image is pinned by digest. Before, only the four direct dependencies had versions, so two builds of the same release could differ (and did: the CA bundle package changed between builds). Updates still arrive weekly as reviewed Dependabot pull requests. Alpine's own packages are still upgraded at build time on purpose, so security fixes land between base image releases; each release's SBOM records exactly what went in.
 - **Official provider icons** -- the Pi-hole, AdGuard Home, Technitium, and Blocky icons now come from each project's own artwork, and Technitium's grid logo is drawn with sharp edges at any display scaling.
 
 ### Fixed

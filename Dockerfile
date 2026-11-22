@@ -1,11 +1,11 @@
-FROM python:3.15-alpine3.24
+FROM python:3.15-alpine3.24@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 ARG TARGETVARIANT
 RUN --mount=type=bind,source=requirements.txt,target=requirements.txt \
     apk upgrade --no-cache \
     && if [ "$TARGETVARIANT" = "v6" ]; then export PIP_NO_BINARY=markupsafe; fi \
-    && pip install --no-cache-dir --root-user-action=ignore -r requirements.txt \
+    && pip install --no-cache-dir --root-user-action=ignore --require-hashes -r requirements.txt \
     && pip uninstall --root-user-action=ignore -y pip \
     && PYLIB=$(python -c 'import sysconfig; print(sysconfig.get_path("stdlib"))') \
     && rm -rf "$PYLIB"/ensurepip "$PYLIB"/idlelib "$PYLIB"/tkinter \
