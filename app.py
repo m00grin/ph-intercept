@@ -1,6 +1,7 @@
 """ph-intercept - DNS game (Pi-hole, AdGuard Home, Technitium, and Blocky)."""
 
 import asyncio
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -15,12 +16,22 @@ from starlette.templating import Jinja2Templates
 
 from core.config import (
     BG_MODE, BG_IMAGE, PROVIDER, READ_ONLY, RETURN_URL, SKY_PRESET, SKY_PRESETS,
-    HIDE_CLIENT, HIDE_DOMAIN,
+    HIDE_CLIENT, HIDE_DOMAIN, SIDE1, SIDE2, RESOLVED, DASHBOARD_OVERRIDE,
     TWO_PLAYER_LOCAL_CONFIGURED, TWO_PLAYER_ENABLED, P2_DASHBOARD, P2_VERIFY_SSL,
 )
 from core import config as _config
+from core import settings as _settings
+from core.detect import identify
 from core.multiplayer import get_status as mp_status, set_mode as mp_set_mode
-from core.providers import p2_config_error, surface
+from core.providers import Slot, p2_config_error, surface
+
+logger = logging.getLogger("ph-intercept")
+if not logger.handlers:
+    # Same bare-message format the default warning output already uses, plus the INFO startup report.
+    _handler = logging.StreamHandler()
+    _handler.setFormatter(logging.Formatter("%(message)s"))
+    logger.addHandler(_handler)
+    logger.setLevel(logging.INFO)
 
 # Dashboard link and TLS verification for the primary instance, per provider.
 _P1_SETTINGS = {
@@ -29,12 +40,24 @@ _P1_SETTINGS = {
     "technitium": ("TECHNITIUM_DASHBOARD", "TECHNITIUM_VERIFY_SSL"),
     "blocky": ("BLOCKY_DASHBOARD", "BLOCKY_VERIFY_SSL"),
 }
-_dash_name, _ssl_name = _P1_SETTINGS.get(PROVIDER, _P1_SETTINGS["pihole"])
-_DASHBOARD = getattr(_config, _dash_name)
-_VERIFY_SSL = getattr(_config, _ssl_name)
+
+
+def _p1_settings(provider: str) -> tuple[str, bool]:
+    dash_name, ssl_name = _P1_SETTINGS.get(provider, _P1_SETTINGS["pihole"])
+    return DASHBOARD_OVERRIDE[1] or getattr(_config, dash_name), getattr(_config, ssl_name)
+
+
+# A legacy side has its provider at import and runs exactly as before 1.6. A
+# BLOCKER_* side goes through a Slot, bound once startup has confirmed (or
+# detected) which server answers.
+if SIDE1.style == "legacy":
+    _DASHBOARD, _VERIFY_SSL = _p1_settings(PROVIDER)
+    _P1 = surface(PROVIDER, 1)
+else:
+    _DASHBOARD, _VERIFY_SSL = ("", _config.neutral_verify(1)) if not SIDE1.provider else _p1_settings(SIDE1.provider)
+    _P1 = Slot(1)
 
 # Module-level names, so route handlers (and tests) see one shape for every provider.
-_P1 = surface(PROVIDER, 1)
 get_stats = _P1.get_stats
 toggle_blocking = _P1.toggle_blocking
 trigger_filter_update = _P1.trigger_filter_update
@@ -44,10 +67,11 @@ remove_ws_client = _P1.remove_ws_client
 reset_watermark = _P1.reset_watermark
 drop_session = _P1.drop_session
 
-# The second instance mirrors the primary provider.
-_p2_validate = p2_config_error(PROVIDER)
+_P2_DASHBOARD = P2_DASHBOARD
+_P2_VERIFY_SSL = P2_VERIFY_SSL
+_P2_KNOWN = SIDE2.style == "legacy" and bool(SIDE2.provider)
 if TWO_PLAYER_LOCAL_CONFIGURED:
-    _P2 = surface(PROVIDER, 2)
+    _P2 = surface(SIDE2.provider, 2) if _P2_KNOWN else Slot(2)
     get_p2_stats = _P2.get_stats
     toggle_p2_blocking = _P2.toggle_blocking
     trigger_p2_gravity_update = _P2.trigger_filter_update
@@ -56,19 +80,137 @@ if TWO_PLAYER_LOCAL_CONFIGURED:
     remove_p2_ws_client = _P2.remove_ws_client
     reset_p2_watermark = _P2.reset_watermark
     drop_p2_session = _P2.drop_session
+else:
+    _P2 = None
 
 _http_client: httpx.AsyncClient | None = None
 _http_client2: httpx.AsyncClient | None = None
 
 
+def _side_provider(slot: int) -> str:
+    target = _P1 if slot == 1 else _P2
+    if isinstance(target, Slot):
+        return target.provider or ""
+    if slot == 1:
+        return PROVIDER
+    return SIDE2.provider or ""
+
+
+def _secret_state(provider: str, slot: int, fld: str) -> str:
+    name = _settings.legacy_name(provider, slot, fld)
+    return "set" if RESOLVED.env.get(name, "") else "not set"
+
+
+def _report_side(slot: int) -> None:
+    side = SIDE1 if slot == 1 else SIDE2
+    if slot == 2 and not TWO_PLAYER_LOCAL_CONFIGURED:
+        logger.info("Player 2: not configured")
+        return
+    provider = _side_provider(slot)
+    target = _P1 if slot == 1 else _P2
+    if not provider:
+        err = target.error if isinstance(target, Slot) else None
+        logger.info("Player %d: %s", slot, f"not started: {err}" if err else "waiting for the DNS server")
+        return
+    style = (f"{_settings.neutral_prefix(slot)}_* settings" if side.style == "new"
+             else f"{_settings.SPEC[provider]['prefix']}{'' if slot == 1 else '2'}_* settings")
+    url = RESOLVED.env.get(_settings.legacy_name(provider, slot, "url"), "") or "(default)"
+    creds = [f"{fld} {_secret_state(provider, slot, fld)}"
+             for fld in ("username", "password", "token") if fld in _settings.SPEC[provider]["fields"]]
+    logger.info("Player %d: %s at %s, from %s%s", slot, _settings.NAMES[provider], url, style,
+                (", " + ", ".join(creds)) if creds else "")
+    for note in side.notes:
+        logger.info("Player %d: %s", slot, note)
+    for name in _settings.unused_fields(side, RESOLVED.source):
+        logger.info("Player %d: %s isn't needed for %s, so it's ignored", slot, name, _settings.NAMES[provider])
+
+
+async def _settle(slot: int, client: httpx.AsyncClient) -> None:
+    """Confirm or detect a BLOCKER_* side's provider, then bind it. Strict: a
+    config error or a server that matches no provider (or several) is reported
+    and the side stays off; only an unreachable server is retried."""
+    global _DASHBOARD, _VERIFY_SSL, _P2_DASHBOARD, _P2_VERIFY_SSL
+    side = SIDE1 if slot == 1 else SIDE2
+    target: Slot = _P1 if slot == 1 else _P2
+    if side.error:
+        target.fail(side.error)
+        logger.error("Player %d not started: %s", slot, side.error)
+        return
+    delay = 5.0
+    while True:
+        found, reason = await identify(client, side.root)
+        if side.provider and (found in (None, side.provider)):
+            if found is None:
+                logger.info("Player %d: could not confirm %s at %s (%s); using %s as configured",
+                            slot, _settings.NAMES[side.provider], side.root, reason, side.provider)
+            break
+        if side.provider and found != side.provider:
+            msg = (f"{_settings.neutral_prefix(slot)}_TYPE says {side.provider}, but "
+                   f"{side.root} answers like {_settings.NAMES[found]}")
+            target.fail(msg)
+            logger.error("Player %d not started: %s", slot, msg)
+            return
+        if found:
+            side.provider = found
+            break
+        if reason != "unreachable":
+            msg = (f"could not tell which DNS server is at {side.root}: {reason}. "
+                   f"Check {_settings.neutral_prefix(slot)}_URL, or set {_settings.neutral_prefix(slot)}_TYPE")
+            target.fail(msg)
+            logger.error("Player %d not started: %s", slot, msg)
+            return
+        target.fail(f"waiting for the DNS server at {side.root}")
+        logger.warning("Player %d: no answer from %s yet; retrying in %ds", slot, side.root, int(delay))
+        await asyncio.sleep(delay)
+        delay = min(delay * 2, 60.0)
+    err = _settings.credential_error(side, RESOLVED.env)
+    if err:
+        target.fail(err)
+        logger.error("Player %d not started: %s", slot, err)
+        return
+    if slot == 1:
+        _DASHBOARD, _VERIFY_SSL = _p1_settings(side.provider)
+    else:
+        _, _P2_DASHBOARD, _P2_VERIFY_SSL = _config.p2_settings(side.provider)
+    target.bind(side.provider)
+    if slot == 1 and isinstance(_P2, Slot) and SIDE2.style == "legacy":
+        SIDE2.provider = side.provider
+        _, _P2_DASHBOARD, _P2_VERIFY_SSL = _config.p2_settings(side.provider)
+        _P2.bind(side.provider)
+        _report_side(2)
+    _report_side(slot)
+
+
+async def _p2_validate(http_client) -> str | None:
+    if isinstance(_P2, Slot) and not _P2.provider:
+        return f"Player 2 isn't ready: {_P2.error or 'waiting for the DNS server'}"
+    return await p2_config_error(_side_provider(2) or "pihole")(http_client)
+
+
+def _client(verify: bool) -> httpx.AsyncClient:
+    return httpx.AsyncClient(timeout=1.5, headers={"User-Agent": "ph-intercept"}, verify=verify)
+
+
 @asynccontextmanager
 async def lifespan(_app):
     global _http_client, _http_client2
-    _http_client = httpx.AsyncClient(timeout=1.5, headers={"User-Agent": "ph-intercept"}, verify=_VERIFY_SSL)
+    _http_client = _client(_VERIFY_SSL)
     tasks = [asyncio.create_task(query_poller(_http_client))]
     if TWO_PLAYER_LOCAL_CONFIGURED:
-        _http_client2 = httpx.AsyncClient(timeout=1.5, headers={"User-Agent": "ph-intercept"}, verify=P2_VERIFY_SSL)
+        _http_client2 = _client(_P2_VERIFY_SSL)
         tasks.append(asyncio.create_task(query_p2_poller(_http_client2)))
+    for note in RESOLVED.notes:
+        logger.warning(note)
+    if isinstance(_P1, Slot):
+        tasks.append(asyncio.create_task(_settle(1, _http_client)))
+    else:
+        _report_side(1)
+    if isinstance(_P2, Slot) and SIDE2.style == "new":
+        tasks.append(asyncio.create_task(_settle(2, _http_client2)))
+    elif _P2 is not None and not isinstance(_P2, Slot):
+        _report_side(2)
+    elif _P2 is None:
+        _report_side(2)
     yield
     for t in tasks:
         t.cancel()
@@ -152,13 +294,24 @@ class ResponseHeaderMiddleware(BaseHTTPMiddleware):
         return response
 
 
+async def _await_settled(target, seconds: float = 3.0) -> None:
+    if isinstance(target, Slot) and not target.provider and not target.error:
+        try:
+            await asyncio.wait_for(target.bound.wait(), seconds)
+        except TimeoutError:
+            pass
+
+
 async def index(request: Request) -> HTMLResponse:
     preset = SKY_PRESETS.get(SKY_PRESET, SKY_PRESETS["summer_triangle"])
+    await _await_settled(_P1)
+    await _await_settled(_P2)
     return templates.TemplateResponse(request, "index.html", {
         "bg_mode": BG_MODE,
-        "provider": PROVIDER,
+        "provider": _side_provider(1),
+        "p2_provider": _side_provider(2),
         "pihole_dashboard": _DASHBOARD,
-        "p2_dashboard": P2_DASHBOARD,
+        "p2_dashboard": _P2_DASHBOARD,
         "two_player_enabled": TWO_PLAYER_ENABLED,
         "read_only": READ_ONLY,
         "hide_client": HIDE_CLIENT,
@@ -176,11 +329,18 @@ async def index(request: Request) -> HTMLResponse:
     })
 
 
+def _with_provider(target, payload: dict) -> JSONResponse:
+    # A BLOCKER_* side reports its provider, so a page loaded before detection can refresh.
+    if isinstance(target, Slot) and target.provider:
+        payload["provider"] = target.provider
+    return JSONResponse(payload)
+
+
 async def pihole_stats(_request: Request) -> JSONResponse:
     data = await get_stats(_http_client)
     if not data:
-        return JSONResponse({})
-    return JSONResponse({
+        return _with_provider(_P1, {})
+    return _with_provider(_P1, {
         "percent":     data.get("percent"),
         "queries":     data.get("queries"),
         "blocked":     data.get("blocked"),
@@ -236,8 +396,8 @@ async def pihole2_stats(_request: Request) -> JSONResponse:
         return JSONResponse({})
     data = await get_p2_stats(_http_client2)
     if not data:
-        return JSONResponse({})
-    return JSONResponse({
+        return _with_provider(_P2, {})
+    return _with_provider(_P2, {
         "percent":     data.get("percent"),
         "queries":     data.get("queries"),
         "blocked":     data.get("blocked"),

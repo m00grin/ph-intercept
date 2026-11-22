@@ -18,10 +18,25 @@ OMIT = {
     "TECHNITIUM2_QUERY_LOG_CLASS": "inherits the primary value when unset; a blank Unraid field would override that",
 }
 
-USER_SUPPLIED = {"PIHOLE_URL", "ADGUARD_URL", "TECHNITIUM_URL"}
+USER_SUPPLIED = {"PIHOLE_URL", "ADGUARD_URL", "TECHNITIUM_URL", "BLOCKER_URL"}
+
+
+def legacy_names() -> set[str]:
+    """Pre-1.6 names that a BLOCKER_* name now covers. New installs get the BLOCKER_*
+    fields, so these may be left out of the template; Unraid never rewrites an installed
+    container's saved template, so existing installs keep theirs."""
+    sys.path.insert(0, str(ROOT))
+    from core.settings import SPEC
+    names = {"PROVIDER"}
+    for spec in SPEC.values():
+        for slot in ("", "2"):
+            names |= {f"{spec['prefix']}{slot}_{suffix}" for suffix in spec["fields"].values()}
+            names |= {f"{spec['prefix']}_IGNORE_DOMAINS", f"{spec['prefix']}_IGNORE_CLIENTS"}
+    return names
 SECRET = re.compile(r"PASSWORD|TOKEN|TOTP")
 
-ENV_READ = re.compile(r"""os\.(?:environ\.get|getenv)\(\s*["']([A-Z0-9_]+)["']\s*(?:,\s*(["'])(.*?)\2)?""")
+ENV_READ = re.compile(r"""(?:os\.(?:environ\.get|getenv)|_env\.get)\(\s*["']([A-Z0-9_]+)["']\s*(?:,\s*(["'])(.*?)\2)?""")
+NEUTRAL_ENV = re.compile(r'"(BLOCKER2?_[A-Z0-9_]+)": "([^"]*)"')
 
 
 class FetchError(Exception):
@@ -37,6 +52,10 @@ def code_env() -> dict[str, str | None]:
                 found.setdefault(name, None)
             else:
                 found[name] = default
+    settings = (ROOT / "core" / "settings.py").read_text()
+    block = required(r"^NEUTRAL_ENV = \{(.*?)^\}", settings, "NEUTRAL_ENV in core/settings.py", re.S | re.M).group(1)
+    for name, default in NEUTRAL_ENV.findall(block):
+        found[name] = default
     return found
 
 
@@ -83,7 +102,7 @@ def check(root: ET.Element, env: dict[str, str | None]) -> list[str]:
     for dup in sorted({t for t in targets if targets.count(t) > 1}):
         errors.append(f"{dup}: listed more than once")
 
-    for name in sorted(set(env) - set(variables) - set(OMIT)):
+    for name in sorted(set(env) - set(variables) - set(OMIT) - legacy_names()):
         errors.append(f"{name}: read by the code but missing from the template")
     for name in sorted(set(variables) - set(env)):
         errors.append(f"{name}: in the template but the code no longer reads it")
@@ -112,9 +131,13 @@ def check(root: ET.Element, env: dict[str, str | None]) -> list[str]:
         return set((c.get("Default") or "").split("|")) if c is not None else set()
 
     config_py = (ROOT / "core" / "config.py").read_text()
-    providers = set(re.findall(r'"(\w+)"', required(r"PROVIDER not in \(([^)]*)\)", config_py, "the PROVIDER list").group(1)))
-    if dropdown("PROVIDER") != providers:
+    settings_py = (ROOT / "core" / "settings.py").read_text()
+    providers = set(re.findall(r'"(\w+)"', required(r"^PROVIDERS = \(([^)]*)\)", settings_py, "the PROVIDERS list", re.M).group(1)))
+    if "PROVIDER" in variables and dropdown("PROVIDER") != providers:
         errors.append(f"PROVIDER: dropdown {sorted(dropdown('PROVIDER'))} != code {sorted(providers)}")
+    for name in ("BLOCKER_TYPE", "BLOCKER2_TYPE"):
+        if name in variables and len(dropdown(name)) > 1 and dropdown(name) - {""} != providers:
+            errors.append(f"{name}: dropdown {sorted(dropdown(name))} != code {sorted(providers)} plus blank")
     sky_block = required(r"SKY_PRESETS = \{(.*?)\n\}", config_py, "SKY_PRESETS", re.S).group(1)
     skies = set(re.findall(r'^\s*"(\w+)":', sky_block, re.M))
     if dropdown("SKY_PRESET") != skies:

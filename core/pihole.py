@@ -1,19 +1,22 @@
 import asyncio
 import json
 import logging
-import os
 import time
 
 import httpx
 
 from .config import (
-    PIHOLE_BASE, PIHOLE2_URL, PIHOLE2_PASSWORD, IGNORE_DOMAIN_PATTERNS, IGNORE_CLIENT_PATTERNS,
-    HIDE_CLIENT, P2_PLACEHOLDER,
+    PIHOLE_BASE, PIHOLE_PASSWORD, PIHOLE2_URL, PIHOLE2_PASSWORD,
+    HIDE_CLIENT, P2_PLACEHOLDER, env_prefix, ignore_patterns,
 )
 from .notice import clear, warn_once
 from .redact import public_domain
 
 logger = logging.getLogger(__name__)
+
+_E1, _E2 = env_prefix("PIHOLE", 1), env_prefix("PIHOLE", 2)
+_IGNORE_DOMAINS_1, _IGNORE_CLIENTS_1 = ignore_patterns("pihole", 1)
+_IGNORE_DOMAINS_2, _IGNORE_CLIENTS_2 = ignore_patterns("pihole", 2)
 
 _pihole_sid: str | None = None
 _pihole_auth_lock: asyncio.Lock = asyncio.Lock()
@@ -53,7 +56,8 @@ def _login_problem(label: str, url: str, env: str, resp: httpx.Response | None, 
     try:
         body = resp.json()
     except Exception:
-        warn_once(label, f"{label}: unexpected HTTP {resp.status_code} reply from {url}/auth. Check {env}_URL points at the Pi-hole v6 API (ends in /api)")
+        where = "the address of your Pi-hole web interface" if env.startswith("BLOCKER") else "the Pi-hole v6 API (ends in /api)"
+        warn_once(label, f"{label}: unexpected HTTP {resp.status_code} reply from {url}/auth. Check {env}_URL points at {where}")
         return
     err = body.get("error") if isinstance(body, dict) else None
     session = body.get("session") if isinstance(body, dict) else None
@@ -81,7 +85,7 @@ async def _pihole_ensure_auth(http_client: httpx.AsyncClient) -> bool:
         try:
             resp = await http_client.post(
                 f"{PIHOLE_BASE}/auth",
-                content=json.dumps({"password": os.environ.get("PIHOLE_PASSWORD", "")}),
+                content=json.dumps({"password": PIHOLE_PASSWORD}),
                 headers={"Content-Type": "application/json"},
                 timeout=_LOGIN_TIMEOUT,
             )
@@ -92,9 +96,9 @@ async def _pihole_ensure_auth(http_client: httpx.AsyncClient) -> bool:
                 _login_backoff.pop("Pi-hole", None)
                 clear("Pi-hole")
                 return True
-            _login_problem("Pi-hole", PIHOLE_BASE, "PIHOLE", resp, None)
+            _login_problem("Pi-hole", PIHOLE_BASE, _E1, resp, None)
         except Exception as exc:
-            _login_problem("Pi-hole", PIHOLE_BASE, "PIHOLE", resp, exc)
+            _login_problem("Pi-hole", PIHOLE_BASE, _E1, resp, exc)
         _login_failed("Pi-hole", resp)
         return False
 
@@ -293,7 +297,7 @@ async def query_poller(http_client: httpx.AsyncClient) -> None:
             events: list[dict] = []
             for q in new_qs[:20]:
                 domain = q.get("domain") or q.get("name", "unknown")
-                if IGNORE_DOMAIN_PATTERNS and any(p.search(domain) for p in IGNORE_DOMAIN_PATTERNS):
+                if _IGNORE_DOMAINS_1 and any(p.search(domain) for p in _IGNORE_DOMAINS_1):
                     continue
                 status_raw = q.get("status")
                 if isinstance(status_raw, int):
@@ -307,8 +311,8 @@ async def query_poller(http_client: httpx.AsyncClient) -> None:
                 else:
                     client_label = str(client_raw) if client_raw else ""
                     client_ids = (client_label,)
-                if IGNORE_CLIENT_PATTERNS and any(
-                    p.search(c) for p in IGNORE_CLIENT_PATTERNS for c in client_ids if c
+                if _IGNORE_CLIENTS_1 and any(
+                    p.search(c) for p in _IGNORE_CLIENTS_1 for c in client_ids if c
                 ):
                     continue
                 if not is_blocked:
@@ -356,7 +360,7 @@ async def _p2_ensure_auth(http_client: httpx.AsyncClient) -> bool:
         try:
             resp = await http_client.post(
                 f"{PIHOLE2_URL}/auth",
-                content=json.dumps({"password": os.environ.get("PIHOLE2_PASSWORD", "")}),
+                content=json.dumps({"password": PIHOLE2_PASSWORD}),
                 headers={"Content-Type": "application/json"},
                 timeout=_LOGIN_TIMEOUT,
             )
@@ -366,9 +370,9 @@ async def _p2_ensure_auth(http_client: httpx.AsyncClient) -> bool:
                 _login_backoff.pop("Pi-hole 2", None)
                 clear("Pi-hole 2")
                 return True
-            _login_problem("Pi-hole 2", PIHOLE2_URL, "PIHOLE2", resp, None)
+            _login_problem("Pi-hole 2", PIHOLE2_URL, _E2, resp, None)
         except Exception as exc:
-            _login_problem("Pi-hole 2", PIHOLE2_URL, "PIHOLE2", resp, exc)
+            _login_problem("Pi-hole 2", PIHOLE2_URL, _E2, resp, exc)
         _login_failed("Pi-hole 2", resp)
         return False
 
@@ -485,7 +489,7 @@ async def query_p2_poller(http_client: httpx.AsyncClient) -> None:
             events: list[dict] = []
             for qq in new_qs[:20]:
                 domain = qq.get("domain") or qq.get("name", "unknown")
-                if IGNORE_DOMAIN_PATTERNS and any(p.search(domain) for p in IGNORE_DOMAIN_PATTERNS):
+                if _IGNORE_DOMAINS_2 and any(p.search(domain) for p in _IGNORE_DOMAINS_2):
                     continue
                 status_raw = qq.get("status")
                 if isinstance(status_raw, int):
@@ -499,8 +503,8 @@ async def query_p2_poller(http_client: httpx.AsyncClient) -> None:
                 else:
                     client_label = str(client_raw) if client_raw else ""
                     client_ids = (client_label,)
-                if IGNORE_CLIENT_PATTERNS and any(
-                    p.search(c) for p in IGNORE_CLIENT_PATTERNS for c in client_ids if c
+                if _IGNORE_CLIENTS_2 and any(
+                    p.search(c) for p in _IGNORE_CLIENTS_2 for c in client_ids if c
                 ):
                     continue
                 if not is_blocked:
@@ -529,13 +533,13 @@ async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
     """Validate the second Pi-hole's config and probe it. Returns an error string,
     or None when the instance is usable."""
     if not PIHOLE2_URL:
-        return "PIHOLE2_URL is not set in your configuration"
+        return f"{_E2}_URL is not set in your configuration"
     if P2_PLACEHOLDER in PIHOLE2_URL:
-        return "PIHOLE2_URL still has the default placeholder value. Update it in your compose.yaml"
+        return f"{_E2}_URL still has the default placeholder value. Update it in your compose.yaml"
     if not (PIHOLE2_URL.startswith("http://") or PIHOLE2_URL.startswith("https://")):
-        return "PIHOLE2_URL must start with http:// or https://"
+        return f"{_E2}_URL must start with http:// or https://"
     if not PIHOLE2_PASSWORD:
-        return "PIHOLE2_PASSWORD is not set in your configuration"
+        return f"{_E2}_PASSWORD is not set in your configuration"
     if http_client:
         try:
             resp = await http_client.post(
@@ -544,11 +548,11 @@ async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
             )
             session = resp.json().get("session", {})
         except Exception:
-            return "Could not reach Pi-hole 2. Check PIHOLE2_URL"
+            return f"Could not reach Pi-hole 2. Check {_E2}_URL"
         if resp.status_code == 429:
             return "Pi-hole 2 is rate-limiting logins. Wait a few seconds and try again"
         if not session.get("valid"):
-            return "Pi-hole 2 authentication failed. Check PIHOLE2_PASSWORD"
+            return f"Pi-hole 2 authentication failed. Check {_E2}_PASSWORD"
         if session.get("sid"):
             try:
                 await http_client.delete(

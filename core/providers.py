@@ -3,9 +3,10 @@
 Each provider module (core.pihole, core.adguard, ...) exposes the same set of
 operations under slightly different historical names. This maps them to one
 shape, per instance, so app.py never branches on the provider. Instance 2 takes
-its own provider argument; today config passes the same one as instance 1.
+its own provider argument, so the two sides can run different providers.
 """
 
+import asyncio
 import importlib
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -72,3 +73,72 @@ def p2_config_error(provider: str) -> Callable[..., Any]:
     if provider not in PROVIDERS:
         provider = "pihole"
     return importlib.import_module(f"core.{provider}").p2_config_error
+
+
+class Slot:
+    """One side whose provider is settled at startup (a BLOCKER_* side).
+
+    Exposes the same operations as a Surface. Until bind() it answers with no
+    stats and a plain error, keeps SSE clients waiting, and parks the poller."""
+
+    def __init__(self, slot: int):
+        self.slot = slot
+        self.target: Surface | None = None
+        self.error: str | None = None
+        self.bound = asyncio.Event()
+        self._clients: set = set()
+
+    @property
+    def provider(self) -> str | None:
+        return self.target.provider if self.target else None
+
+    def bind(self, provider: str) -> None:
+        self.target = surface(provider, self.slot)
+        self.error = None
+        for q in self._clients:
+            self.target.add_ws_client(q)
+        self._clients.clear()
+        self.bound.set()
+
+    def fail(self, error: str) -> None:
+        self.error = error
+
+    def _unavailable(self) -> dict:
+        return {"error": self.error or "waiting for the DNS server"}
+
+    async def get_stats(self, http_client):
+        return await self.target.get_stats(http_client) if self.target else None
+
+    async def toggle_blocking(self, http_client, enable: bool, timer: int | None = None) -> dict:
+        if not self.target:
+            return self._unavailable()
+        return await self.target.toggle_blocking(http_client, enable, timer)
+
+    async def trigger_filter_update(self, http_client) -> dict:
+        if not self.target:
+            return self._unavailable()
+        return await self.target.trigger_filter_update(http_client)
+
+    async def query_poller(self, http_client) -> None:
+        await self.bound.wait()
+        await self.target.query_poller(http_client)
+
+    def add_ws_client(self, q) -> None:
+        if self.target:
+            self.target.add_ws_client(q)
+        else:
+            self._clients.add(q)
+
+    def remove_ws_client(self, q) -> None:
+        self._clients.discard(q)
+        if self.target:
+            self.target.remove_ws_client(q)
+
+    def reset_watermark(self) -> None:
+        if self.target:
+            self.target.reset_watermark()
+
+    async def drop_session(self, http_client) -> None:
+        if self.target:
+            await self.target.drop_session(http_client)
+

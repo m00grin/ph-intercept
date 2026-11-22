@@ -10,8 +10,7 @@ import httpx
 
 from .config import (
     BLOCKY_BASE, BLOCKY_LOG_DIR, BLOCKY2_BASE, BLOCKY2_LOG_DIR,
-    BLOCKY_IGNORE_DOMAIN_PATTERNS, BLOCKY_IGNORE_CLIENT_PATTERNS,
-    HIDE_CLIENT, P2_PLACEHOLDER,
+    HIDE_CLIENT, P2_PLACEHOLDER, env_prefix, ignore_patterns,
 )
 from .notice import clear, warn_once
 from .redact import public_domain
@@ -43,9 +42,11 @@ class _Instance:
     """Per-instance Blocky state: the API root, the mounted log directory, and
     the tail position in today's log file."""
 
-    def __init__(self, label: str, env: str, base: str, log_dir: str):
+    def __init__(self, label: str, env: str, base: str, log_dir: str, slot: int = 1):
         self.label = label
         self.env = env
+        self.log_env = "BLOCKY" if slot == 1 else "BLOCKY2"
+        self.ignore_domains, self.ignore_clients = ignore_patterns("blocky", slot)
         self.base = base
         self.log_dir = log_dir
         self.ws_clients: set = set()
@@ -57,8 +58,9 @@ class _Instance:
         self.sizes: dict[str, int] = {}  # *_ALL.log sizes at the last scan
 
 
-_p1 = _Instance("Blocky", "BLOCKY", BLOCKY_BASE, BLOCKY_LOG_DIR)
-_p2 = _Instance("Blocky 2", "BLOCKY2", BLOCKY2_BASE, BLOCKY2_LOG_DIR)
+_p1 = _Instance("Blocky", env_prefix("BLOCKY", 1), BLOCKY_BASE, BLOCKY_LOG_DIR, slot=1)
+_p2 = _Instance("Blocky 2", env_prefix("BLOCKY", 2), BLOCKY2_BASE, BLOCKY2_LOG_DIR, slot=2)
+_E2 = _p2.env
 
 
 # ── Query log tailing ────────────────────────────────────────────────────────
@@ -76,7 +78,7 @@ def _scan_logs(inst: _Instance) -> dict[str, int] | None:
     except FileNotFoundError:
         warn_once(_log_key(inst), (
             f"{inst.label} query log: {inst.log_dir} not found. Mount Blocky's queryLog.target "
-            f"directory there read-only, or set {inst.env}_LOG_DIR"
+            f"directory there read-only, or set {inst.log_env}_LOG_DIR"
         ))
         return None
     except OSError as e:
@@ -229,16 +231,17 @@ def _row(line: bytes) -> list[str] | None:
     return row if len(row) >= _MIN_COLS else None
 
 
-def _row_to_event(row: list[str]) -> dict | None:
+def _row_to_event(row: list[str], inst: _Instance | None = None) -> dict | None:
+    inst = inst or _p1
     domain = row[_COL_DOMAIN].strip().rstrip(".") or "unknown"
-    if BLOCKY_IGNORE_DOMAIN_PATTERNS and any(p.search(domain) for p in BLOCKY_IGNORE_DOMAIN_PATTERNS):
+    if inst.ignore_domains and any(p.search(domain) for p in inst.ignore_domains):
         return None
     ip = row[_COL_CLIENT_IP].strip()
     name = row[_COL_CLIENT_NAMES].split(";", 1)[0].strip()
     ip = "" if ip in _NO_CLIENT else ip
     name = "" if name in _NO_CLIENT else name
-    if BLOCKY_IGNORE_CLIENT_PATTERNS and any(
-        p.search(c) for p in BLOCKY_IGNORE_CLIENT_PATTERNS for c in (name, ip) if c
+    if inst.ignore_clients and any(
+        p.search(c) for p in inst.ignore_clients for c in (name, ip) if c
     ):
         return None
     rtype = row[_COL_TYPE].strip().upper()
@@ -263,7 +266,7 @@ def _fetch_events(inst: _Instance) -> list[dict]:
         row = _row(line)
         if row is None:
             continue
-        event = _row_to_event(row)
+        event = _row_to_event(row, inst)
         if event:
             events.append(event)
             if len(events) >= _MAX_EVENTS:
@@ -477,18 +480,18 @@ async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
     """Validate the second Blocky's config, API, and log mount. Returns an error
     string, or None when the instance is usable."""
     if not BLOCKY2_BASE:
-        return "BLOCKY2_URL is not set in your configuration"
+        return f"{_E2}_URL is not set in your configuration"
     if P2_PLACEHOLDER in BLOCKY2_BASE:
-        return "BLOCKY2_URL still has the default placeholder value. Update it in your compose.yaml"
+        return f"{_E2}_URL still has the default placeholder value. Update it in your compose.yaml"
     if not (BLOCKY2_BASE.startswith("http://") or BLOCKY2_BASE.startswith("https://")):
-        return "BLOCKY2_URL must start with http:// or https://"
+        return f"{_E2}_URL must start with http:// or https://"
     if http_client:
         try:
             code, body = await _get_json(http_client, _p2, "blocking/status", 3.0)
         except Exception:
             code, body = 0, None
         if code != 200 or body is None:
-            return "Could not reach Blocky 2. Check BLOCKY2_URL points at its HTTP port (ports.http)"
+            return f"Could not reach Blocky 2. Check {_E2}_URL points at its HTTP port (ports.http)"
     if not os.path.isdir(_p2.log_dir):
         return f"Blocky 2 query log not found at {_p2.log_dir}. Mount its queryLog.target there read-only"
     return None

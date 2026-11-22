@@ -40,10 +40,12 @@
     init(consts) { C = consts; },
     // Provider icon box for a menu row. A grid icon is sized to whole device pixels per cell and
     // placed on the device-pixel grid, so its edges stay sharp instead of blending.
-    iconBox(x, rowY, rowH) {
+    iconBox(x, rowY, rowH, side = 1) {
       const h = rowH - 8;
-      if (!C.PROVIDER_ICON_GRID) return { x, y: rowY + (rowH - h) / 2, w: Math.round(h * C.PROVIDER_ICON_ASPECT), h };
-      const dpr = Math.min(window.devicePixelRatio || 1, 3), g = C.PROVIDER_ICON_GRID;
+      const aspect = side === 2 ? C.P2_PROVIDER_ICON_ASPECT : C.PROVIDER_ICON_ASPECT;
+      const g = side === 2 ? C.P2_PROVIDER_ICON_GRID : C.PROVIDER_ICON_GRID;
+      if (!g) return { x, y: rowY + (rowH - h) / 2, w: Math.round(h * aspect), h };
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
       const s = Math.max(1, Math.round(h * dpr / g)) * g / dpr;
       const snap = v => Math.round(v * dpr) / dpr;
       return { x: snap(x), y: snap(rowY + (rowH - s) / 2), w: s, h: s };
@@ -469,14 +471,14 @@
             ctx.strokeStyle = 'rgba(140,160,175,0.10)'; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(smX + 30, siy + 0.5); ctx.lineTo(smX + smw - 10, siy + 0.5); ctx.stroke();
             if (ph2Hov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(ph2Hb.x, ph2Hb.y, ph2Hb.w, ph2Hb.h); }
-            const { x: _icon2X, y: _icon2Y, w: _icon2W, h: _icon2H } = HUD.iconBox(smX + 12, siy, smPhRowH);
-            if (C._phIcon.complete && C._phIcon.naturalWidth > 0) {
+            const { x: _icon2X, y: _icon2Y, w: _icon2W, h: _icon2H } = HUD.iconBox(smX + 12, siy, smPhRowH, 2);
+            if (C._p2Icon.complete && C._p2Icon.naturalWidth > 0) {
               ctx.save(); ctx.globalAlpha = ph2Hov ? 0.88 : 0.45;
-              ctx.drawImage(C._phIcon, _icon2X, _icon2Y, _icon2W, _icon2H);
+              ctx.drawImage(C._p2Icon, _icon2X, _icon2Y, _icon2W, _icon2H);
               ctx.restore();
             }
             ctx.textAlign = 'left';
-            const _ph2Lbl = C.PROVIDER_NAME + ' 2';
+            const _ph2Lbl = C.P2_PROVIDER_NAME + ' 2';
             const _ph2LblX = _icon2X + _icon2W + 12;
             C._fitLabelFont(_ph2Lbl, (smX + smw - 19) - _ph2LblX - 4, _fSub);
             ctx.fillStyle = ph2Hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
@@ -847,7 +849,7 @@
         // P2 shield (disable) menu
         if (C.P2.shieldMenuOpen) {
           const _p2mw = 150, _p2mItemH = 26, _p2mPad = 8;
-          const _p2mh = C.DISABLE_OPTIONS.length * _p2mItemH + _p2mPad * 2;
+          const _p2mh = C.P2_DISABLE_OPTIONS.length * _p2mItemH + _p2mPad * 2;
           const _p2menuX = Math.max(0, Math.min(S.W - _p2mw, Math.round(INT_W / 2 - _p2mw / 2)));
           const _p2menuY = SY - _p2mh - 6;
           ctx.fillStyle = 'rgba(8,11,16,0.92)'; ctx.fillRect(_p2menuX, _p2menuY, _p2mw, _p2mh);
@@ -864,7 +866,7 @@
           ctx.stroke();
           ctx.font = `${_fSub}px "Press Start 2P", monospace`;
           C.P2.shieldMenuPopupBox = { x: _p2menuX, y: _p2menuY, w: _p2mw, h: _p2mh };
-          C.P2.shieldMenuItems = C.DISABLE_OPTIONS.map((opt, idx) => {
+          C.P2.shieldMenuItems = C.P2_DISABLE_OPTIONS.map((opt, idx) => {
             const iy = _p2menuY + _p2mPad + idx * _p2mItemH;
             const hb = { x: _p2menuX, y: iy, w: _p2mw, h: _p2mItemH };
             const hov = S.mouseX >= hb.x && S.mouseX < hb.x + hb.w && S.mouseY >= hb.y && S.mouseY < hb.y + hb.h;
@@ -882,9 +884,9 @@
         // ── P2 STATS (INTEL) ───────────────────────────────────
         if (INTEL_W >= 50) {
           const _p2Blocked = C.P2.hudStats.blocked;
-          const _p2Allowed = C.PROVIDER === 'technitium' ? C.P2.hudStats.no_error
+          const _p2Allowed = C.P2_PROVIDER === 'technitium' ? C.P2.hudStats.no_error
             : (C.P2.hudStats.queries != null && _p2Blocked != null ? C.P2.hudStats.queries - _p2Blocked : null);
-          const _p2AllowedLabel = C.PROVIDER === 'technitium' ? 'no error' : 'allowed';
+          const _p2AllowedLabel = C.P2_PROVIDER === 'technitium' ? 'no error' : 'allowed';
           const _p2Total   = C.P2.hudStats.queries;
           const _p2Pct     = C.P2.hudStats.percent;
           const _p2PctColor = _p2Pct == null ? 'rgba(150,150,150,0.50)' : _p2Pct >= 60 ? 'rgba(50,215,120,0.85)' : _p2Pct >= 40 ? 'rgba(210,220,70,0.85)' : 'rgba(255,110,50,0.85)';

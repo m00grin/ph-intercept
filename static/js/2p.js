@@ -53,9 +53,11 @@
     </div>`;
 
     if (!off) {
-      const _p2Name = window.PROVIDER === 'adguard' ? 'ADGUARD'
-                    : window.PROVIDER === 'technitium' ? 'TECHNITIUM'
-                    : window.PROVIDER === 'blocky' ? 'BLOCKY'
+      const _p2p = window.P2_PROVIDER === undefined ? window.PROVIDER : window.P2_PROVIDER;
+      const _p2Name = _p2p === 'adguard' ? 'ADGUARD'
+                    : _p2p === 'technitium' ? 'TECHNITIUM'
+                    : _p2p === 'blocky' ? 'BLOCKY'
+                    : _p2p === '' ? 'DNS SERVER'
                     : 'PI-HOLE';
       h += `<div class="m2p-divider"></div>
       <div class="m2p-info">SECOND ${_p2Name} CONNECTED</div>`;

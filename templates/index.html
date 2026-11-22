@@ -23,7 +23,7 @@
 
 <!-- BG config injected server-side so JS doesn't need a separate fetch -->
 <script type="application/json" id="bg-config">{{ bg_config | tojson }}</script>
-<script>window.PROVIDER = {{ provider | tojson }}; window.P2_DASHBOARD = {{ p2_dashboard | tojson }}; window.TWO_PLAYER_ENABLED = {{ two_player_enabled | tojson }}; window.READ_ONLY = {{ read_only | tojson }}; window.HIDE_CLIENT = {{ hide_client | tojson }}; window.HIDE_DOMAIN = {{ hide_domain | tojson }};</script>
+<script>window.PROVIDER = {{ provider | tojson }}; window.P2_PROVIDER = {{ p2_provider | default(provider) | tojson }}; window.P2_DASHBOARD = {{ p2_dashboard | tojson }}; window.TWO_PLAYER_ENABLED = {{ two_player_enabled | tojson }}; window.READ_ONLY = {{ read_only | tojson }}; window.HIDE_CLIENT = {{ hide_client | tojson }}; window.HIDE_DOMAIN = {{ hide_domain | tojson }};</script>
 
 <div id="bg-image"></div>
 

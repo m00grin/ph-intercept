@@ -1,20 +1,22 @@
 import asyncio
 import json
 import logging
-import os
 import time
 from datetime import datetime
 
 import httpx
 
 from .config import (
-    ADGUARD_BASE, ADGUARD_IGNORE_DOMAIN_PATTERNS, ADGUARD_IGNORE_CLIENT_PATTERNS, ADGUARD2_BASE,
-    ADGUARD2_USERNAME, ADGUARD2_PASSWORD, HIDE_CLIENT, P2_PLACEHOLDER,
+    ADGUARD_BASE, ADGUARD_USERNAME, ADGUARD_PASSWORD, ADGUARD2_BASE,
+    ADGUARD2_USERNAME, ADGUARD2_PASSWORD, HIDE_CLIENT, P2_PLACEHOLDER, env_prefix, ignore_patterns,
 )
 from .notice import clear, warn_once
 from .redact import public_domain
 
 logger = logging.getLogger(__name__)
+
+_E1, _E2 = env_prefix("ADGUARD", 1), env_prefix("ADGUARD", 2)
+_IGNORE = {1: ignore_patterns("adguard", 1), 2: ignore_patterns("adguard", 2)}
 
 _adguard_ws_clients: set = set()
 _adguard_last_q_time: float = 0.0
@@ -33,17 +35,11 @@ _BLOCKED_REASONS = frozenset([
 
 
 def _auth() -> tuple[str, str]:
-    return (
-        os.environ.get("ADGUARD_USERNAME", ""),
-        os.environ.get("ADGUARD_PASSWORD", ""),
-    )
+    return (ADGUARD_USERNAME, ADGUARD_PASSWORD)
 
 
 def _auth2() -> tuple[str, str]:
-    return (
-        os.environ.get("ADGUARD2_USERNAME", ""),
-        os.environ.get("ADGUARD2_PASSWORD", ""),
-    )
+    return (ADGUARD2_USERNAME, ADGUARD2_PASSWORD)
 
 
 class _SessionAuth(httpx.Auth):
@@ -115,7 +111,7 @@ def _label(base: str) -> str:
 
 
 def _env(base: str) -> str:
-    return "ADGUARD2" if _label(base) == "AdGuard 2" else "ADGUARD"
+    return _E2 if _label(base) == "AdGuard 2" else _E1
 
 
 def _report(key: str, base: str, resp: httpx.Response | None) -> bool:
@@ -126,7 +122,9 @@ def _report(key: str, base: str, resp: httpx.Response | None) -> bool:
         warn_once(key, f"{key}: login rejected (HTTP {resp.status_code}). Check {_env(base)}_USERNAME and {_env(base)}_PASSWORD")
         return False
     if resp.status_code != 200:
-        warn_once(key, f"{key}: unexpected HTTP {resp.status_code} from {base}. Check {_env(base)}_URL points at the control API (ends in /control)")
+        where = ("the address of your AdGuard Home web interface" if _env(base).startswith("BLOCKER")
+                 else "the control API (ends in /control)")
+        warn_once(key, f"{key}: unexpected HTTP {resp.status_code} from {base}. Check {_env(base)}_URL points at {where}")
         return False
     clear(key)
     return True
@@ -394,20 +392,19 @@ async def _poll_tick(
 
     new_watermark = max(t for _, t in new_timed_qs)
 
+    ignore_domains, ignore_clients = _IGNORE[2 if _label(base) == "AdGuard 2" else 1]
     events: list[dict] = []
     for q, _ in new_timed_qs[:20]:
         domain = q.get("question", {}).get("name", "unknown")
-        if ADGUARD_IGNORE_DOMAIN_PATTERNS and any(
-            p.search(domain) for p in ADGUARD_IGNORE_DOMAIN_PATTERNS
-        ):
+        if ignore_domains and any(p.search(domain) for p in ignore_domains):
             continue
         reason = q.get("reason", "")
         is_blocked = reason in _BLOCKED_REASONS
         is_cached = q.get("cached", False)
         client_name = q.get("client_info", {}).get("name") or ""
         client_ip = q.get("client", "")
-        if ADGUARD_IGNORE_CLIENT_PATTERNS and any(
-            p.search(c) for p in ADGUARD_IGNORE_CLIENT_PATTERNS for c in (client_name, client_ip) if c
+        if ignore_clients and any(
+            p.search(c) for p in ignore_clients for c in (client_name, client_ip) if c
         ):
             continue
         client_label = client_name or client_ip
@@ -466,13 +463,13 @@ async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
     """Validate the second AdGuard's config and probe it. Returns an error string,
     or None when the instance is usable."""
     if not ADGUARD2_BASE:
-        return "ADGUARD2_URL is not set in your configuration"
+        return f"{_E2}_URL is not set in your configuration"
     if P2_PLACEHOLDER in ADGUARD2_BASE:
-        return "ADGUARD2_URL still has the default placeholder value. Update it in your compose.yaml"
+        return f"{_E2}_URL still has the default placeholder value. Update it in your compose.yaml"
     if not (ADGUARD2_BASE.startswith("http://") or ADGUARD2_BASE.startswith("https://")):
-        return "ADGUARD2_URL must start with http:// or https://"
+        return f"{_E2}_URL must start with http:// or https://"
     if not ADGUARD2_PASSWORD:
-        return "ADGUARD2_PASSWORD is not set in your configuration"
+        return f"{_E2}_PASSWORD is not set in your configuration"
     if http_client:
         try:
             resp = await http_client.get(
@@ -480,9 +477,9 @@ async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
                 auth=(ADGUARD2_USERNAME, ADGUARD2_PASSWORD),
             )
             if resp.status_code == 401:
-                return "AdGuard 2 authentication failed. Check ADGUARD2_USERNAME and ADGUARD2_PASSWORD"
+                return f"AdGuard 2 authentication failed. Check {_E2}_USERNAME and {_E2}_PASSWORD"
             if resp.status_code != 200:
-                return "Could not reach AdGuard 2. Check ADGUARD2_URL"
+                return f"Could not reach AdGuard 2. Check {_E2}_URL"
         except Exception:
-            return "Could not reach AdGuard 2. Check ADGUARD2_URL"
+            return f"Could not reach AdGuard 2. Check {_E2}_URL"
     return None
