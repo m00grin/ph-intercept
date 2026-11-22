@@ -14,6 +14,10 @@ from .redact import public_domain
 
 logger = logging.getLogger(__name__)
 
+# Watermark meaning "connected while the query log was empty": real query times are
+# Unix timestamps, so everything logged afterwards counts as new.
+_EMPTY_LOG = 1e-9
+
 _E1, _E2 = env_prefix("PIHOLE", 1), env_prefix("PIHOLE", 2)
 _IGNORE_DOMAINS_1, _IGNORE_CLIENTS_1 = ignore_patterns("pihole", 1)
 _IGNORE_DOMAINS_2, _IGNORE_CLIENTS_2 = ignore_patterns("pihole", 2)
@@ -283,6 +287,8 @@ async def query_poller(http_client: httpx.AsyncClient) -> None:
             body = resp.json()
             queries = body.get("queries") or body.get("data") or []
             if not queries:
+                if _pihole_last_q_time == 0.0:
+                    _pihole_last_q_time = _EMPTY_LOG
                 continue
 
             if _pihole_last_q_time == 0.0:
@@ -475,6 +481,8 @@ async def query_p2_poller(http_client: httpx.AsyncClient) -> None:
             body = resp.json()
             queries = body.get("queries") or body.get("data") or []
             if not queries:
+                if _p2_pihole_last_q_time == 0.0:
+                    _p2_pihole_last_q_time = _EMPTY_LOG
                 continue
 
             if _p2_pihole_last_q_time == 0.0:

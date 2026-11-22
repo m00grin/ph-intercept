@@ -54,6 +54,7 @@ class _Instance:
         self.offset = 0
         self.partial = b""
         self.warm = False
+        self.from_empty = False  # connected while no log existed: the first file is all new
         self.last_scan = 0.0
         self.sizes: dict[str, int] = {}  # *_ALL.log sizes at the last scan
 
@@ -181,6 +182,8 @@ def _tail(inst: _Instance) -> list[bytes]:
         inst.last_scan = now
         sizes = _scan_logs(inst)
         if sizes is None:
+            if not inst.warm:
+                inst.from_empty = True
             inst.path, inst.sizes = None, {}
             return []
 
@@ -193,9 +196,12 @@ def _tail(inst: _Instance) -> list[bytes]:
                 return []
         if inst.path not in sizes:
             inst.path = _likely_active(sizes)
-        inst.offset, inst.partial, inst.warm = sizes[inst.path], b"", True
+        from_empty = inst.from_empty
+        inst.offset = 0 if from_empty else sizes[inst.path]
+        inst.partial, inst.warm, inst.from_empty = b"", True, False
         inst.sizes = sizes
-        return []
+        if not from_empty:
+            return []
 
     lines: list[bytes] = []
     if sizes is not None:
@@ -403,6 +409,7 @@ async def _run_poller(inst: _Instance) -> None:
 
 def _reset(inst: _Instance) -> None:
     inst.warm = False
+    inst.from_empty = False
     inst.partial = b""
 
 

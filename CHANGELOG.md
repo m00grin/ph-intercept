@@ -29,6 +29,9 @@ All notable changes to ph-intercept are documented here.
 - **Technitium releases before 15 now work** -- they only accept the API token as a URL parameter, not the header ph-intercept sends, so stats and ships stayed empty. ph-intercept now switches to the parameter when the server asks for it. Tested on Technitium 11.5, 12.2, 13.6, 14.3, and 15.x.
 - **Turning on 2-player with a slow second server** -- the check of a second Pi-hole or AdGuard Home now gives the login 10 seconds instead of 1.5. A Pi-hole login takes about 2 seconds on a Pi Zero W, so 2-player refused to start with "Could not reach Pi-hole 2".
 
+- **First queries after connecting to an empty query log** -- with Pi-hole, AdGuard Home, or Blocky, if the query log was empty when a page connected (a fresh install, a cleared log, or a new Blocky log folder), the first batch of real queries was taken for old history and never shown. They now appear like any other. Technitium already handled this.
+- **A malformed reply from Technitium** -- a reply that was valid JSON but not an object could raise an error inside the blocking toggle. It's now treated like any other bad reply.
+
 ### Upgrading
 
 Nothing to change. Every setting from earlier releases (`PROVIDER`, `PIHOLE_URL`, `ADGUARD_PASSWORD`, `TECHNITIUM_TOKEN`, and the rest) still works exactly as before, and wins if both an older and a newer name are set. A config that uses only the older names behaves exactly as in 1.5.8. See [Older settings](README.md#older-settings).

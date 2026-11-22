@@ -25,6 +25,9 @@ _adguard_last_q_time: float = 0.0
 _adguard2_ws_clients: set = set()
 _adguard2_last_q_time: float = 0.0
 
+# Watermark meaning "connected while the query log was empty" (real times are Unix timestamps).
+_EMPTY_LOG = 1e-9
+
 _BLOCKED_REASONS = frozenset([
     "FilteredBlackList",
     "FilteredSafeBrowsing",
@@ -379,7 +382,8 @@ async def _poll_tick(
     body = resp.json()
     queries = body.get("data") or []
     if not queries:
-        return last_q_time, None
+        # Empty log at connect: everything logged from now on is new.
+        return (_EMPTY_LOG if last_q_time == 0.0 else last_q_time), None
 
     timed_qs = [(q, _parse_time(q.get("time", ""))) for q in queries]
 

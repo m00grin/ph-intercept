@@ -117,6 +117,8 @@ async def _ensure_auth(http_client: httpx.AsyncClient, inst: _Instance) -> bool:
         try:
             resp = await http_client.get(f"{inst.base}/api/user/login", params=params, timeout=5.0)
             data = resp.json()
+            if not isinstance(data, dict):
+                raise ValueError("reply is not a JSON object")
         except Exception:
             inst.last_error = "auth_failed"
             logger.debug("Technitium login failed", exc_info=True)
@@ -174,6 +176,8 @@ async def _api_call(
             f"{inst.base}/api/{path.lstrip('/')}", timeout=timeout, **_auth_args(inst, inst.token, params),
         )
         data = resp.json()
+        if not isinstance(data, dict):
+            raise ValueError("reply is not a JSON object")
         if not inst.token_in_query and _wants_query_token(data):
             inst.token_in_query = True
             logger.info("%s: this Technitium release takes the API token as a query parameter; using that", inst.label)
@@ -181,6 +185,8 @@ async def _api_call(
                 f"{inst.base}/api/{path.lstrip('/')}", timeout=timeout, **_auth_args(inst, inst.token, params),
             )
             data = resp.json()
+            if not isinstance(data, dict):
+                raise ValueError("reply is not a JSON object")
     except Exception:
         inst.last_error = "unreachable"
         logger.debug("Technitium call failed: %s", path, exc_info=True)
