@@ -32,7 +32,7 @@ PROVIDERS = [
 ]
 # GitHub-only sections left out of the Docker Hub page, and ### subsections the same way.
 # Links to a dropped subsection go to it on GitHub.
-DROP = ["Other Ways to Get It", "Testing"]
+DROP = ["Other Ways to Get It", "Entities", "Testing"]
 DROP_SUB = ["Older settings"]
 BADGE_LINE = re.compile(r'^<a href="[^"]+"><img [^>]*src="https://img\.shields\.io/[^"]*"[^>]*></a>\n', re.MULTILINE)
 

@@ -91,6 +91,9 @@ services:
       # server. Repeat queries still group; domain labels and the DOMAIN toggle go away.
       # HIDE_DOMAIN: "true"
 
+      # Optional: how much goes in the container log: info (default), debug, warning, or error
+      # LOG_LEVEL: info
+
       # 2-player local mode: a second DNS server, any of the four, for a second ship on
       # the right half. Same settings as above with BLOCKER2_.
       # BLOCKER2_URL: "http://192.168.1.3:3000"
@@ -110,12 +113,6 @@ services:
       - "no-new-privileges:true"
 
     read_only: true
-
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
     ports:
       # Host port : container port. Change the left side if 4663 is taken

@@ -19,9 +19,9 @@ Thanks for wanting to help. Bug reports, ideas, and pull requests are all welcom
 
 ### If you add or change an environment variable
 
-Each provider has its own README and compose file. In all three, update the configuration table, the example compose in the README, and the `compose.yaml` it copies:
+The main README and compose cover every DNS server, and AdGuard Home and Technitium also have their own guides with a compose. In all three, update the configuration table (main README), the example compose in the README, and the `compose.yaml` it copies:
 
-- [README.md](README.md) and [compose.yaml](compose.yaml) (Pi-hole)
+- [README.md](README.md) and [compose.yaml](compose.yaml) (every DNS server)
 - [adguard/README.md](adguard/README.md) and [adguard/compose.yaml](adguard/compose.yaml)
 - [technitium/README.md](technitium/README.md) and [technitium/compose.yaml](technitium/compose.yaml)
 
@@ -29,7 +29,7 @@ Don't edit [CHANGELOG.md](CHANGELOG.md). I write it when cutting a release, and 
 
 ## Running it locally
 
-You need Python 3 (the Docker image uses 3.15) and a Pi-hole, AdGuard Home, or Technitium server to point it at.
+You need Python 3 (the Docker image uses 3.15) and a Pi-hole, AdGuard Home, Technitium, or Blocky server to point it at.
 
 ```bash
 pip install -r requirements.txt
@@ -41,7 +41,7 @@ Set the same environment variables you would use in Docker (see the README for y
 python3 -m uvicorn app:app --host 127.0.0.1 --port 8000
 ```
 
-Open http://127.0.0.1:8000.
+Open http://127.0.0.1:8000. Add `LOG_LEVEL=debug` to see what it's doing.
 
 ## Review and CI
 

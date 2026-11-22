@@ -34,11 +34,6 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
-    logging:
-      driver: json-file
-      options:
-        max-size: 10m
-        max-file: "3"
     x-casaos:
       envs:
         - container: BLOCKER_URL

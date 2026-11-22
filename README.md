@@ -115,6 +115,9 @@ services:
       # server. Repeat queries still group; domain labels and the DOMAIN toggle go away.
       # HIDE_DOMAIN: "true"
 
+      # Optional: how much goes in the container log: info (default), debug, warning, or error
+      # LOG_LEVEL: info
+
       # 2-player local mode: a second DNS server, any of the four, for a second ship on
       # the right half. Same settings as above with BLOCKER2_.
       # BLOCKER2_URL: "http://192.168.1.3"
@@ -135,12 +138,6 @@ services:
       - "no-new-privileges:true"
 
     read_only: true
-
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
 
     ports:
       # Host port : container port. Change the left side if 4653 is taken
@@ -266,7 +263,7 @@ A strip across the bottom, divided into four panels:
 
 **STATS:** total queries, blocked, allowed, and block percentage. Updated live.
 
-**GRAVITY:** gravity list size. The arrow triggers a list update and confirms when done.
+**Lists:** block list size, named the way your DNS server names it: GRAVITY (Pi-hole), BLOCKLIST (AdGuard Home), BLOCK LIST (Technitium), or DENYLIST (Blocky). The arrow triggers a list update and confirms when done.
 
 **SHIPS:** active ship name. Click to open the ship selector.
 
@@ -345,8 +342,9 @@ All configuration is via environment variables in `compose.yaml`.
 | `IGNORE_CLIENTS` | _(unset)_ | Comma-separated regex patterns, matched against the client name and IP. Queries from matching clients spawn no ships, on both sides. Case-insensitive; escape literal dots (`^192\.168\.1\.99$`). Example: `^uptime-kuma$,^10\.0\.0\.5$` |
 | `BLOCKER_IGNORE_DOMAINS`, `BLOCKER_IGNORE_CLIENTS` | _(unset)_ | Same, for player 1's side only. `BLOCKER2_IGNORE_*` for player 2's. |
 | `BLOCKER_PASSWORD_FILE` | _(unset)_ | Read the password from a file, for Docker secrets (`/run/secrets/...`). Also `BLOCKER_TOKEN_FILE` and `BLOCKER_USERNAME_FILE`. |
+| `LOG_LEVEL` | `info` | How much goes in the container log. `info`: the startup banner, a line per player, and real events. `debug`: extra detail for troubleshooting. `warning`: problems only. `error`: errors only. |
 
-The startup log names the DNS server it found, where each setting came from, and anything it ignored. It never prints a password or token.
+At startup the log shows a banner with the version, then a line per player: the DNS server it found, its address, where its settings came from, and anything it ignored. It never prints a password or token.
 
 ### Older settings
 
@@ -447,27 +445,30 @@ Curious what everyone runs it on? I'm asking in a [quick poll](https://github.co
 
 ## Troubleshooting
 
-If something's off, check the logs first:
+If something's off, check the log first:
 
 ```bash
-docker logs ph-intercept 2>&1 | grep -v '^INFO:'
+docker logs ph-intercept
 ```
 
-On a healthy setup that prints nothing. Otherwise ph-intercept logs one line when a problem starts, and one line when it clears:
+It starts with the banner and a line per player. After that, ph-intercept logs one line when a problem starts and one when it clears, so a healthy setup stays quiet. For more detail, set `LOG_LEVEL: debug` and restart; set it back afterwards, since debug is chatty.
 
 | Log line | What to check |
 |----------|---------------|
-| `Player 1 not started: could not tell which DNS server is at ...` | `BLOCKER_URL` should be the address you open in a browser to manage the server, with the web port. Or set `BLOCKER_TYPE`. |
-| `Player 1: no answer from ... yet; retrying` | The URL and port, and that the container can reach your DNS server over the network. ph-intercept keeps trying. |
-| `Player 1 not started: BLOCKER_TYPE says ..., but ... answers like ...` | `BLOCKER_TYPE` doesn't match the server at `BLOCKER_URL`. Fix either, or leave `BLOCKER_TYPE` out. |
-| `Player 1 not started: BLOCKER_URL points at port 53, the DNS port` | Use the web interface address instead. |
-| `Player 1 not started: ... has an HTTPS certificate this container doesn't trust` | Set `BLOCKER_VERIFY_SSL` to `false` for a self-signed certificate. |
-| `Pi-hole: login rejected (password incorrect). Check BLOCKER_PASSWORD` | Use an app password from **Settings → Web interface / API → Configure app password**. |
-| `Pi-hole: login refused by rate limiting (...), retrying` | Pi-hole throttles logins after a few quick attempts. It clears on its own within a few seconds. |
-| `AdGuard: login rejected (HTTP 401). Check BLOCKER_USERNAME and BLOCKER_PASSWORD` | Your AdGuard Home login. |
-| `Technitium needs BLOCKER_TOKEN (an API token), or BLOCKER_USERNAME and BLOCKER_PASSWORD` | Set one of the two, not both. |
+| `P1  waiting for ... to answer` | Normal on a first start while your DNS server boots. ph-intercept keeps checking, and logs `● detected after ...` when it answers. |
+| `P1  still no answer from ... after 1 min` | The URL and port, and that the container can reach your DNS server over the network. ph-intercept keeps trying. |
+| `P1  not started: could not tell which DNS server is at ...` | `BLOCKER_URL` should be the address you open in a browser to manage the server, with the web port. Or set `BLOCKER_TYPE`. |
+| `P1  not started: BLOCKER_TYPE says ..., but ... answers like ...` | `BLOCKER_TYPE` doesn't match the server at `BLOCKER_URL`. Fix either, or leave `BLOCKER_TYPE` out. |
+| `P1  not started: BLOCKER_URL points at port 53, the DNS port` | Use the web interface address instead. |
+| `P1  not started: ... has an HTTPS certificate this container doesn't trust` | Set `BLOCKER_VERIFY_SSL` to `false` for a self-signed certificate. |
+| `P1  not started: Technitium needs BLOCKER_TOKEN (an API token), or BLOCKER_USERNAME and BLOCKER_PASSWORD` | Set one of the two, not both. |
+| `P1  Pi-hole: login rejected (password incorrect). Check BLOCKER_PASSWORD` | Use an app password from **Settings → Web interface / API → Configure app password**. |
+| `P1  Pi-hole: login refused by rate limiting (...), retrying` | Pi-hole throttles logins after a few quick attempts. It clears on its own within a few seconds. |
+| `P1  AdGuard Home: login rejected (HTTP 401). Check BLOCKER_USERNAME and BLOCKER_PASSWORD` | Your AdGuard Home login. |
 
-The same lines name `PIHOLE_URL`, `ADGUARD_PASSWORD`, and so on if you use the [older settings](#older-settings). In 2-player mode the second side logs as `Player 2`, `Pi-hole 2`, and so on, pointing at the `BLOCKER2_*` settings.
+The same lines name `PIHOLE_URL`, `ADGUARD_PASSWORD`, and so on if you use the [older settings](#older-settings). In 2-player mode the second side logs as `P2`, pointing at the `BLOCKER2_*` settings.
+
+The log is a few lines per start plus problems, so it needs no rotation settings. If you leave `LOG_LEVEL: debug` on for a long time, Docker's [log rotation](https://docs.docker.com/engine/logging/drivers/json-file/) keeps it in check.
 
 ---
 
@@ -483,12 +484,16 @@ ph-intercept only talks to your own DNS server(s). It never phones home, has no 
 
 I may have gone a little overboard.
 
-ph-intercept is developed against a suite of about 700 tests that I run locally before every release. The suite lives on my machine, not in this repository. CI builds the images and scans them (CodeQL and Trivy). The tests cover these layers:
+ph-intercept is developed against a suite of about 1,800 tests that I run locally before every release: about 1,400 unit and integration tests, plus about 150 browser tests run in Chromium, Firefox, and WebKit. CI builds the images and scans them (CodeQL and Trivy). The suite lives on my machine for now; I'm working on bringing it into this repository with CI in a future release.
 
-- **DNS providers:** async unit tests for the Pi-hole, AdGuard Home, Technitium, and Blocky clients: every auth path, session handling, query classification, the broadcast queue, and the live query pollers
-- **API and config:** every route, security headers, cache-control rules, input validation, environment parsing, and the `READ_ONLY`, `HIDE_CLIENT`, and `HIDE_DOMAIN` modes
-- **2-player mode:** routes, state persistence, and the races between two instances
-- **Browser:** Playwright tests in Chromium, Firefox, and WebKit for page load, canvas sizing, SSE connection and reconnect, settings persistence, blocked storage, sprite recovery, and bfcache reentry
+- **DNS providers:** every provider (Pi-hole, AdGuard Home, Technitium, Blocky) on both sides of 2-player mode, run against fake servers that misbehave on purpose: wrong passwords, rate limits, timeouts, errors, HTML where JSON should be, and truncated replies. Each failure is checked against a request budget, so no failure can make ph-intercept hammer your DNS server, and real servers back these up: Pi-hole 2026.11, AdGuard Home 0.107 and 1.0, Technitium 11 to 15, and Blocky 0.37
+- **Secrets:** marker values in every password, token, and secret file, then every log line (at debug, tracebacks included), API reply, and live event is searched for them
+- **Hostile input:** every route and method, cross-site requests, oversized and malformed bodies, path traversal, and every setting given values nobody should set
+- **Limits:** reply sizes, live connections, slow and closed tabs, a runaway query log, memory over a busy network, and many screens open at once
+- **API and config:** every route, security headers, input validation, environment parsing, the `READ_ONLY`, `HIDE_CLIENT`, and `HIDE_DOMAIN` modes, and a gate that resolves every example compose from earlier releases and checks the result is unchanged
+- **2-player mode:** routes, state persistence, and the races between two sides
+- **Browser:** Playwright tests for page load, canvas sizing, live updates and reconnects, settings persistence, blocked storage, sprite recovery, back-forward cache, and hostile domains and messages reaching the page
 - **Devices:** emulated device profiles and viewports, including Raspberry Pi touchscreens, Fire tablets, iPads, Android tablets, HiDPI displays, 4K, ultrawides, and orientation changes
 - **Pixels:** a canvas baseline that hashes rendered scenes, so a drawing regression can't hide behind passing behavior tests
+- **Mutation testing:** [mutmut](https://github.com/boxed/mutmut) makes deliberate small bugs in the settings, provider-detection, and provider layers and checks that a test catches each one
 - **Docs and listings:** checks that the READMEs, example composes, and the Unraid template stay in step
