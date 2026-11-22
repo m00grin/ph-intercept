@@ -59,6 +59,9 @@ class _Instance:
         self.reenable_task: asyncio.Task | None = None
         self.temp_disable_until: float | None = None  # monotonic deadline of a timed disable
         self.last_error: str | None = None
+        # Technitium 15 reads the token from an Authorization header. Older releases
+        # only read a token query parameter; switched on the first time one says so.
+        self.token_in_query = False
 
 
 _p1 = _Instance(
@@ -140,13 +143,19 @@ async def _drop_session(http_client: httpx.AsyncClient, inst: _Instance) -> None
     inst.token = inst.static_token
     inst.login_token = False
     try:
-        await http_client.get(
-            f"{inst.base}/api/user/logout",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=1.0,
-        )
+        await http_client.get(f"{inst.base}/api/user/logout", timeout=1.0, **_auth_args(inst, token))
     except Exception:
         pass
+
+
+def _auth_args(inst: _Instance, token: str, params: dict | None = None) -> dict:
+    if inst.token_in_query:
+        return {"params": {**(params or {}), "token": token}}
+    return {"params": params, "headers": {"Authorization": f"Bearer {token}"}}
+
+
+def _wants_query_token(data: dict) -> bool:
+    return data.get("status") == "error" and "parameter 'token' missing" in str(data.get("errorMessage", "")).lower()
 
 
 async def _api_call(
@@ -162,12 +171,16 @@ async def _api_call(
         return None
     try:
         resp = await http_client.get(
-            f"{inst.base}/api/{path.lstrip('/')}",
-            params=params,
-            headers={"Authorization": f"Bearer {inst.token}"},
-            timeout=timeout,
+            f"{inst.base}/api/{path.lstrip('/')}", timeout=timeout, **_auth_args(inst, inst.token, params),
         )
         data = resp.json()
+        if not inst.token_in_query and _wants_query_token(data):
+            inst.token_in_query = True
+            logger.info("%s: this Technitium release takes the API token as a query parameter; using that", inst.label)
+            resp = await http_client.get(
+                f"{inst.base}/api/{path.lstrip('/')}", timeout=timeout, **_auth_args(inst, inst.token, params),
+            )
+            data = resp.json()
     except Exception:
         inst.last_error = "unreachable"
         logger.debug("Technitium call failed: %s", path, exc_info=True)

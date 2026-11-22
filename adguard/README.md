@@ -154,7 +154,7 @@ Open `http://your-host:4663`.
 - **Address:** `BLOCKER_URL` is the address of the AdGuard Home web interface, the one you log in at, for example `http://192.168.1.2:3000` or `http://192.168.1.2` if it runs on port 80. A pasted `/#/dashboard` on the end is fine.
 - **Versions:** AdGuard Home 0.107.52 or newer, including 1.0.
 - **Login:** ph-intercept logs in once and reuses the session, so it doesn't make AdGuard Home check your password on every request.
-- **HUD:** **FILTER** shows the number of rules in your blocklists, and the arrow runs **Check for updates**. The timed-disable menu offers AdGuard Home's own choices, including until tomorrow.
+- **HUD:** **BLOCKLIST** shows the number of rules in your blocklists, and the arrow runs **Check for updates**. The timed-disable menu offers AdGuard Home's own choices, including until tomorrow.
 - **2-player:** the second side can be another AdGuard Home or any other supported server. See [Local 2-Player Mode](../README.md#local-2-player-mode).
 - **Settings from before 1.6** (`PROVIDER: adguard`, `ADGUARD_URL` ending in `/control`, `ADGUARD_USERNAME`, `ADGUARD_PASSWORD`) still work exactly as before. See [Older settings](../README.md#older-settings).
 

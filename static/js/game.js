@@ -8,11 +8,11 @@
   // Icon aspect is each viewBox's width/height: Pi-hole 88.32x129.93, AdGuard 91.3x93.5,
   // Technitium 16x16, Blocky 452x498. Technitium's logo is a 16x16 grid of square cells,
   // so it's drawn at a whole number of device pixels per cell to stay sharp. The toggle
-  // label names each provider's lists: Pi-hole GRAVITY, AdGuard FILTER, Technitium
+  // label names each provider's lists: Pi-hole GRAVITY, AdGuard BLOCKLIST, Technitium
   // BLOCK LIST, Blocky DENYLIST.
   const _PROVIDER_META = {
     pihole:     { name: 'PI-HOLE',    icon: '/static/icons/pihole.svg',     aspect: 88.32 / 129.93, grid: 0,  toggle: 'GRAVITY' },
-    adguard:    { name: 'ADGUARD',    icon: '/static/icons/adguard.svg',    aspect: 91.3 / 93.5,    grid: 0,  toggle: 'FILTER' },
+    adguard:    { name: 'ADGUARD',    icon: '/static/icons/adguard.svg',    aspect: 91.3 / 93.5,    grid: 0,  toggle: 'BLOCKLIST' },
     technitium: { name: 'TECHNITIUM', icon: '/static/icons/technitium.svg', aspect: 1.0,            grid: 16, toggle: 'BLOCK LIST' },
     blocky:     { name: 'BLOCKY',     icon: '/static/icons/blocky.svg',     aspect: 452 / 498,      grid: 0,  toggle: 'DENYLIST' },
   };

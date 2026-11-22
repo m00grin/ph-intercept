@@ -18,11 +18,15 @@ All notable changes to ph-intercept are documented here.
 ### Changed
 
 - **One compose for every DNS server** -- the main `compose.yaml` now works for Pi-hole, AdGuard Home, Technitium, and Blocky. The AdGuard and Technitium guides keep their copy-paste composes, filled in for each, and shrink to what's specific to that server.
+- **AdGuard Home's list panel reads BLOCKLIST** -- it said FILTER. AdGuard Home 1.0 calls these lists "Blocklists" (under Filters), with a "Check for updates" button, so the HUD now uses AdGuard's own word, as it already did for Pi-hole (GRAVITY), Technitium (BLOCK LIST), and Blocky (DENYLIST).
 - **Official provider icons** -- the Pi-hole, AdGuard Home, Technitium, and Blocky icons now come from each project's own artwork, and Technitium's grid logo is drawn with sharp edges at any display scaling.
 
 ### Fixed
 
 - **A rejected or slow Pi-hole login no longer floods Pi-hole with retries** -- after a failed, refused, or timed-out login, ph-intercept retried with every poll, about three times a second per open page. On a slow Pi a login can take longer than the old 1.5 second timeout, so abandoned logins piled up inside Pi-hole and pinned its CPU. Failed logins now wait 2 seconds, doubling to 30 (60 after Pi-hole's rate limit), the login gets 10 seconds, and a success clears the wait. Applies to the second Pi-hole in 2-player mode too. Tracked down with [@Plxprs](https://github.com/Plxprs) in [#59](https://github.com/m00grin/ph-intercept/issues/59). Thank you!
+
+- **Technitium releases before 15 now work** -- they only accept the API token as a URL parameter, not the header ph-intercept sends, so stats and ships stayed empty. ph-intercept now switches to the parameter when the server asks for it. Tested on Technitium 11.5, 12.2, 13.6, 14.3, and 15.x.
+- **Turning on 2-player with a slow second server** -- the check of a second Pi-hole or AdGuard Home now gives the login 10 seconds instead of 1.5. A Pi-hole login takes about 2 seconds on a Pi Zero W, so 2-player refused to start with "Could not reach Pi-hole 2".
 
 ### Upgrading
 

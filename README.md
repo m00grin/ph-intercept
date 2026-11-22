@@ -371,7 +371,7 @@ Each provider's own names still work, exactly as before. Use whichever you like;
 |--------|---------------|-------|-------------|
 | Pi-hole v6 | Its web address, e.g. `http://192.168.1.2` | `BLOCKER_PASSWORD`: an app password | Nothing |
 | AdGuard Home | Its web address, e.g. `http://192.168.1.2:3000` | `BLOCKER_USERNAME` and `BLOCKER_PASSWORD` | Nothing |
-| Technitium DNS 15+ | Its web console, e.g. `http://192.168.1.2:5380` | `BLOCKER_TOKEN`, or `BLOCKER_USERNAME` and `BLOCKER_PASSWORD` | The **Query Logs (Sqlite)** app from Technitium's App Store |
+| Technitium DNS 13+ | Its web console, e.g. `http://192.168.1.2:5380` | `BLOCKER_TOKEN`, or `BLOCKER_USERNAME` and `BLOCKER_PASSWORD` | The **Query Logs (Sqlite)** app from Technitium's App Store |
 | Blocky | Its HTTP port, e.g. `http://192.168.1.2:4000` | None | Its CSV query log, shared read-only: see below |
 
 More on each: [AdGuard Home](adguard/README.md) · [Technitium DNS](technitium/README.md).
@@ -432,7 +432,7 @@ BLOCKER2_PASSWORD=your_second_password
 
 ## Requirements
 
-- One of: Pi-hole v6 (v5 is not compatible), AdGuard Home 0.107.52 or newer (1.0 included), Technitium DNS 15 or newer, or Blocky 0.28 or newer
+- One of: Pi-hole v6 (v5 is not compatible), AdGuard Home 0.107.52 or newer (1.0 included), Technitium DNS 13 or newer, or Blocky 0.28 or newer
 - Docker with Compose
 - Network route from the container to your DNS server
 - **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64` · `linux/ppc64le`

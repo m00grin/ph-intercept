@@ -633,7 +633,7 @@
         ctx.restore();
       }
 
-      // ── GRAVITY / FILTER ───────────────────────────────────
+      // ── GRAVITY / BLOCKLIST ────────────────────────────────
       ctx.save();
       ctx.beginPath(); ctx.rect(TDB_X, SY, TDB_W, _rowH + _lbExtra); ctx.clip();
       _modLabel(HUD.mixedPair(S) && C.P2_PROVIDER_TOGGLE_LABEL !== C.PROVIDER_TOGGLE_LABEL ? 'LISTS' : C.PROVIDER_TOGGLE_LABEL,
