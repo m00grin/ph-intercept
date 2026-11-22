@@ -229,13 +229,6 @@ def _resolve_side(slot: int, src: dict, neutral: dict) -> Side:
     return side
 
 
-def setting_name(provider: str, slot: int, fld: str, side: Side | None) -> str:
-    """The env var name to mention in messages: the neutral one for a new-style side."""
-    if side is not None and side.style == "new":
-        return f"{neutral_prefix(slot)}_{NEUTRAL[fld]}"
-    return legacy_name(provider, slot, fld)
-
-
 def unused_fields(side: Side, environ=None) -> list[str]:
     """Neutral settings this side's provider doesn't use (logged, never an error)."""
     if side.style != "new" or side.provider is None:
