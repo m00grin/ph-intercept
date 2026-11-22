@@ -55,6 +55,7 @@
     if (!off) {
       const _p2Name = window.PROVIDER === 'adguard' ? 'ADGUARD'
                     : window.PROVIDER === 'technitium' ? 'TECHNITIUM'
+                    : window.PROVIDER === 'blocky' ? 'BLOCKY'
                     : 'PI-HOLE';
       h += `<div class="m2p-divider"></div>
       <div class="m2p-info">SECOND ${_p2Name} CONNECTED</div>`;

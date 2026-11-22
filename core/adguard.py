@@ -9,7 +9,7 @@ import httpx
 
 from .config import (
     ADGUARD_BASE, ADGUARD_IGNORE_DOMAIN_PATTERNS, ADGUARD_IGNORE_CLIENT_PATTERNS, ADGUARD2_BASE,
-    HIDE_CLIENT,
+    ADGUARD2_USERNAME, ADGUARD2_PASSWORD, HIDE_CLIENT, P2_PLACEHOLDER,
 )
 from .notice import clear, warn_once
 from .redact import public_domain
@@ -460,3 +460,29 @@ async def query_p2_poller(http_client: httpx.AsyncClient) -> None:
             raise
         except Exception:
             logger.debug("query_p2_poller tick error", exc_info=True)
+
+
+async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
+    """Validate the second AdGuard's config and probe it. Returns an error string,
+    or None when the instance is usable."""
+    if not ADGUARD2_BASE:
+        return "ADGUARD2_URL is not set in your configuration"
+    if P2_PLACEHOLDER in ADGUARD2_BASE:
+        return "ADGUARD2_URL still has the default placeholder value. Update it in your compose.yaml"
+    if not (ADGUARD2_BASE.startswith("http://") or ADGUARD2_BASE.startswith("https://")):
+        return "ADGUARD2_URL must start with http:// or https://"
+    if not ADGUARD2_PASSWORD:
+        return "ADGUARD2_PASSWORD is not set in your configuration"
+    if http_client:
+        try:
+            resp = await http_client.get(
+                f"{ADGUARD2_BASE}/status",
+                auth=(ADGUARD2_USERNAME, ADGUARD2_PASSWORD),
+            )
+            if resp.status_code == 401:
+                return "AdGuard 2 authentication failed. Check ADGUARD2_USERNAME and ADGUARD2_PASSWORD"
+            if resp.status_code != 200:
+                return "Could not reach AdGuard 2. Check ADGUARD2_URL"
+        except Exception:
+            return "Could not reach AdGuard 2. Check ADGUARD2_URL"
+    return None

@@ -21,6 +21,11 @@ services:
       # Portainer Web users: Add the environment variable: PIHOLE_PASSWORD=your_pihole_app_password
       PIHOLE_PASSWORD: ${PIHOLE_PASSWORD}
 
+      # Using Blocky instead? Uncomment these two lines and the Blocky volume below;
+      # the PIHOLE_* settings are then ignored. See "Blocky setup" in the README.
+      # PROVIDER: blocky
+      # BLOCKY_URL: "http://192.168.1.2:4000"
+
       # Optional: where ESC navigates to (like your homelab dashboard or homepage)
       # Accepts http://, https://, protocol-relative (//), relative paths, and custom app schemes
       # Leave blank ("") to disable ESC entirely
@@ -74,6 +79,8 @@ services:
       - ./bg:/app/static/bg
       # Persists 2-player mode state across container restarts
       - data:/app/data
+      # Blocky only: the folder Blocky writes its CSV query log to, read-only
+      # - /path/to/blocky/logs:/blocky-logs:ro
 
     cap_drop:
       - ALL

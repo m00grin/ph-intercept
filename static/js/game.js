@@ -7,15 +7,20 @@
   // Provider-aware branding. Any provider not listed falls back to Pi-hole.
   const PROVIDER_NAME = PROVIDER === 'adguard' ? 'ADGUARD'
                       : PROVIDER === 'technitium' ? 'TECHNITIUM'
+                      : PROVIDER === 'blocky' ? 'BLOCKY'
                       : 'PI-HOLE';
   const PROVIDER_ICON = PROVIDER === 'adguard' ? '/static/icons/adguard.svg'
                       : PROVIDER === 'technitium' ? '/static/icons/technitium.svg'
+                      : PROVIDER === 'blocky' ? '/static/icons/blocky.svg'
                       : '/static/icons/pihole.svg';
-  // Pi-hole's mascot is tall (90x130); AdGuard and Technitium icons are square.
-  const PROVIDER_ICON_ASPECT = (PROVIDER === 'adguard' || PROVIDER === 'technitium') ? 1.0 : (90 / 130);
-  // Label for the block-toggle module (Pi-hole: GRAVITY, AdGuard: FILTER, Technitium: BLOCK LIST).
+  // Pi-hole's mascot is tall (90x130); AdGuard and Technitium icons are square; Blocky's is 452x498.
+  const PROVIDER_ICON_ASPECT = (PROVIDER === 'adguard' || PROVIDER === 'technitium') ? 1.0
+                             : PROVIDER === 'blocky' ? (452 / 498)
+                             : (90 / 130);
+  // Label for the block-toggle module (Pi-hole: GRAVITY, AdGuard: FILTER, Technitium: BLOCK LIST, Blocky: DENYLIST).
   const PROVIDER_TOGGLE_LABEL = PROVIDER === 'adguard' ? 'FILTER'
                               : PROVIDER === 'technitium' ? 'BLOCK LIST'
+                              : PROVIDER === 'blocky' ? 'DENYLIST'
                               : 'GRAVITY';
   // Shrink a "Press Start 2P" label so it fits within maxW. Keeps long provider
   // names (e.g. TECHNITIUM) from colliding with a row's link arrow. Sets ctx.font

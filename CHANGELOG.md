@@ -4,6 +4,18 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [Unreleased]
+
+### Added
+
+- **Blocky support** -- set `PROVIDER: blocky` and `BLOCKY_URL` in the same compose Pi-hole users run, and mount Blocky's CSV query log read-only. Blocky has no API for recent queries, so ph-intercept follows the log file Blocky writes (`queryLog.type: csv`), reading only new lines and only while a page is open. Blocking toggle, timed disable, list refresh, and HUD stats use Blocky's REST API. Local 2-player mode works with a second Blocky (`BLOCKY2_URL`). See [Blocky setup](README.md#blocky-setup).
+
+### Changed
+
+- **One compose for more providers** -- Blocky is set up from the main `compose.yaml` instead of a compose of its own, and internally every provider now plugs in through one shared interface. Existing Pi-hole, AdGuard Home, and Technitium setups resolve exactly as before.
+
+---
+
 ## [1.5.8] - 2026-11-21
 
 A fix for AdGuard Home users, found by [@21mtd](https://github.com/21mtd) in [#58](https://github.com/m00grin/ph-intercept/issues/58). They noticed AdGuard Home working hard whenever ph-intercept was open (a load average jumping from 1 to 6 on a low-powered box) and tracked it to ph-intercept's requests. Thank you!

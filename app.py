@@ -1,4 +1,4 @@
-"""ph-intercept - DNS game (Pi-hole, AdGuard Home, and Technitium)."""
+"""ph-intercept - DNS game (Pi-hole, AdGuard Home, Technitium, and Blocky)."""
 
 import asyncio
 from contextlib import asynccontextmanager
@@ -17,52 +17,45 @@ from core.config import (
     BG_MODE, BG_IMAGE, PROVIDER, READ_ONLY, RETURN_URL, SKY_PRESET, SKY_PRESETS,
     HIDE_CLIENT, HIDE_DOMAIN,
     TWO_PLAYER_LOCAL_CONFIGURED, TWO_PLAYER_ENABLED, P2_DASHBOARD, P2_VERIFY_SSL,
-    PIHOLE2_URL, PIHOLE2_PASSWORD,
-    ADGUARD2_BASE, ADGUARD2_USERNAME, ADGUARD2_PASSWORD,
-    TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
 )
+from core import config as _config
 from core.multiplayer import get_status as mp_status, set_mode as mp_set_mode
+from core.providers import p2_config_error, surface
 
-if PROVIDER == "adguard":
-    from core.config import ADGUARD_DASHBOARD as _DASHBOARD, ADGUARD_VERIFY_SSL as _VERIFY_SSL
-    from core.adguard import (
-        add_ws_client, get_stats, query_poller, remove_ws_client,
-        reset_watermark, toggle_blocking, trigger_filter_update, drop_session,
-    )
-elif PROVIDER == "technitium":
-    from core.config import TECHNITIUM_DASHBOARD as _DASHBOARD, TECHNITIUM_VERIFY_SSL as _VERIFY_SSL
-    from core.technitium import (
-        add_ws_client, get_stats, query_poller, remove_ws_client,
-        reset_watermark, toggle_blocking, trigger_filter_update, drop_session,
-    )
-else:
-    from core.config import PIHOLE_DASHBOARD as _DASHBOARD, PIHOLE_VERIFY_SSL as _VERIFY_SSL
-    from core.pihole import (
-        add_ws_client, remove_ws_client, reset_watermark, toggle_blocking, drop_session, query_poller,
-        get_pihole_stats as get_stats, trigger_gravity_update as trigger_filter_update,
-    )
+# Dashboard link and TLS verification for the primary instance, per provider.
+_P1_SETTINGS = {
+    "pihole": ("PIHOLE_DASHBOARD", "PIHOLE_VERIFY_SSL"),
+    "adguard": ("ADGUARD_DASHBOARD", "ADGUARD_VERIFY_SSL"),
+    "technitium": ("TECHNITIUM_DASHBOARD", "TECHNITIUM_VERIFY_SSL"),
+    "blocky": ("BLOCKY_DASHBOARD", "BLOCKY_VERIFY_SSL"),
+}
+_dash_name, _ssl_name = _P1_SETTINGS.get(PROVIDER, _P1_SETTINGS["pihole"])
+_DASHBOARD = getattr(_config, _dash_name)
+_VERIFY_SSL = getattr(_config, _ssl_name)
 
+# Module-level names, so route handlers (and tests) see one shape for every provider.
+_P1 = surface(PROVIDER, 1)
+get_stats = _P1.get_stats
+toggle_blocking = _P1.toggle_blocking
+trigger_filter_update = _P1.trigger_filter_update
+query_poller = _P1.query_poller
+add_ws_client = _P1.add_ws_client
+remove_ws_client = _P1.remove_ws_client
+reset_watermark = _P1.reset_watermark
+drop_session = _P1.drop_session
+
+# The second instance mirrors the primary provider.
+_p2_validate = p2_config_error(PROVIDER)
 if TWO_PLAYER_LOCAL_CONFIGURED:
-    # The second instance mirrors the primary provider.
-    if PROVIDER == "adguard":
-        from core.adguard import (
-            add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark,
-            get_p2_stats, drop_p2_session, query_p2_poller,
-            toggle_p2_blocking, trigger_p2_gravity_update,
-        )
-    elif PROVIDER == "technitium":
-        from core.technitium import (
-            add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark,
-            get_p2_stats, drop_p2_session, query_p2_poller,
-            toggle_p2_blocking, trigger_p2_gravity_update,
-            probe_p2 as technitium_probe_p2,
-        )
-    else:
-        from core.pihole import (
-            add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark,
-            get_p2_pihole_stats as get_p2_stats, drop_p2_session, query_p2_poller,
-            toggle_p2_blocking, trigger_p2_gravity_update,
-        )
+    _P2 = surface(PROVIDER, 2)
+    get_p2_stats = _P2.get_stats
+    toggle_p2_blocking = _P2.toggle_blocking
+    trigger_p2_gravity_update = _P2.trigger_filter_update
+    query_p2_poller = _P2.query_poller
+    add_p2_ws_client = _P2.add_ws_client
+    remove_p2_ws_client = _P2.remove_ws_client
+    reset_p2_watermark = _P2.reset_watermark
+    drop_p2_session = _P2.drop_session
 
 _http_client: httpx.AsyncClient | None = None
 _http_client2: httpx.AsyncClient | None = None
@@ -217,79 +210,10 @@ async def two_player_status(_request: Request) -> JSONResponse:
     return JSONResponse(mp_status(TWO_PLAYER_LOCAL_CONFIGURED))
 
 
-_P2_PLACEHOLDER = "CHANGE.ME"
-
-
 async def _p2_config_error() -> str | None:
     """Validate the second-instance config and probe reachability for the active
     provider. Returns an error string, or None when the instance is usable."""
-    if PROVIDER == "adguard":
-        if not ADGUARD2_BASE:
-            return "ADGUARD2_URL is not set in your configuration"
-        if _P2_PLACEHOLDER in ADGUARD2_BASE:
-            return "ADGUARD2_URL still has the default placeholder value. Update it in your compose.yaml"
-        if not (ADGUARD2_BASE.startswith("http://") or ADGUARD2_BASE.startswith("https://")):
-            return "ADGUARD2_URL must start with http:// or https://"
-        if not ADGUARD2_PASSWORD:
-            return "ADGUARD2_PASSWORD is not set in your configuration"
-        if _http_client2:
-            try:
-                resp = await _http_client2.get(
-                    f"{ADGUARD2_BASE}/status",
-                    auth=(ADGUARD2_USERNAME, ADGUARD2_PASSWORD),
-                )
-                if resp.status_code == 401:
-                    return "AdGuard 2 authentication failed. Check ADGUARD2_USERNAME and ADGUARD2_PASSWORD"
-                if resp.status_code != 200:
-                    return "Could not reach AdGuard 2. Check ADGUARD2_URL"
-            except Exception:
-                return "Could not reach AdGuard 2. Check ADGUARD2_URL"
-        return None
-
-    if PROVIDER == "technitium":
-        if not TECHNITIUM2_BASE:
-            return "TECHNITIUM2_URL is not set in your configuration"
-        if _P2_PLACEHOLDER in TECHNITIUM2_BASE:
-            return "TECHNITIUM2_URL still has the default placeholder value. Update it in your compose.yaml"
-        if not (TECHNITIUM2_BASE.startswith("http://") or TECHNITIUM2_BASE.startswith("https://")):
-            return "TECHNITIUM2_URL must start with http:// or https://"
-        if not (TECHNITIUM2_TOKEN or (TECHNITIUM2_USER and TECHNITIUM2_PASSWORD)):
-            return "Technitium 2 needs TECHNITIUM2_TOKEN, or TECHNITIUM2_USER and TECHNITIUM2_PASSWORD"
-        if _http_client2:
-            return await technitium_probe_p2(_http_client2)
-        return None
-
-    if not PIHOLE2_URL:
-        return "PIHOLE2_URL is not set in your configuration"
-    if _P2_PLACEHOLDER in PIHOLE2_URL:
-        return "PIHOLE2_URL still has the default placeholder value. Update it in your compose.yaml"
-    if not (PIHOLE2_URL.startswith("http://") or PIHOLE2_URL.startswith("https://")):
-        return "PIHOLE2_URL must start with http:// or https://"
-    if not PIHOLE2_PASSWORD:
-        return "PIHOLE2_PASSWORD is not set in your configuration"
-    if _http_client2:
-        try:
-            resp = await _http_client2.post(
-                f"{PIHOLE2_URL}/auth",
-                json={"password": PIHOLE2_PASSWORD},
-            )
-            session = resp.json().get("session", {})
-        except Exception:
-            return "Could not reach Pi-hole 2. Check PIHOLE2_URL"
-        if resp.status_code == 429:
-            return "Pi-hole 2 is rate-limiting logins. Wait a few seconds and try again"
-        if not session.get("valid"):
-            return "Pi-hole 2 authentication failed. Check PIHOLE2_PASSWORD"
-        if session.get("sid"):
-            try:
-                await _http_client2.delete(
-                    f"{PIHOLE2_URL}/auth",
-                    headers={"X-FTL-SID": session["sid"]},
-                    timeout=0.5,
-                )
-            except Exception:
-                pass
-    return None
+    return await _p2_validate(_http_client2)
 
 
 async def two_player_set_mode(request: Request) -> JSONResponse:

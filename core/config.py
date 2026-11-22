@@ -2,10 +2,10 @@ import os
 import re
 
 PROVIDER = os.environ.get("PROVIDER", "pihole").lower()
-if PROVIDER not in ("pihole", "adguard", "technitium"):
+if PROVIDER not in ("pihole", "adguard", "technitium", "blocky"):
     import logging
     logging.getLogger("ph-intercept").warning(
-        "PROVIDER=%r is not recognised (expected pihole, adguard, or technitium); running as pihole", PROVIDER
+        "PROVIDER=%r is not recognised (expected pihole, adguard, technitium, or blocky); running as pihole", PROVIDER
     )
 
 PIHOLE_BASE = os.environ.get("PIHOLE_URL", "http://pihole:8053/api")
@@ -23,7 +23,8 @@ ADGUARD_DASHBOARD = ADGUARD_BASE.rstrip('/').removesuffix('/control') + '/'
 # with a second Pi-hole, an AdGuard P1 with a second AdGuard. Env var names stay
 # provider-prefixed (PIHOLE2_*, ADGUARD2_*) for symmetry with the primary vars;
 # the code below resolves them to provider-neutral P2_* values.
-_P2_PLACEHOLDER = "CHANGE.ME"
+P2_PLACEHOLDER = "CHANGE.ME"
+_P2_PLACEHOLDER = P2_PLACEHOLDER
 
 
 def _p2_url_valid(url: str) -> bool:
@@ -78,6 +79,30 @@ TECHNITIUM2_TOTP = os.environ.get("TECHNITIUM2_TOTP", "").strip()
 TECHNITIUM2_LOG_APP = os.environ.get("TECHNITIUM2_QUERY_LOG_APP", TECHNITIUM_LOG_APP).strip()
 TECHNITIUM2_LOG_CLASS = os.environ.get("TECHNITIUM2_QUERY_LOG_CLASS", TECHNITIUM_LOG_CLASS).strip()
 
+# Blocky. BLOCKY_URL is the HTTP listener (ports.http); its REST API lives under
+# {root}/api/. Blocky has no query-log API, so live queries come from its CSV
+# query log (queryLog.type: csv), mounted read-only at BLOCKY_LOG_DIR. Blocky has
+# no web UI either; BLOCKY_DASHBOARD optionally points the settings-menu link at
+# one (for example a Grafana dashboard).
+def _blocky_root(url: str) -> str:
+    return url.strip().rstrip('/').removesuffix('/api').rstrip('/')
+
+
+BLOCKY_URL = os.environ.get("BLOCKY_URL", "http://blocky:4000").strip()
+BLOCKY_BASE = _blocky_root(BLOCKY_URL)
+BLOCKY_LOG_DIR = os.environ.get("BLOCKY_LOG_DIR", "").strip() or "/blocky-logs"
+_blocky_ssl_raw = os.environ.get("BLOCKY_VERIFY_SSL", "true").strip().lower()
+BLOCKY_VERIFY_SSL = _blocky_ssl_raw not in ("false", "0", "no")
+BLOCKY_DASHBOARD = os.environ.get("BLOCKY_DASHBOARD", "").strip()
+
+# Blocky second instance (2-player local mode)
+BLOCKY2_URL = os.environ.get("BLOCKY2_URL", "").strip()
+BLOCKY2_BASE = _blocky_root(BLOCKY2_URL) if BLOCKY2_URL else ""
+BLOCKY2_LOG_DIR = os.environ.get("BLOCKY2_LOG_DIR", "").strip() or "/blocky2-logs"
+_blocky2_ssl_raw = os.environ.get("BLOCKY2_VERIFY_SSL", "true").strip().lower()
+BLOCKY2_VERIFY_SSL = _blocky2_ssl_raw not in ("false", "0", "no")
+BLOCKY2_DASHBOARD = os.environ.get("BLOCKY2_DASHBOARD", "").strip()
+
 # Provider-neutral resolution of the second instance
 if PROVIDER == "adguard":
     P2_CONFIGURED = _p2_url_valid(ADGUARD2_BASE)
@@ -87,6 +112,10 @@ elif PROVIDER == "technitium":
     P2_CONFIGURED = _p2_url_valid(TECHNITIUM2_BASE)
     P2_DASHBOARD = TECHNITIUM2_DASHBOARD
     P2_VERIFY_SSL = TECHNITIUM2_VERIFY_SSL
+elif PROVIDER == "blocky":
+    P2_CONFIGURED = _p2_url_valid(BLOCKY2_BASE)
+    P2_DASHBOARD = BLOCKY2_DASHBOARD
+    P2_VERIFY_SSL = BLOCKY2_VERIFY_SSL
 else:
     P2_CONFIGURED = _p2_url_valid(PIHOLE2_URL)
     P2_DASHBOARD = PIHOLE2_DASHBOARD
@@ -141,4 +170,10 @@ ADGUARD_IGNORE_CLIENT_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
 )
 TECHNITIUM_IGNORE_CLIENT_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
     os.environ.get("TECHNITIUM_IGNORE_CLIENTS", ""), "TECHNITIUM_IGNORE_CLIENTS"
+)
+BLOCKY_IGNORE_DOMAIN_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
+    os.environ.get("BLOCKY_IGNORE_DOMAINS", ""), "BLOCKY_IGNORE_DOMAINS"
+)
+BLOCKY_IGNORE_CLIENT_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(
+    os.environ.get("BLOCKY_IGNORE_CLIENTS", ""), "BLOCKY_IGNORE_CLIENTS"
 )

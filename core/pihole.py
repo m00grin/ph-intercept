@@ -5,7 +5,10 @@ import os
 
 import httpx
 
-from .config import PIHOLE_BASE, PIHOLE2_URL, IGNORE_DOMAIN_PATTERNS, IGNORE_CLIENT_PATTERNS, HIDE_CLIENT
+from .config import (
+    PIHOLE_BASE, PIHOLE2_URL, PIHOLE2_PASSWORD, IGNORE_DOMAIN_PATTERNS, IGNORE_CLIENT_PATTERNS,
+    HIDE_CLIENT, P2_PLACEHOLDER,
+)
 from .notice import clear, warn_once
 from .redact import public_domain
 
@@ -485,3 +488,39 @@ async def query_p2_poller(http_client: httpx.AsyncClient) -> None:
             raise
         except Exception:
             logger.debug("query_p2_poller tick error", exc_info=True)
+
+
+async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
+    """Validate the second Pi-hole's config and probe it. Returns an error string,
+    or None when the instance is usable."""
+    if not PIHOLE2_URL:
+        return "PIHOLE2_URL is not set in your configuration"
+    if P2_PLACEHOLDER in PIHOLE2_URL:
+        return "PIHOLE2_URL still has the default placeholder value. Update it in your compose.yaml"
+    if not (PIHOLE2_URL.startswith("http://") or PIHOLE2_URL.startswith("https://")):
+        return "PIHOLE2_URL must start with http:// or https://"
+    if not PIHOLE2_PASSWORD:
+        return "PIHOLE2_PASSWORD is not set in your configuration"
+    if http_client:
+        try:
+            resp = await http_client.post(
+                f"{PIHOLE2_URL}/auth",
+                json={"password": PIHOLE2_PASSWORD},
+            )
+            session = resp.json().get("session", {})
+        except Exception:
+            return "Could not reach Pi-hole 2. Check PIHOLE2_URL"
+        if resp.status_code == 429:
+            return "Pi-hole 2 is rate-limiting logins. Wait a few seconds and try again"
+        if not session.get("valid"):
+            return "Pi-hole 2 authentication failed. Check PIHOLE2_PASSWORD"
+        if session.get("sid"):
+            try:
+                await http_client.delete(
+                    f"{PIHOLE2_URL}/auth",
+                    headers={"X-FTL-SID": session["sid"]},
+                    timeout=0.5,
+                )
+            except Exception:
+                pass
+    return None

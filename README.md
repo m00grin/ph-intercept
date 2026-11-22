@@ -5,7 +5,7 @@
 <a href="https://github.com/m00grin/ph-intercept/actions/workflows/codeql.yml"><img alt="CodeQL status" src="https://img.shields.io/github/actions/workflow/status/m00grin/ph-intercept/codeql.yml?style=for-the-badge&label=CodeQL&logo=github&logoColor=fff"></a>
 <a href="https://www.bestpractices.dev/projects/16750"><img alt="OpenSSF Best Practices" src="https://img.shields.io/cii/level/16750?style=for-the-badge&label=OpenSSF%20Best%20Practices&logo=linuxfoundation&logoColor=fff"></a>
 
-A Pi-hole, AdGuard Home, and Technitium DNS visualizer and dashboard that runs as a standalone Docker container. Streams live DNS query events from your Pi-hole v6, AdGuard Home, or Technitium DNS server and renders them as pixel-art friendlies and enemies. Blocked queries are destroyed by the ship, allowed queries fly through. Toggle blocking, set timed blocks, update block lists, and switch ships from the HUD.
+A Pi-hole, AdGuard Home, Technitium DNS, and Blocky visualizer and dashboard that runs as a standalone Docker container. Streams live DNS query events from your Pi-hole v6, AdGuard Home, Technitium DNS, or Blocky server and renders them as pixel-art friendlies and enemies. Blocked queries are destroyed by the ship, allowed queries fly through. Toggle blocking, set timed blocks, update block lists, and switch ships from the HUD.
 
 Designed to be dropped in alongside an existing DNS setup with no extra dependencies. Two instances can run side by side in [local 2-player split-screen](#local-2-player-mode).
 
@@ -22,6 +22,8 @@ Try the [live demo](https://ph-intercept.com/demo/) in your browser first, no in
 > **AdGuard Home user?** See the [AdGuard setup guide](adguard/README.md).
 >
 > **Technitium DNS user?** See the [Technitium setup guide](technitium/README.md).
+>
+> **Blocky user?** Use the same compose below and see [Blocky setup](#blocky-setup).
 
 ## Quick Start
 
@@ -60,6 +62,11 @@ services:
       #  PIHOLE_PASSWORD=your_pihole_app_password
       # Portainer Web users: Add the environment variable: PIHOLE_PASSWORD=your_pihole_app_password
       PIHOLE_PASSWORD: ${PIHOLE_PASSWORD}
+
+      # Using Blocky instead? Uncomment these two lines and the Blocky volume below;
+      # the PIHOLE_* settings are then ignored. See "Blocky setup" in the README.
+      # PROVIDER: blocky
+      # BLOCKY_URL: "http://192.168.1.2:4000"
 
       # Optional: where ESC navigates to (like your homelab dashboard or homepage)
       # Accepts http://, https://, protocol-relative (//), relative paths, and custom app schemes
@@ -114,6 +121,8 @@ services:
       - ./bg:/app/static/bg
       # Persists 2-player mode state across container restarts
       - data:/app/data
+      # Blocky only: the folder Blocky writes its CSV query log to, read-only
+      # - /path/to/blocky/logs:/blocky-logs:ro
 
     cap_drop:
       - ALL
@@ -332,6 +341,39 @@ All configuration is via environment variables in `compose.yaml`.
 
 ---
 
+## Blocky setup
+
+Blocky has no API for recent queries, so ph-intercept reads the CSV query log Blocky writes, through a read-only mount. Blocking control and stats use Blocky's REST API, which has no login.
+
+**1.** In Blocky's `config.yml`, turn on the CSV log and stats (and keep its HTTP port on), then restart Blocky:
+
+```yaml
+ports:
+  http: 4000
+queryLog:
+  type: csv          # not csv-client
+  target: /logs
+statistics:
+  enable: true       # optional: query counts in the HUD
+```
+
+**2.** Give Blocky a host folder for that log, for example `- ./blocky-logs:/logs` in Blocky's compose.
+
+**3.** In the ph-intercept [compose](#quick-start), uncomment `PROVIDER: blocky` and `BLOCKY_URL` (Blocky's HTTP port, not DNS port 53), and mount the same host folder read-only: `- ./blocky-logs:/blocky-logs:ro`. ph-intercept needs to run on the same host as Blocky, or see that folder over a network share.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `BLOCKY_URL` | `http://blocky:4000` | Blocky's HTTP listener (`ports.http`). |
+| `BLOCKY_LOG_DIR` | `/blocky-logs` | Where the query log folder is mounted in the container. |
+| `BLOCKY_DASHBOARD` | `""` | Optional link for the settings menu, since Blocky has no web UI (for example a Grafana dashboard). |
+| `BLOCKY_VERIFY_SSL` | `true` | Set to `false` for HTTPS with a self-signed certificate. |
+| `BLOCKY_IGNORE_DOMAINS`, `BLOCKY_IGNORE_CLIENTS` | _(unset)_ | Same as the `PIHOLE_IGNORE_*` settings above. |
+| `BLOCKY2_URL`, `BLOCKY2_LOG_DIR` | _(unset)_, `/blocky2-logs` | A second Blocky for [2-player mode](#local-2-player-mode), with its own log folder mounted at `BLOCKY2_LOG_DIR`. Also `BLOCKY2_DASHBOARD` and `BLOCKY2_VERIFY_SSL`. |
+
+If Blocky's `log.privacy` is on, domains arrive starred out and ph-intercept shows them that way.
+
+---
+
 ## Local 2-Player Mode
 
 Two DNS instances can run side by side in split-screen. Player 1's ship occupies the left half of the canvas, Player 2's ship the right. Each instance streams its own events, stats, and controls.
@@ -354,6 +396,8 @@ PIHOLE2_PASSWORD=your_second_pihole_password
 > **AdGuard Home?** The second instance mirrors your primary provider, so an AdGuard setup pairs with a second AdGuard Home via `ADGUARD2_URL` / `ADGUARD2_USERNAME` / `ADGUARD2_PASSWORD`. See the [AdGuard 2-player setup](adguard/README.md#local-2-player-mode).
 >
 > **Technitium DNS?** Pairs with a second Technitium via `TECHNITIUM2_URL` and `TECHNITIUM2_TOKEN` (or user + password). See the [Technitium 2-player setup](technitium/README.md#local-2-player-mode).
+>
+> **Blocky?** Pairs with a second Blocky via `BLOCKY2_URL` and its log folder mounted at `/blocky2-logs`. See [Blocky setup](#blocky-setup).
 
 ---
 
@@ -406,7 +450,7 @@ I may have gone a little overboard.
 
 ph-intercept is developed against a suite of about 700 tests that I run locally before every release. The suite lives on my machine, not in this repository. CI builds the images and scans them (CodeQL and Trivy). The tests cover these layers:
 
-- **DNS providers:** async unit tests for the Pi-hole, AdGuard Home, and Technitium clients: every auth path, session handling, query classification, the broadcast queue, and the live query pollers
+- **DNS providers:** async unit tests for the Pi-hole, AdGuard Home, Technitium, and Blocky clients: every auth path, session handling, query classification, the broadcast queue, and the live query pollers
 - **API and config:** every route, security headers, cache-control rules, input validation, environment parsing, and the `READ_ONLY`, `HIDE_CLIENT`, and `HIDE_DOMAIN` modes
 - **2-player mode:** routes, state persistence, and the races between two instances
 - **Browser:** Playwright tests in Chromium, Firefox, and WebKit for page load, canvas sizing, SSE connection and reconnect, settings persistence, blocked storage, sprite recovery, and bfcache reentry

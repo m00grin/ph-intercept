@@ -12,7 +12,7 @@ from .config import (
     TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
     TECHNITIUM2_TOTP, TECHNITIUM2_LOG_APP, TECHNITIUM2_LOG_CLASS,
     TECHNITIUM_IGNORE_DOMAIN_PATTERNS, TECHNITIUM_IGNORE_CLIENT_PATTERNS,
-    HIDE_CLIENT,
+    HIDE_CLIENT, P2_PLACEHOLDER,
 )
 from .notice import clear, warn_once
 from .redact import public_domain
@@ -498,4 +498,20 @@ async def probe_p2(http_client: httpx.AsyncClient) -> str | None:
             return "Could not reach or authenticate with Technitium 2. Check TECHNITIUM2_URL and credentials"
         return ("Could not read the Technitium 2 query log. Install the 'Query Logs (Sqlite)' DNS app "
                 "and check TECHNITIUM2_QUERY_LOG_APP / TECHNITIUM2_QUERY_LOG_CLASS")
+    return None
+
+
+async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
+    """Validate the second Technitium's config and probe it. Returns an error
+    string, or None when the instance is usable."""
+    if not TECHNITIUM2_BASE:
+        return "TECHNITIUM2_URL is not set in your configuration"
+    if P2_PLACEHOLDER in TECHNITIUM2_BASE:
+        return "TECHNITIUM2_URL still has the default placeholder value. Update it in your compose.yaml"
+    if not (TECHNITIUM2_BASE.startswith("http://") or TECHNITIUM2_BASE.startswith("https://")):
+        return "TECHNITIUM2_URL must start with http:// or https://"
+    if not (TECHNITIUM2_TOKEN or (TECHNITIUM2_USER and TECHNITIUM2_PASSWORD)):
+        return "Technitium 2 needs TECHNITIUM2_TOKEN, or TECHNITIUM2_USER and TECHNITIUM2_PASSWORD"
+    if http_client:
+        return await probe_p2(http_client)
     return None
