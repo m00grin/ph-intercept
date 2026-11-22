@@ -1,4 +1,4 @@
-"""Identify which DNS server answers at a URL, strictly.
+"""Identify which ad-blocker answers at a URL, strictly.
 
 One unauthenticated request per provider, sent together, plus one more only to
 confirm an AdGuard Home that requires a login. Exactly one provider must match;

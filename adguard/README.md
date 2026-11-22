@@ -2,7 +2,7 @@
 
 A DNS dashboard that runs as a standalone Docker container alongside your AdGuard Home instance. Streams live DNS query events from the AdGuard Home API and renders them as pixel-art friendlies and enemies. Blocked queries are destroyed by the ship, allowed queries fly through. Toggle protection, set timed blocks, trigger filter list updates, and switch ships from the HUD.
 
-ph-intercept uses one compose for every DNS server it supports. This page is that compose with the AdGuard Home lines filled in, plus what's specific to AdGuard Home. Everything else is in the [main README](../README.md).
+ph-intercept uses one compose for every ad-blocker it supports. This page is that compose with the AdGuard Home lines filled in, plus what's specific to AdGuard Home. Everything else is in the [main README](../README.md).
 
 <img alt="ph-intercept shooting down blocked DNS queries live" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/demo.gif" />
 
@@ -94,7 +94,7 @@ services:
       # Optional: how much goes in the container log: info (default), debug, warning, or error
       # LOG_LEVEL: info
 
-      # 2-player local mode: a second DNS server, any of the four, for a second ship on
+      # 2-player local mode: a second ad-blocker, any of the four, for a second ship on
       # the right half. Same settings as above with BLOCKER2_.
       # BLOCKER2_URL: "http://192.168.1.3:3000"
       # BLOCKER2_USERNAME: "admin"

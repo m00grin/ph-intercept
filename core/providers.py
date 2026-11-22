@@ -59,7 +59,7 @@ class Surface:
 class _SharedStats:
     """One stats fetch per side per second, however many tabs ask.
 
-    Every open tab polls stats once a second, and each poll costs the DNS server
+    Every open tab polls stats once a second, and each poll costs the ad-blocker
     two or three requests. Tabs asking within STATS_TTL share one reply, and tabs
     asking at the same moment share one fetch. A toggle or filter update clears
     it, so the next poll shows the change."""
@@ -161,7 +161,7 @@ class Slot:
         self.error = error
 
     def _unavailable(self) -> dict:
-        return {"error": self.error or "waiting for the DNS server"}
+        return {"error": self.error or "waiting for the ad-blocker"}
 
     async def get_stats(self, http_client):
         return await self.target.get_stats(http_client) if self.target else None

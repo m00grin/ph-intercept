@@ -1,4 +1,4 @@
-"""Which DNS server each side watches, and with what settings.
+"""Which ad-blocker each side watches, and with what settings.
 
 Two ways to configure a side:
 

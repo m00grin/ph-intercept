@@ -70,7 +70,7 @@ services:
       # Optional: how much goes in the container log: info (default), debug, warning, or error
       # LOG_LEVEL: info
 
-      # 2-player local mode: a second DNS server, any of the four, for a second ship on
+      # 2-player local mode: a second ad-blocker, any of the four, for a second ship on
       # the right half. Same settings as above with BLOCKER2_.
       # BLOCKER2_URL: "http://192.168.1.3:5380"
       # BLOCKER2_TOKEN: ${BLOCKER2_TOKEN}

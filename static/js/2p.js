@@ -57,7 +57,7 @@
       const _p2Name = _p2p === 'adguard' ? 'ADGUARD'
                     : _p2p === 'technitium' ? 'TECHNITIUM'
                     : _p2p === 'blocky' ? 'BLOCKY'
-                    : _p2p === '' ? 'DNS SERVER'
+                    : _p2p === '' ? 'AD-BLOCKER'
                     : 'PI-HOLE';
       h += `<div class="m2p-divider"></div>
       <div class="m2p-info">SECOND ${_p2Name} CONNECTED</div>`;

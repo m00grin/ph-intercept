@@ -14,14 +14,14 @@ Thanks for wanting to help. Bug reports, ideas, and pull requests are all welcom
 - One change per PR. Several small PRs are easier to review than one big one.
 - New options default to today's behavior, so nobody's setup changes on upgrade.
 - Keep the existing style: Python with Starlette and httpx on the server, plain JavaScript in `static/js/` with no build step, and no new dependencies unless we've agreed on them in the issue.
-- Comment only what the code can't say for itself, like a quirk of a DNS server's API. Put the reasoning for a change in the commit message and the PR description.
+- Comment only what the code can't say for itself, like a quirk of an ad-blocker's API. Put the reasoning for a change in the commit message and the PR description.
 - Please don't change the `Dockerfile` or anything under `.github/`. Dependabot keeps the base image and actions current, and PRs that touch the build or CI will be closed unless we've discussed it first. If your change needs one, say so in the issue and I'll handle it.
 
 ### If you add or change an environment variable
 
-The main README and compose cover every DNS server, and AdGuard Home and Technitium also have their own guides with a compose. In all three, update the configuration table (main README), the example compose in the README, and the `compose.yaml` it copies:
+The main README and compose cover every ad-blocker, and AdGuard Home and Technitium also have their own guides with a compose. In all three, update the configuration table (main README), the example compose in the README, and the `compose.yaml` it copies:
 
-- [README.md](README.md) and [compose.yaml](compose.yaml) (every DNS server)
+- [README.md](README.md) and [compose.yaml](compose.yaml) (every ad-blocker)
 - [adguard/README.md](adguard/README.md) and [adguard/compose.yaml](adguard/compose.yaml)
 - [technitium/README.md](technitium/README.md) and [technitium/compose.yaml](technitium/compose.yaml)
 

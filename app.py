@@ -111,7 +111,7 @@ def _report_side(slot: int, status: str = "") -> None:
     target = _P1 if slot == 1 else _P2
     if not provider:
         err = target.error if isinstance(target, Slot) else None
-        logger.info(_banner.side(slot, f"not started: {err}" if err else "waiting for the DNS server", color=_COLOR))
+        logger.info(_banner.side(slot, f"not started: {err}" if err else "waiting for the ad-blocker", color=_COLOR))
         return
     style = (f"{_settings.neutral_prefix(slot)}_* settings" if side.style == "new"
              else f"{_settings.SPEC[provider]['prefix']}{'' if slot == 1 else '2'}_* settings")
@@ -126,7 +126,7 @@ def _report_side(slot: int, status: str = "") -> None:
         logger.info(_banner.detail(f"{name} isn't needed for {_settings.NAMES[provider]}, so it's ignored", color=_COLOR))
 
 
-# Detection retries: quick at first, since on a first boot the DNS server is usually seconds from ready.
+# Detection retries: quick at first, since on a first boot the ad-blocker is usually seconds from ready.
 _FIRST_RETRY, _MAX_RETRY = 1.0, 15.0
 # While still waiting: a reminder after 1 minute, then 2, 4, 8, ... and at most every 15 minutes.
 _FIRST_REMINDER, _MAX_REMINDER_GAP = 60.0, 900.0
@@ -172,15 +172,15 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
             logger.error(_banner.problem(slot, f"not started: {msg}", _COLOR))
             return
         if reason != "unreachable":
-            msg = (f"could not tell which DNS server is at {_settings.display_url(side.root)}: {reason}. "
+            msg = (f"could not tell which ad-blocker is at {_settings.display_url(side.root)}: {reason}. "
                    f"Check {_settings.neutral_prefix(slot)}_URL, or set {_settings.neutral_prefix(slot)}_TYPE")
             target.fail(msg)
             logger.error(_banner.problem(slot, f"not started: {msg}", _COLOR))
             return
         url = _settings.display_url(side.root)
-        target.fail(f"waiting for the DNS server at {url}")
+        target.fail(f"waiting for the ad-blocker at {url}")
         if waiting_since is None:
-            # Normal on a first boot: the DNS server's container is often still starting.
+            # Normal on a first boot: the ad-blocker's container is often still starting.
             waiting_since = _monotonic()
             logger.info(_banner.side(slot, f"waiting for {url} to answer", color=_COLOR))
         elif _monotonic() - waiting_since >= remind_at:
@@ -210,7 +210,7 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
 
 async def _p2_validate(http_client) -> str | None:
     if isinstance(_P2, Slot) and not _P2.provider:
-        return f"Player 2 isn't ready: {_P2.error or 'waiting for the DNS server'}"
+        return f"Player 2 isn't ready: {_P2.error or 'waiting for the ad-blocker'}"
     return await p2_config_error(_side_provider(2) or "pihole")(http_client)
 
 
@@ -366,7 +366,7 @@ class ResponseHeaderMiddleware(BaseHTTPMiddleware):
         if _is_cross_site_write(request):
             response = JSONResponse({"error": "cross-site request refused"}, status_code=403)
         elif READ_ONLY and request.method == "POST":
-            # Every POST route changes the DNS server or the 2-player mode.
+            # Every POST route changes the ad-blocker or the 2-player mode.
             response = JSONResponse({"error": "read-only mode"}, status_code=403)
         elif _too_big(request):
             response = JSONResponse({"error": "request body too large"}, status_code=413)

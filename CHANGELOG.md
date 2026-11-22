@@ -6,9 +6,9 @@ All notable changes to ph-intercept are documented here.
 
 ## [Unreleased]
 
-Blocky joins Pi-hole, AdGuard Home, and Technitium, the two sides of 2-player can now run different ad-blockers, and one set of `BLOCKER_*` settings works for all four.
+Blocky joins Pi-hole, AdGuard Home, and Technitium. The two sides of 2-player can now run different ad-blockers, and one set of `BLOCKER_*` settings works for all four.
 
-This release was also tested more than any before it: about 1,800 tests, run against fake ad-blockers that time out, reject logins, and send garbage, plus hostile settings, hostile requests, and long runs on a busy network with many screens open. They turned up about 35 bugs, all fixed here before anyone hit them. The test suite still lives on my machine; I'm working on bringing it into this repo, with CI, in an upcoming release.
+This release was also tested more than any before it: about 1,800 tests, run against fake ad-blockers that time out, reject logins, and send garbage, plus hostile settings, hostile requests, and long runs on a busy network with many screens open. They turned up about 35 bugs, all fixed here before (hopefully) anyone hit them. The test suite still lives on my machine; I'm working on bringing it into this repo, with CI, in an upcoming release.
 
 ### Added
 

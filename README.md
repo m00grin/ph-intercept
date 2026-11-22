@@ -19,11 +19,11 @@ Try the [live demo](https://ph-intercept.com/demo/) in your browser first, no in
 
 ---
 
-> **One compose for every DNS server.** Pi-hole, AdGuard Home, Technitium DNS, and Blocky all use the compose below. ph-intercept works out which one you run. A few servers need one extra step: see [Your DNS server](#your-dns-server).
+> **One compose for every ad-blocker.** Pi-hole, AdGuard Home, Technitium DNS, and Blocky all use the compose below. ph-intercept works out which one you run. A few servers need one extra step: see [Your ad-blocker](#your-ad-blocker).
 
 ## Quick Start
 
-**1.** Have your DNS server's address and login ready (see [Your DNS server](#your-dns-server) for what each one needs):
+**1.** Have your ad-blocker's address and login ready (see [Your ad-blocker](#your-ad-blocker) for what each one needs):
 
 - **Pi-hole:** an **app password** (not your web login password), from **Settings → Web interface / API → Configure app password**.
 - **AdGuard Home:** your username and password.
@@ -38,7 +38,7 @@ Try the [live demo](https://ph-intercept.com/demo/) in your browser first, no in
 
 - **Portainer users:** Skip the `.env` file. Add `BLOCKER_PASSWORD` as an environment variable directly in the Portainer stack config.
 
-**2.** Create a `compose.yaml` (copy the example below or grab [`compose.yaml`](compose.yaml) from the repo) and set `BLOCKER_URL` to the address you open in a browser to manage your DNS server. For AdGuard Home or Technitium, also uncomment `BLOCKER_USERNAME`:
+**2.** Create a `compose.yaml` (copy the example below or grab [`compose.yaml`](compose.yaml) from the repo) and set `BLOCKER_URL` to the address you open in a browser to manage your ad-blocker. For AdGuard Home or Technitium, also uncomment `BLOCKER_USERNAME`:
 
 ```yaml
 services:
@@ -55,7 +55,7 @@ services:
           pids: 20
 
     environment:
-      # REQUIRED: the address you open in a browser to manage your DNS server.
+      # REQUIRED: the address you open in a browser to manage your ad-blocker.
       # Works with Pi-hole v6, AdGuard Home, Technitium DNS, and Blocky; ph-intercept
       # detects which one it is. Example: "http://192.168.1.2"
       BLOCKER_URL: "http://CHANGE.ME"
@@ -92,7 +92,7 @@ services:
       # picked any time. Leave blank to disable it (CUSTOM shows greyed out in the menu).
       BG_IMAGE: ""
 
-      # SSL certificate verification. Set to "false" if your DNS server uses HTTPS
+      # SSL certificate verification. Set to "false" if your ad-blocker uses HTTPS
       #  with a self-signed certificate. Leave as "true" for HTTP or valid HTTPS.
       BLOCKER_VERIFY_SSL: "true"
 
@@ -118,7 +118,7 @@ services:
       # Optional: how much goes in the container log: info (default), debug, warning, or error
       # LOG_LEVEL: info
 
-      # 2-player local mode: a second DNS server, any of the four, for a second ship on
+      # 2-player local mode: a second ad-blocker, any of the four, for a second ship on
       # the right half. Same settings as above with BLOCKER2_.
       # BLOCKER2_URL: "http://192.168.1.3"
       # BLOCKER2_PASSWORD: ${BLOCKER2_PASSWORD}
@@ -263,7 +263,7 @@ A strip across the bottom, divided into four panels:
 
 **STATS:** total queries, blocked, allowed, and block percentage. Updated live.
 
-**Lists:** block list size, named the way your DNS server names it: GRAVITY (Pi-hole), BLOCKLIST (AdGuard Home), BLOCK LIST (Technitium), or DENYLIST (Blocky). The arrow triggers a list update and confirms when done.
+**Lists:** block list size, named the way your ad-blocker names it: GRAVITY (Pi-hole), BLOCKLIST (AdGuard Home), BLOCK LIST (Technitium), or DENYLIST (Blocky). The arrow triggers a list update and confirms when done.
 
 **SHIPS:** active ship name. Click to open the ship selector.
 
@@ -275,7 +275,7 @@ A hamburger button at the left edge of the HUD opens the **Settings** panel, whi
 - **CRT filter**: a scanline overlay
 - **Auto-hide**: slides the HUD away until you hover it
 - **Background**: switch style and sky region live
-- **Pi-hole** (or your DNS server's name): link to its admin panel
+- **Pi-hole** (or your ad-blocker's name): link to its admin panel
 
 Display settings are saved to `localStorage` and restored on next load.
 
@@ -319,7 +319,7 @@ All configuration is via environment variables in `compose.yaml`.
 
 | Variable | Description |
 |----------|-------------|
-| `BLOCKER_URL` | The address you open in a browser to manage your DNS server, e.g. `http://192.168.1.2`. A pasted `/admin` or `/api` on the end is fine. |
+| `BLOCKER_URL` | The address you open in a browser to manage your ad-blocker, e.g. `http://192.168.1.2`. A pasted `/admin` or `/api` on the end is fine. |
 | `BLOCKER_PASSWORD` | Pi-hole: app password. AdGuard Home or Technitium: login password. Not used by Blocky. CLI: set in a `.env` file. Portainer: add as an environment variable in the stack. |
 
 ### Optional
@@ -329,7 +329,7 @@ All configuration is via environment variables in `compose.yaml`.
 | `BLOCKER_USERNAME` | `""` | AdGuard Home or Technitium login username. |
 | `BLOCKER_TOKEN` | `""` | Technitium API token, instead of a username and password. |
 | `BLOCKER_TYPE` | _(detected)_ | `pihole`, `adguard`, `technitium`, or `blocky`. Leave it out and ph-intercept identifies the server at startup. If set and the server turns out to be something else, ph-intercept says so and doesn't start that side. |
-| `BLOCKER_VERIFY_SSL` | `true` | Set to `false` if your DNS server uses HTTPS with a self-signed certificate. |
+| `BLOCKER_VERIFY_SSL` | `true` | Set to `false` if your ad-blocker uses HTTPS with a self-signed certificate. |
 | `BLOCKER_DASHBOARD` | _(derived)_ | Link for the settings menu. Defaults to the server's own web interface. |
 | `RETURN_URL` | `""` | URL that ESC navigates to. Accepts `http://`, `https://`, protocol-relative (`//`), relative paths, and custom app schemes. Leave blank to disable ESC. |
 | `BG_MODE` | `starfield` | Default background: `starfield` · `nebula` · `outrun` · `dark`. Switchable live in-app. |
@@ -344,7 +344,7 @@ All configuration is via environment variables in `compose.yaml`.
 | `BLOCKER_PASSWORD_FILE` | _(unset)_ | Read the password from a file, for Docker secrets (`/run/secrets/...`). Also `BLOCKER_TOKEN_FILE` and `BLOCKER_USERNAME_FILE`. |
 | `LOG_LEVEL` | `info` | How much goes in the container log. `info`: the startup banner, a line per player, and real events. `debug`: extra detail for troubleshooting. `warning`: problems only. `error`: errors only. |
 
-At startup the log shows a banner with the version, then a line per player: the DNS server it found, its address, where its settings came from, and anything it ignored. It never prints a password or token.
+At startup the log shows a banner with the version, then a line per player: the ad-blocker it found, its address, where its settings came from, and anything it ignored. It never prints a password or token.
 
 ### Older settings
 
@@ -364,7 +364,7 @@ Each provider's own names still work, exactly as before. Use whichever you like;
 
 ---
 
-## Your DNS server
+## Your ad-blocker
 
 | Server | `BLOCKER_URL` | Login | Also needed |
 |--------|---------------|-------|-------------|
@@ -410,7 +410,7 @@ If Blocky's `log.privacy` is on, domains arrive starred out and ph-intercept sho
 
 ## Local 2-Player Mode
 
-Two DNS servers can run side by side in split-screen, and they don't have to be the same kind: a Pi-hole on the left and an AdGuard Home on the right works. Player 1's ship occupies the left half of the canvas, Player 2's ship the right. Each side streams its own events, stats, and controls.
+Two ad-blockers can run side by side in split-screen, and they don't have to be the same kind: a Pi-hole on the left and an AdGuard Home on the right works. Player 1's ship occupies the left half of the canvas, Player 2's ship the right. Each side streams its own events, stats, and controls.
 
 Add the second server to your `compose.yaml` environment block, with the same settings as the first under `BLOCKER2_`:
 
@@ -435,7 +435,7 @@ BLOCKER2_PASSWORD=your_second_password
 
 - One of: Pi-hole v6 (v5 is not compatible), AdGuard Home 0.107.52 or newer (1.0 included), Technitium DNS 13 or newer, or Blocky 0.28 or newer
 - Docker with Compose
-- Network route from the container to your DNS server
+- Network route from the container to your ad-blocker
 - **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64` · `linux/ppc64le`
 
 The container listens on port 4653. The compose file includes an optional static IP block for existing Docker networks.
@@ -456,9 +456,9 @@ It starts with the banner and a line per player. After that, ph-intercept logs o
 
 | Log line | What to check |
 |----------|---------------|
-| `P1  waiting for ... to answer` | Normal on a first start while your DNS server boots. ph-intercept keeps checking, and logs `● detected after ...` when it answers. |
-| `P1  still no answer from ... after 1 min` | The URL and port, and that the container can reach your DNS server over the network. ph-intercept keeps trying. |
-| `P1  not started: could not tell which DNS server is at ...` | `BLOCKER_URL` should be the address you open in a browser to manage the server, with the web port. Or set `BLOCKER_TYPE`. |
+| `P1  waiting for ... to answer` | Normal on a first start while your ad-blocker boots. ph-intercept keeps checking, and logs `● detected after ...` when it answers. |
+| `P1  still no answer from ... after 1 min` | The URL and port, and that the container can reach your ad-blocker over the network. ph-intercept keeps trying. |
+| `P1  not started: could not tell which ad-blocker is at ...` | `BLOCKER_URL` should be the address you open in a browser to manage the server, with the web port. Or set `BLOCKER_TYPE`. |
 | `P1  not started: BLOCKER_TYPE says ..., but ... answers like ...` | `BLOCKER_TYPE` doesn't match the server at `BLOCKER_URL`. Fix either, or leave `BLOCKER_TYPE` out. |
 | `P1  not started: BLOCKER_URL points at port 53, the DNS port` | Use the web interface address instead. |
 | `P1  not started: ... has an HTTPS certificate this container doesn't trust` | Set `BLOCKER_VERIFY_SSL` to `false` for a self-signed certificate. |
@@ -475,9 +475,9 @@ The log is a few lines per start plus problems, so it needs no rotation settings
 
 ## Privacy
 
-ph-intercept only talks to your own DNS server(s). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your DNS server through ph-intercept.
+ph-intercept only talks to your own ad-blocker(s). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your ad-blocker through ph-intercept.
 
-**Shared screens:** on a wall display or a page other people can open, `READ_ONLY` stops anyone from changing your DNS server, and `HIDE_CLIENT` and `HIDE_DOMAIN` keep client names and domains out of the browser. See [Optional settings](#optional).
+**Shared screens:** on a wall display or a page other people can open, `READ_ONLY` stops anyone from changing your ad-blocker, and `HIDE_CLIENT` and `HIDE_DOMAIN` keep client names and domains out of the browser. See [Optional settings](#optional).
 
 ---
 
@@ -487,7 +487,7 @@ I may have gone a little overboard.
 
 ph-intercept is developed against a suite of about 1,800 tests that I run locally before every release: about 1,400 unit and integration tests, plus about 150 browser tests run in Chromium, Firefox, and WebKit. CI builds the images and scans them (CodeQL and Trivy). The suite lives on my machine for now; I'm working on bringing it into this repository with CI in a future release.
 
-- **DNS providers:** every provider (Pi-hole, AdGuard Home, Technitium, Blocky) on both sides of 2-player mode, run against fake servers that misbehave on purpose: wrong passwords, rate limits, timeouts, errors, HTML where JSON should be, and truncated replies. Each failure is checked against a request budget, so no failure can make ph-intercept hammer your DNS server, and real servers back these up: Pi-hole 2026.11, AdGuard Home 0.107 and 1.0, Technitium 11 to 15, and Blocky 0.37
+- **Ad-blockers:** every one (Pi-hole, AdGuard Home, Technitium, Blocky) on both sides of 2-player mode, run against fake servers that misbehave on purpose: wrong passwords, rate limits, timeouts, errors, HTML where JSON should be, and truncated replies. Each failure is checked against a request budget, so no failure can make ph-intercept hammer your ad-blocker, and real servers back these up: Pi-hole 2026.11, AdGuard Home 0.107 and 1.0, Technitium 11 to 15, and Blocky 0.37
 - **Secrets:** marker values in every password, token, and secret file, then every log line (at debug, tracebacks included), API reply, and live event is searched for them
 - **Hostile input:** every route and method, cross-site requests, oversized and malformed bodies, path traversal, and every setting given values nobody should set
 - **Limits:** reply sizes, live connections, slow and closed tabs, a runaway query log, memory over a busy network, and many screens open at once

@@ -2,7 +2,7 @@
 
 A live arcade dashboard for your Technitium DNS Server. It runs as a standalone Docker container next to Technitium, streams the DNS queries your network is resolving, and renders them as pixel-art ships: blocked queries are shot down, allowed ones fly through. Toggle blocking, set timed disables, force a block-list update, and switch ships from the HUD.
 
-ph-intercept uses one compose for every DNS server it supports. This page is that compose with the Technitium lines filled in, plus what's specific to Technitium. Everything else is in the [main README](../README.md).
+ph-intercept uses one compose for every ad-blocker it supports. This page is that compose with the Technitium lines filled in, plus what's specific to Technitium. Everything else is in the [main README](../README.md).
 
 This guide assumes Technitium is already serving DNS for your network, with your router or clients pointed at it so real queries are flowing. ph-intercept only reads from the Technitium HTTP API; it does not touch your DNS configuration. No traffic through Technitium means an empty screen, which is expected.
 
@@ -107,7 +107,7 @@ services:
       # Optional: how much goes in the container log: info (default), debug, warning, or error
       # LOG_LEVEL: info
 
-      # 2-player local mode: a second DNS server, any of the four, for a second ship on
+      # 2-player local mode: a second ad-blocker, any of the four, for a second ship on
       # the right half. Same settings as above with BLOCKER2_.
       # BLOCKER2_URL: "http://192.168.1.3:5380"
       # BLOCKER2_TOKEN: ${BLOCKER2_TOKEN}

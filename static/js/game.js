@@ -16,7 +16,7 @@
     technitium: { name: 'TECHNITIUM', icon: '/static/icons/technitium.svg', aspect: 1.0,            grid: 16, toggle: 'BLOCK LIST' },
     blocky:     { name: 'BLOCKY',     icon: '/static/icons/blocky.svg',     aspect: 452 / 498,      grid: 0,  toggle: 'DENYLIST' },
   };
-  const _PENDING_META = { name: 'DNS SERVER', icon: '', aspect: 1.0, grid: 0, toggle: 'LISTS' };
+  const _PENDING_META = { name: 'AD-BLOCKER', icon: '', aspect: 1.0, grid: 0, toggle: 'LISTS' };
   const _meta = p => p === '' ? _PENDING_META : (_PROVIDER_META[p] || _PROVIDER_META.pihole);
   const PROVIDER = window.PROVIDER === '' ? '' : (window.PROVIDER || 'pihole');
   const P2_PROVIDER = window.P2_PROVIDER === undefined ? PROVIDER : (window.P2_PROVIDER === '' ? '' : window.P2_PROVIDER);

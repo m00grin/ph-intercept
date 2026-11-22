@@ -89,26 +89,26 @@ x-casaos:
       ph-intercept is a real-time dashboard for Pi-hole v6, AdGuard Home, and Technitium DNS, drawn as a retro arcade game. Every DNS query becomes a ship on screen: allowed queries fly past as friendlies, and blocked ones are shot down by your interceptor.
 
       **Key Features:**
-      - Live view of every DNS query, streamed from your DNS server's API
+      - Live view of every DNS query, streamed from your ad-blocker's API
       - HUD with total, blocked, and allowed counts plus your block rate
       - Pause blocking, with an optional timer, and refresh your blocklists from the HUD
       - Starfield with real stars and planets, plus nebula, outrun, and dark backgrounds
       - Your own background image, from a URL or a file in the app's backgrounds folder
-      - Split-screen 2-player mode for watching two DNS servers side by side
+      - Split-screen 2-player mode for watching two ad-blockers side by side
       - Single lightweight container with no database
 
       **Setup:**
 
-      ph-intercept needs a Pi-hole v6, AdGuard Home, or Technitium DNS server that this device can reach. After installing, open the app's menu (the three dots on its icon), choose Settings (Manage on ZimaOS 1.8), and edit its environment variables:
+      ph-intercept needs a Pi-hole v6, AdGuard Home, Technitium, or Blocky ad-blocker that this device can reach. After installing, open the app's menu (the three dots on its icon), choose Settings (Manage on ZimaOS 1.8), and edit its environment variables:
 
-      1. Set BLOCKER_URL to the address you open in a browser to manage your DNS server, like http://192.168.1.2 for Pi-hole, http://192.168.1.2:3000 for AdGuard Home, or http://192.168.1.2:5380 for Technitium. ph-intercept works out which one it is.
+      1. Set BLOCKER_URL to the address you open in a browser to manage your ad-blocker, like http://192.168.1.2 for Pi-hole, http://192.168.1.2:3000 for AdGuard Home, or http://192.168.1.2:5380 for Technitium. ph-intercept works out which one it is.
       2. Add its login:
          - Pi-hole: BLOCKER_PASSWORD, an app password from Pi-hole's Settings > Web interface / API, not your login password.
          - AdGuard Home: BLOCKER_USERNAME and BLOCKER_PASSWORD.
          - Technitium: BLOCKER_TOKEN, an API token from the Technitium console, or BLOCKER_USERNAME and BLOCKER_PASSWORD.
       3. Save. The app restarts with your settings.
 
-      For your own background, put an image in the backgrounds folder and set BG_IMAGE to /bg/your-file.jpg. For 2-player mode (two DNS servers side by side, of any kind) and every other option, see the [full settings list](https://github.com/m00grin/ph-intercept#configuration). Blocky needs its query log folder shared with ph-intercept, so set it up with your own compose instead: see [Blocky setup](https://github.com/m00grin/ph-intercept#blocky-setup).
+      For your own background, put an image in the backgrounds folder and set BG_IMAGE to /bg/your-file.jpg. For 2-player mode (two ad-blockers side by side, of any kind) and every other option, see the [full settings list](https://github.com/m00grin/ph-intercept#configuration). Blocky needs its query log folder shared with ph-intercept, so set it up with your own compose instead: see [Blocky setup](https://github.com/m00grin/ph-intercept#blocky-setup).
 
       **Learn More:**
       - [GitHub Repository](https://github.com/m00grin/ph-intercept)
@@ -117,11 +117,11 @@ x-casaos:
   tips:
     before_install:
       en_US: |
-        ph-intercept needs a Pi-hole v6, AdGuard Home, or Technitium DNS server that this device can reach.
+        ph-intercept needs a Pi-hole v6, AdGuard Home, Technitium, or Blocky ad-blocker that this device can reach.
 
         To connect it, open the app's menu (the three dots on its icon), choose Settings (Manage on ZimaOS 1.8), and edit its environment variables:
 
-        1. Set BLOCKER_URL to the address you open in a browser to manage your DNS server, like http://192.168.1.2 for Pi-hole, http://192.168.1.2:3000 for AdGuard Home, or http://192.168.1.2:5380 for Technitium. ph-intercept works out which one it is.
+        1. Set BLOCKER_URL to the address you open in a browser to manage your ad-blocker, like http://192.168.1.2 for Pi-hole, http://192.168.1.2:3000 for AdGuard Home, or http://192.168.1.2:5380 for Technitium. ph-intercept works out which one it is.
         2. Add its login:
            - Pi-hole: BLOCKER_PASSWORD, an app password from Pi-hole's Settings > Web interface / API, not your login password.
            - AdGuard Home: BLOCKER_USERNAME and BLOCKER_PASSWORD.
