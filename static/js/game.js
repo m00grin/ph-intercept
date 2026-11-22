@@ -13,10 +13,13 @@
                       : PROVIDER === 'technitium' ? '/static/icons/technitium.svg'
                       : PROVIDER === 'blocky' ? '/static/icons/blocky.svg'
                       : '/static/icons/pihole.svg';
-  // Pi-hole's mascot is tall (90x130); AdGuard and Technitium icons are square; Blocky's is 452x498.
-  const PROVIDER_ICON_ASPECT = (PROVIDER === 'adguard' || PROVIDER === 'technitium') ? 1.0
+  // Width/height of each icon's viewBox: Pi-hole 88.32x129.93, AdGuard 91.3x93.5, Technitium 16x16, Blocky 452x498.
+  const PROVIDER_ICON_ASPECT = PROVIDER === 'adguard' ? (91.3 / 93.5)
+                             : PROVIDER === 'technitium' ? 1.0
                              : PROVIDER === 'blocky' ? (452 / 498)
-                             : (90 / 130);
+                             : (88.32 / 129.93);
+  // Technitium's logo is a 16x16 grid of square cells; drawn at a whole number of device pixels per cell it stays sharp.
+  const PROVIDER_ICON_GRID = PROVIDER === 'technitium' ? 16 : 0;
   // Label for the block-toggle module (Pi-hole: GRAVITY, AdGuard: FILTER, Technitium: BLOCK LIST, Blocky: DENYLIST).
   const PROVIDER_TOGGLE_LABEL = PROVIDER === 'adguard' ? 'FILTER'
                               : PROVIDER === 'technitium' ? 'BLOCK LIST'
@@ -1266,7 +1269,7 @@
   HUD.init({
     AUTOHIDE_MS, BG_MODE_LABELS, BG_MODE_ORDER, DISABLE_OPTIONS,
     HUD_FADE_DUR, HUD_SLIDE_DUR, POWERDOWN_DUR, PROVIDER,
-    PROVIDER_ICON_ASPECT, PROVIDER_NAME, PROVIDER_TOGGLE_LABEL,
+    PROVIDER_ICON_ASPECT, PROVIDER_ICON_GRID, PROVIDER_NAME, PROVIDER_TOGGLE_LABEL,
     SKY_PRESET_LABELS, SKY_PRESET_ORDER, STARTUP_DUR,
     _phIcon, bgImageAvailable, settingsBtnEl, _fitLabelFont, P1, P2,
   });

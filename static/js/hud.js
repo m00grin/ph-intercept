@@ -38,6 +38,16 @@
     bgSkyBox: null,
 
     init(consts) { C = consts; },
+    // Provider icon box for a menu row. A grid icon is sized to whole device pixels per cell and
+    // placed on the device-pixel grid, so its edges stay sharp instead of blending.
+    iconBox(x, rowY, rowH) {
+      const h = rowH - 8;
+      if (!C.PROVIDER_ICON_GRID) return { x, y: rowY + (rowH - h) / 2, w: Math.round(h * C.PROVIDER_ICON_ASPECT), h };
+      const dpr = Math.min(window.devicePixelRatio || 1, 3), g = C.PROVIDER_ICON_GRID;
+      const s = Math.max(1, Math.round(h * dpr / g)) * g / dpr;
+      const snap = v => Math.round(v * dpr) / dpr;
+      return { x: snap(x), y: snap(rowY + (rowH - s) / 2), w: s, h: s };
+    },
 
     // S carries the per-frame values; see the call site in render().
     draw(ctx, S) {
@@ -428,9 +438,7 @@
           const phHov = S.mouseX >= phHb.x && S.mouseX <= phHb.x + phHb.w && S.mouseY >= phHb.y && S.mouseY <= phHb.y + phHb.h;
           if (phHov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(phHb.x, phHb.y, phHb.w, phHb.h); }
           // Provider icon (Pi-hole, AdGuard, or Technitium)
-          const _iconAspect = C.PROVIDER_ICON_ASPECT;
-          const iconH = smPhRowH - 8, iconW = Math.round(iconH * _iconAspect);
-          const iconX = smX + 12, iconY = siy + (smPhRowH - iconH) / 2;
+          const { x: iconX, y: iconY, w: iconW, h: iconH } = HUD.iconBox(smX + 12, siy, smPhRowH);
           if (C._phIcon.complete && C._phIcon.naturalWidth > 0) {
             ctx.save();
             ctx.globalAlpha = phHov ? 0.88 : 0.45;
@@ -461,8 +469,7 @@
             ctx.strokeStyle = 'rgba(140,160,175,0.10)'; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(smX + 30, siy + 0.5); ctx.lineTo(smX + smw - 10, siy + 0.5); ctx.stroke();
             if (ph2Hov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(ph2Hb.x, ph2Hb.y, ph2Hb.w, ph2Hb.h); }
-            const _icon2H = smPhRowH - 8, _icon2W = Math.round(_icon2H * C.PROVIDER_ICON_ASPECT);
-            const _icon2X = smX + 12, _icon2Y = siy + (smPhRowH - _icon2H) / 2;
+            const { x: _icon2X, y: _icon2Y, w: _icon2W, h: _icon2H } = HUD.iconBox(smX + 12, siy, smPhRowH);
             if (C._phIcon.complete && C._phIcon.naturalWidth > 0) {
               ctx.save(); ctx.globalAlpha = ph2Hov ? 0.88 : 0.45;
               ctx.drawImage(C._phIcon, _icon2X, _icon2Y, _icon2W, _icon2H);
