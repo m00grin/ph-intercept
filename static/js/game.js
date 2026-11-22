@@ -4049,6 +4049,8 @@
         twoPlayerMode: twoPlayerMode,
         crewCount: P1.crewMembers.length,
         p2CrewCount: P2.crewMembers.length,
+        entities: P1.entities.length,
+        p2Entities: P2.entities.length,
       }),
       setBlocking: (e, t = null) => setBlocking(e, t),
       setP2Blocking: (e, t = null) => setP2Blocking(e, t),
