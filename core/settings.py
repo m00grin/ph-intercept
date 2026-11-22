@@ -201,7 +201,7 @@ def _resolve_side(slot: int, src: dict, neutral: dict) -> Side:
 
     side = Side(slot, "new", None)
     if new_type_raw is not None and new_type_raw not in PROVIDERS:
-        side.error = f"{pre}_TYPE={new_type_raw!r} is not one of {', '.join(PROVIDERS)}"
+        side.error = f"{pre}_TYPE={new_type_raw[:40]!r} is not one of {', '.join(PROVIDERS)}"
         return side
     explicit = legacy_type or new_type_raw
     if legacy_type and new_type_raw and legacy_type != new_type_raw:

@@ -3997,7 +3997,7 @@
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     const ret = (window.BG_CONFIG || {}).return_url;
-    if (!ret || /^(javascript|data):/i.test(ret)) return;
+    if (!ret || /^(javascript|vbscript|data|blob):/i.test(ret.replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+/, ''))) return;
     const veil = document.createElement('div');
     veil.dataset.navVeil = '1';
     veil.style.cssText = 'position:fixed;inset:0;background:#000;opacity:0;transition:opacity 180ms linear;z-index:9999;pointer-events:none;';

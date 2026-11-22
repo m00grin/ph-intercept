@@ -17,13 +17,14 @@ SIDE1, SIDE2 = SIDES[1], SIDES[2]
 if SIDE1.style == "legacy" and SIDE1.provider:
     PROVIDER = SIDE1.provider
 elif SIDE1.style == "legacy":
-    PROVIDER = _env.get("PROVIDER", "pihole").lower()
+    PROVIDER = _env.get("PROVIDER", "pihole").strip().lower() or "pihole"
     if PROVIDER not in PROVIDERS:
-        import logging
         logging.getLogger("ph-intercept").warning(
-            "PROVIDER=%r is not recognised (expected pihole, adguard, technitium, or blocky); running as pihole", PROVIDER
+            "PROVIDER=%r is not recognised (expected pihole, adguard, technitium, or blocky); running as pihole",
+            PROVIDER[:40],
         )
-    SIDE1.provider = PROVIDER if PROVIDER in PROVIDERS else "pihole"
+        PROVIDER = "pihole"
+    SIDE1.provider = PROVIDER
 else:
     # New style: known now when BLOCKER_TYPE (or PROVIDER) pins it, otherwise detected at startup.
     PROVIDER = SIDE1.provider or ""
@@ -193,10 +194,49 @@ def neutral_verify(slot: int) -> bool:
 TWO_PLAYER_LOCAL_CONFIGURED = P2_CONFIGURED
 TWO_PLAYER_ENABLED = True
 
-RETURN_URL = _env.get("RETURN_URL", "")
-BG_IMAGE = _env.get("BG_IMAGE", "")
-BG_MODE = "image" if BG_IMAGE else _env.get("BG_MODE", "starfield").lower()
-SKY_PRESET = _env.get("SKY_PRESET", "summer_triangle").lower()
+_log = logging.getLogger("ph-intercept")
+
+# Schemes that would run code in this page if ESC navigated to them. Anything
+# else stays allowed, custom app schemes included (they're documented).
+_SCRIPT_SCHEMES = frozenset(["javascript", "vbscript", "data", "blob"])
+
+
+def _browser_url(raw: str) -> str:
+    """The URL as a browser reads it: tabs and newlines dropped, and spaces and control characters trimmed."""
+    return re.sub(r"[\t\n\r]", "", raw).strip("".join(map(chr, range(0x21))))
+
+
+def _return_url(raw: str) -> str:
+    url = _browser_url(raw)
+    scheme = re.match(r"([A-Za-z][A-Za-z0-9+.-]*):", url)
+    if scheme and scheme.group(1).lower() in _SCRIPT_SCHEMES:
+        _log.warning("RETURN_URL: %s: links can't run scripts; ESC is off", scheme.group(1).lower())
+        return ""
+    return url
+
+
+def _bg_image(raw: str) -> str:
+    url = _browser_url(raw)
+    if url and not (url.startswith("/") or re.match(r"https?://", url, re.I)):
+        _log.warning("BG_IMAGE: expected an http(s) URL or a /bg/ path; ignoring it")
+        return ""
+    return url
+
+
+BG_MODES = ("starfield", "nebula", "outrun", "dark")
+
+
+def _choice(name: str, raw: str, default: str, allowed) -> str:
+    value = raw.strip().lower() or default
+    if value not in allowed:
+        _log.warning("%s=%r is not one of %s; using %s", name, value[:40], ", ".join(allowed), default)
+        return default
+    return value
+
+
+RETURN_URL = _return_url(_env.get("RETURN_URL", ""))
+BG_IMAGE = _bg_image(_env.get("BG_IMAGE", ""))
+BG_MODE = "image" if BG_IMAGE else _choice("BG_MODE", _env.get("BG_MODE", ""), "starfield", BG_MODES)
 READ_ONLY = _env.get("READ_ONLY", "false").strip().lower() in ("true", "1", "yes")
 HIDE_CLIENT = _env.get("HIDE_CLIENT", "false").strip().lower() in ("true", "1", "yes")
 HIDE_DOMAIN = _env.get("HIDE_DOMAIN", "false").strip().lower() in ("true", "1", "yes")
@@ -207,6 +247,7 @@ SKY_PRESETS = {
     "scorpius": {"ra": 17.00, "dec": -30.0},
     "southern_cross": {"ra": 12.47, "dec": -60.0},
 }
+SKY_PRESET = _choice("SKY_PRESET", _env.get("SKY_PRESET", ""), "summer_triangle", tuple(SKY_PRESETS))
 
 def _compile_ignore_patterns(raw: str, env_var: str = "pattern") -> list[re.Pattern]:
     import logging
