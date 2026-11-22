@@ -6,6 +6,8 @@ All notable changes to ph-intercept are documented here.
 
 ## [Unreleased]
 
+The biggest release yet: a fourth DNS server, mixed 2-player, and one simpler set of settings. It's also the most tested. Before release, ph-intercept went through about 1,800 tests that try to break it the way real networks and real configs do: DNS servers that time out, reject logins, or send garbage, hostile settings and requests, and long runs on a busy network with many screens open. That found and fixed about 35 bugs before anyone ran into them. Mutation testing then deliberately broke the code to check the tests catch it. The test suite still runs on my machine; I'm working on bringing it into this repository, with CI, in an upcoming release.
+
 ### Added
 
 - **Blocky support** -- ph-intercept now works with Blocky as well as Pi-hole, AdGuard Home, and Technitium. Blocky has no API for recent queries, so ph-intercept follows the CSV query log Blocky writes (`queryLog.type: csv`) through a read-only mount, reading only new lines and only while a page is open. Blocking toggle, timed disable, list refresh, and HUD stats use Blocky's REST API. Because it reads that log, ph-intercept has to run on the same machine as Blocky for now; with Blocky elsewhere, stats and controls work but no ships appear. See [Blocky setup](README.md#blocky-setup).
@@ -15,7 +17,8 @@ All notable changes to ph-intercept are documented here.
 - **Docker secrets** -- every password, token, and username can be read from a file with `*_FILE` (for example `BLOCKER_PASSWORD_FILE=/run/secrets/dns_password`), for the new names and the older ones alike.
 - **`LOG_LEVEL`** -- choose how much goes in the log: `info` (the default: the startup report and real events), `debug` (extra detail for troubleshooting), `warning` (problems only, no banner), or `error`. The banner shows the level in use.
 - **Startup banner** -- `docker compose up` now opens with the interceptor and the PH-INTERCEPT wordmark drawn in text, the version, and a line per player: which DNS server it found, at what address (passwords removed), and from which settings. Color shows only when the container has a terminal; a normal log stays plain.
-- **Startup report** -- the log now says which DNS server each side found, where its settings came from, and anything it ignored. It never prints a password or token.
+- **Startup report** -- the log now says which DNS server each side found, where its settings came from, and anything it ignored. It never prints a password or token. A side that can't start says why: an HTTPS certificate the container doesn't trust, the DNS port instead of the web port, or a `BLOCKER_TYPE` that doesn't match the server.
+- **More ways to get the image** -- every release is also published, unchanged, to Codeberg and GitLab, with the same digest everywhere. The README also shows how to build from a release tag after checking its signature.
 
 ### Changed
 
@@ -25,6 +28,7 @@ All notable changes to ph-intercept are documented here.
 - **One compose for every DNS server** -- the main `compose.yaml` now works for Pi-hole, AdGuard Home, Technitium, and Blocky. The AdGuard and Technitium guides keep their copy-paste composes, filled in for each, and shrink to what's specific to that server.
 - **AdGuard Home's list panel reads BLOCKLIST** -- it said FILTER. AdGuard Home 1.0 calls these lists "Blocklists" (under Filters), with a "Check for updates" button, so the HUD now uses AdGuard's own word, as it already did for Pi-hole (GRAVITY), Technitium (BLOCK LIST), and Blocky (DENYLIST).
 - **Reproducible, verified image builds** -- every Python package in the image, including the ones the app's libraries pull in, is now installed from a lock file with exact versions and checksums (`--require-hashes`), and the base image is pinned by digest. Before, only the four direct dependencies had versions, so two builds of the same release could differ (and did: the CA bundle package changed between builds). Updates still arrive weekly as reviewed Dependabot pull requests. Alpine's own packages are still upgraded at build time on purpose, so security fixes land between base image releases; each release's SBOM records exactly what went in.
+- **Docs** -- the README names the tested versions (AdGuard Home 0.107.52 and newer, 1.0 included; Technitium 13 and newer, with 11 and 12 partly; Blocky 0.28 and newer), the troubleshooting table shows the new log lines, and the Testing section describes the 1.6 suite. The CasaOS app (awaiting review in the store) sets up with `BLOCKER_URL` and a login, like the main compose.
 - **Official provider icons** -- the Pi-hole, AdGuard Home, Technitium, and Blocky icons now come from each project's own artwork, and Technitium's grid logo is drawn with sharp edges at any display scaling.
 
 ### Security
@@ -60,6 +64,8 @@ All notable changes to ph-intercept are documented here.
 ### Upgrading
 
 Nothing to change. Every setting from earlier releases (`PROVIDER`, `PIHOLE_URL`, `ADGUARD_PASSWORD`, `TECHNITIUM_TOKEN`, and the rest) still works exactly as before, and wins if both an older and a newer name are set. A config that uses only the older names behaves exactly as in 1.5.8. See [Older settings](README.md#older-settings).
+
+On Unraid, the template now lists the new names for new installs; an existing install keeps the settings it already has.
 
 ---
 

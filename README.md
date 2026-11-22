@@ -358,6 +358,7 @@ Each provider's own names still work, exactly as before. Use whichever you like;
 | `BLOCKER_TOKEN` | | | `TECHNITIUM_TOKEN` | |
 | `BLOCKER_VERIFY_SSL` | `PIHOLE_VERIFY_SSL` | `ADGUARD_VERIFY_SSL` | `TECHNITIUM_VERIFY_SSL` | `BLOCKY_VERIFY_SSL` |
 | `BLOCKER_TYPE` | `PROVIDER` | `PROVIDER` | `PROVIDER` | `PROVIDER` |
+| `BLOCKER_DASHBOARD` | | | | `BLOCKY_DASHBOARD` |
 
 `BLOCKER2_*` maps to `PIHOLE2_*`, `ADGUARD2_*`, and so on. The per-provider ignore lists (`PIHOLE_IGNORE_DOMAINS` and the rest) still apply to any side running that provider, together with `IGNORE_*`. Settings only one server has keep that server's name: `TECHNITIUM_TOTP`, `TECHNITIUM_QUERY_LOG_APP`, `TECHNITIUM_QUERY_LOG_CLASS`, and `BLOCKY_LOG_DIR`.
 
