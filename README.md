@@ -485,7 +485,7 @@ ph-intercept only talks to your own ad-blocker(s). It never phones home, has no 
 
 I may have gone a little overboard.
 
-ph-intercept is developed against a suite of about 1,800 tests that I run locally before every release: about 1,400 unit and integration tests, plus about 150 browser tests run in Chromium, Firefox, and WebKit. CI builds the images and scans them (CodeQL and Trivy). The suite lives on my machine for now; I'm working on bringing it into this repository with CI in a future release.
+ph-intercept is developed against a suite of about 1,500 tests that I run locally before every release: about 1,400 unit and integration tests, and about 150 browser tests run in Chromium, Firefox, and WebKit. CI builds the images and scans them (CodeQL and Trivy). The suite lives on my machine for now; I'm working on bringing it into this repository with CI in a future release.
 
 - **Ad-blockers:** every one (Pi-hole, AdGuard Home, Technitium, Blocky) on both sides of 2-player mode, run against fake servers that misbehave on purpose: wrong passwords, rate limits, timeouts, errors, HTML where JSON should be, and truncated replies. Each failure is checked against a request budget, so no failure can make ph-intercept hammer your ad-blocker, and real servers back these up: Pi-hole 2026.11, AdGuard Home 0.107 and 1.0, Technitium 11 to 15, and Blocky 0.37
 - **Secrets:** marker values in every password, token, and secret file, then every log line (at debug, tracebacks included), API reply, and live event is searched for them
