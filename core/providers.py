@@ -7,6 +7,7 @@ its own provider argument, so the two sides can run different providers.
 """
 
 import asyncio
+import functools
 import importlib
 from dataclasses import dataclass
 from typing import Any, Callable
@@ -55,6 +56,57 @@ class Surface:
     drop_session: Callable[..., Any]
 
 
+class _SharedStats:
+    """One stats fetch per side per second, however many tabs ask.
+
+    Every open tab polls stats once a second, and each poll costs the DNS server
+    two or three requests. Tabs asking within STATS_TTL share one reply, and tabs
+    asking at the same moment share one fetch. A toggle or filter update clears
+    it, so the next poll shows the change."""
+
+    TTL = 0.9   # under a tab's 1 s poll, so a single tab always gets a fresh reply
+
+    def __init__(self, fetch, clock):
+        self._fetch = fetch
+        self._clock = clock   # the provider module's clock, so a virtual clock in tests moves both together
+        self._value = None
+        self._at = float("-inf")
+        self._gen = 0
+        self._inflight: tuple[int, asyncio.Future] | None = None
+
+    async def get(self, http_client):
+        if self._clock() - self._at < self.TTL:
+            return self._value
+        if self._inflight is None or self._inflight[0] != self._gen:
+            self._inflight = (self._gen, asyncio.ensure_future(self._run(http_client, self._gen)))
+        # shield: a tab closing mid-fetch must not cancel the fetch the other tabs are waiting on
+        return await asyncio.shield(self._inflight[1])
+
+    async def _run(self, http_client, gen):
+        try:
+            value = await self._fetch(http_client)
+        finally:
+            if self._inflight and self._inflight[0] == gen:
+                self._inflight = None
+        if gen == self._gen:
+            self._value, self._at = value, self._clock()
+        return value
+
+    def clear(self) -> None:
+        self._gen += 1
+        self._at = float("-inf")
+
+
+def _clearing(op, stats: _SharedStats):
+    @functools.wraps(op)
+    async def run(*args, **kwargs):
+        try:
+            return await op(*args, **kwargs)
+        finally:
+            stats.clear()
+    return run
+
+
 def surface(provider: str, slot: int) -> Surface:
     """Resolve the provider's operations for instance 1 or 2.
 
@@ -65,7 +117,12 @@ def surface(provider: str, slot: int) -> Surface:
     module = importlib.import_module(f"core.{provider}")
     names = dict(_P1_NAMES if slot == 1 else _P2_NAMES)
     names.update(_OVERRIDES.get((provider, slot), {}))
-    return Surface(provider=provider, **{k: getattr(module, v) for k, v in names.items()})
+    ops = {k: getattr(module, v) for k, v in names.items()}
+    stats = _SharedStats(ops["get_stats"], lambda: module.time.monotonic())
+    ops["get_stats"] = stats.get
+    ops["toggle_blocking"] = _clearing(ops["toggle_blocking"], stats)
+    ops["trigger_filter_update"] = _clearing(ops["trigger_filter_update"], stats)
+    return Surface(provider=provider, **ops)
 
 
 def p2_config_error(provider: str) -> Callable[..., Any]:
