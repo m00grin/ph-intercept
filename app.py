@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from core.config import (
     HIDE_CLIENT, HIDE_DOMAIN, SIDE1, SIDE2, RESOLVED, DASHBOARD_OVERRIDE,
     TWO_PLAYER_LOCAL_CONFIGURED, TWO_PLAYER_ENABLED, P2_DASHBOARD, P2_VERIFY_SSL,
 )
+from core import banner as _banner
 from core import config as _config
 from core import settings as _settings
 from core.detect import identify
@@ -35,6 +37,7 @@ if not logger.handlers:
     _handler.setFormatter(logging.Formatter("%(message)s"))
     logger.addHandler(_handler)
     logger.setLevel(logging.INFO)
+_COLOR = sys.stderr.isatty()   # color only for a real terminal; a container's log stays plain
 
 # Dashboard link and TLS verification for the primary instance, per provider.
 _P1_SETTINGS = {
@@ -104,28 +107,28 @@ def _secret_state(provider: str, slot: int, fld: str) -> str:
     return "set" if RESOLVED.env.get(name, "") else "not set"
 
 
-def _report_side(slot: int) -> None:
+def _report_side(slot: int, status: str = "") -> None:
     side = SIDE1 if slot == 1 else SIDE2
     if slot == 2 and not TWO_PLAYER_LOCAL_CONFIGURED:
-        logger.info("Player 2: not configured")
+        logger.info(_banner.side(2, "not configured", color=_COLOR))
         return
     provider = _side_provider(slot)
     target = _P1 if slot == 1 else _P2
     if not provider:
         err = target.error if isinstance(target, Slot) else None
-        logger.info("Player %d: %s", slot, f"not started: {err}" if err else "waiting for the DNS server")
+        logger.info(_banner.side(slot, f"not started: {err}" if err else "waiting for the DNS server", color=_COLOR))
         return
     style = (f"{_settings.neutral_prefix(slot)}_* settings" if side.style == "new"
              else f"{_settings.SPEC[provider]['prefix']}{'' if slot == 1 else '2'}_* settings")
     url = _settings.display_url(RESOLVED.env.get(_settings.legacy_name(provider, slot, "url"), "")) or "(default)"
     creds = [f"{fld} {_secret_state(provider, slot, fld)}"
              for fld in ("username", "password", "token") if fld in _settings.SPEC[provider]["fields"]]
-    logger.info("Player %d: %s at %s, from %s%s", slot, _settings.NAMES[provider], url, style,
-                (", " + ", ".join(creds)) if creds else "")
+    logger.info(_banner.side(slot, _settings.NAMES[provider], url, status, color=_COLOR))
+    logger.info(_banner.detail(", ".join([style, *creds]), color=_COLOR))
     for note in side.notes:
-        logger.info("Player %d: %s", slot, note)
+        logger.info(_banner.detail(note, color=_COLOR))
     for name in _settings.unused_fields(side, RESOLVED.source):
-        logger.info("Player %d: %s isn't needed for %s, so it's ignored", slot, name, _settings.NAMES[provider])
+        logger.info(_banner.detail(f"{name} isn't needed for {_settings.NAMES[provider]}, so it's ignored", color=_COLOR))
 
 
 async def _settle(slot: int, client: httpx.AsyncClient) -> None:
@@ -137,45 +140,50 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
     target: Slot = _P1 if slot == 1 else _P2
     if side.error:
         target.fail(side.error)
-        logger.error("Player %d not started: %s", slot, side.error)
+        logger.error(_banner.problem(slot, f"not started: {side.error}", _COLOR))
         return
     delay = 5.0
+    status = ""
     while True:
         found, reason = await identify(client, side.root)
         if side.provider and (found in (None, side.provider)):
+            status = "confirmed" if found else ""
             if found is None:
-                logger.info("Player %d: could not confirm %s at %s (%s); using %s as configured",
-                            slot, _settings.NAMES[side.provider], _settings.display_url(side.root), reason, side.provider)
+                logger.info(_banner.side(slot, f"could not confirm {_settings.NAMES[side.provider]} at "
+                                               f"{_settings.display_url(side.root)} ({reason}); using it as configured",
+                                         color=_COLOR))
             break
         if side.provider and found != side.provider:
             msg = (f"{_settings.neutral_prefix(slot)}_TYPE says {side.provider}, but "
                    f"{_settings.display_url(side.root)} answers like {_settings.NAMES[found]}")
             target.fail(msg)
-            logger.error("Player %d not started: %s", slot, msg)
+            logger.error(_banner.problem(slot, f"not started: {msg}", _COLOR))
             return
         if found:
             side.provider = found
+            status = "detected"
             break
         if reason == "certificate":
             msg = (f"{_settings.display_url(side.root)} has an HTTPS certificate this container doesn't trust. For a self-signed "
                    f"certificate, set {_settings.neutral_prefix(slot)}_VERIFY_SSL to false")
             target.fail(msg)
-            logger.error("Player %d not started: %s", slot, msg)
+            logger.error(_banner.problem(slot, f"not started: {msg}", _COLOR))
             return
         if reason != "unreachable":
             msg = (f"could not tell which DNS server is at {_settings.display_url(side.root)}: {reason}. "
                    f"Check {_settings.neutral_prefix(slot)}_URL, or set {_settings.neutral_prefix(slot)}_TYPE")
             target.fail(msg)
-            logger.error("Player %d not started: %s", slot, msg)
+            logger.error(_banner.problem(slot, f"not started: {msg}", _COLOR))
             return
         target.fail(f"waiting for the DNS server at {_settings.display_url(side.root)}")
-        logger.warning("Player %d: no answer from %s yet; retrying in %ds", slot, _settings.display_url(side.root), int(delay))
+        logger.warning(_banner.problem(slot, f"no answer from {_settings.display_url(side.root)} yet, retrying in {int(delay)} s",
+                                       _COLOR))
         await asyncio.sleep(delay)
         delay = min(delay * 2, 60.0)
     err = _settings.credential_error(side, RESOLVED.env)
     if err:
         target.fail(err)
-        logger.error("Player %d not started: %s", slot, err)
+        logger.error(_banner.problem(slot, f"not started: {err}", _COLOR))
         return
     if slot == 1:
         _DASHBOARD, _VERIFY_SSL = _p1_settings(side.provider)
@@ -187,7 +195,7 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
         _, _P2_DASHBOARD, _P2_VERIFY_SSL = _config.p2_settings(side.provider)
         _P2.bind(side.provider)
         _report_side(2)
-    _report_side(slot)
+    _report_side(slot, status)
 
 
 async def _p2_validate(http_client) -> str | None:
@@ -243,6 +251,8 @@ async def lifespan(_app):
     if TWO_PLAYER_LOCAL_CONFIGURED:
         _http_client2 = _client(_P2_VERIFY_SSL)
         tasks.append(asyncio.create_task(query_p2_poller(_http_client2)))
+    for line in _banner.lines(_COLOR):
+        logger.info(line)
     for note in RESOLVED.notes:
         logger.warning(note)
     if isinstance(_P1, Slot):
