@@ -1,6 +1,12 @@
+import logging
 import re
 
-from .settings import PROVIDERS, resolve as _resolve
+from .settings import PROVIDERS, display_url, resolve as _resolve
+
+# The HTTP library logs every request URL at INFO, query string included. Keep it
+# to warnings so a raised log level can never print a URL's credentials.
+for _name in ("httpx", "httpcore"):
+    logging.getLogger(_name).setLevel(logging.WARNING)
 
 # Legacy names win; BLOCKER_* fill in what they leave unset (see core/settings.py).
 RESOLVED = _resolve()
@@ -25,13 +31,13 @@ else:
 PIHOLE_BASE = _env.get("PIHOLE_URL", "http://pihole:8053/api")
 _ssl_raw = _env.get("PIHOLE_VERIFY_SSL", "true").strip().lower()
 PIHOLE_VERIFY_SSL = _ssl_raw not in ("false", "0", "no")
-PIHOLE_DASHBOARD = PIHOLE_BASE.rstrip('/').removesuffix('/api') + '/admin'
+PIHOLE_DASHBOARD = display_url(PIHOLE_BASE.rstrip('/').removesuffix('/api') + '/admin')
 PIHOLE_PASSWORD = _env.get("PIHOLE_PASSWORD", "")
 
 ADGUARD_BASE = _env.get("ADGUARD_URL", "http://adguard:3000/control")
 _adguard_ssl_raw = _env.get("ADGUARD_VERIFY_SSL", "true").strip().lower()
 ADGUARD_VERIFY_SSL = _adguard_ssl_raw not in ("false", "0", "no")
-ADGUARD_DASHBOARD = ADGUARD_BASE.rstrip('/').removesuffix('/control') + '/'
+ADGUARD_DASHBOARD = display_url(ADGUARD_BASE.rstrip('/').removesuffix('/control') + '/')
 ADGUARD_USERNAME = _env.get("ADGUARD_USERNAME", "")
 ADGUARD_PASSWORD = _env.get("ADGUARD_PASSWORD", "")
 
@@ -56,7 +62,7 @@ PIHOLE2_URL = _env.get("PIHOLE2_URL", "").strip()
 PIHOLE2_PASSWORD = _env.get("PIHOLE2_PASSWORD", "")
 _pihole2_ssl_raw = _env.get("PIHOLE2_VERIFY_SSL", "true").strip().lower()
 PIHOLE2_VERIFY_SSL = _pihole2_ssl_raw not in ("false", "0", "no")
-PIHOLE2_DASHBOARD = PIHOLE2_URL.rstrip('/').removesuffix('/api') + '/admin' if PIHOLE2_URL else ""
+PIHOLE2_DASHBOARD = display_url(PIHOLE2_URL.rstrip('/').removesuffix('/api') + '/admin') if PIHOLE2_URL else ""
 
 # AdGuard second instance
 ADGUARD2_BASE = _env.get("ADGUARD2_URL", "").strip()
@@ -64,14 +70,14 @@ ADGUARD2_USERNAME = _env.get("ADGUARD2_USERNAME", "")
 ADGUARD2_PASSWORD = _env.get("ADGUARD2_PASSWORD", "")
 _adguard2_ssl_raw = _env.get("ADGUARD2_VERIFY_SSL", "true").strip().lower()
 ADGUARD2_VERIFY_SSL = _adguard2_ssl_raw not in ("false", "0", "no")
-ADGUARD2_DASHBOARD = ADGUARD2_BASE.rstrip('/').removesuffix('/control') + '/' if ADGUARD2_BASE else ""
+ADGUARD2_DASHBOARD = display_url(ADGUARD2_BASE.rstrip('/').removesuffix('/control') + '/') if ADGUARD2_BASE else ""
 
 # Technitium primary instance. TECHNITIUM_URL is the web-console root; the API
 # lives under {root}/api/ and the dashboard is the root itself. Auth is either a
 # permanent API token (TECHNITIUM_TOKEN) or user/password (+ optional TOTP).
 TECHNITIUM_URL = _env.get("TECHNITIUM_URL", "http://technitium:5380").strip()
 TECHNITIUM_BASE = TECHNITIUM_URL.rstrip('/')
-TECHNITIUM_DASHBOARD = TECHNITIUM_BASE + '/'
+TECHNITIUM_DASHBOARD = display_url(TECHNITIUM_BASE + '/')
 _technitium_ssl_raw = _env.get("TECHNITIUM_VERIFY_SSL", "true").strip().lower()
 TECHNITIUM_VERIFY_SSL = _technitium_ssl_raw not in ("false", "0", "no")
 TECHNITIUM_TOKEN = _env.get("TECHNITIUM_TOKEN", "").strip()
@@ -85,7 +91,7 @@ TECHNITIUM_LOG_CLASS = _env.get("TECHNITIUM_QUERY_LOG_CLASS", "QueryLogsSqlite.A
 # Technitium second instance (2-player local mode)
 TECHNITIUM2_URL = _env.get("TECHNITIUM2_URL", "").strip()
 TECHNITIUM2_BASE = TECHNITIUM2_URL.rstrip('/')
-TECHNITIUM2_DASHBOARD = (TECHNITIUM2_BASE + '/') if TECHNITIUM2_BASE else ""
+TECHNITIUM2_DASHBOARD = display_url(TECHNITIUM2_BASE + '/') if TECHNITIUM2_BASE else ""
 _technitium2_ssl_raw = _env.get("TECHNITIUM2_VERIFY_SSL", "true").strip().lower()
 TECHNITIUM2_VERIFY_SSL = _technitium2_ssl_raw not in ("false", "0", "no")
 TECHNITIUM2_TOKEN = _env.get("TECHNITIUM2_TOKEN", "").strip()

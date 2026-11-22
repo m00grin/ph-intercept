@@ -10,6 +10,7 @@ from .config import (
     HIDE_CLIENT, P2_PLACEHOLDER, env_prefix, ignore_patterns,
 )
 from .notice import clear, warn_once
+from .settings import display_url
 from .redact import public_domain
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,7 @@ _CACHE_STATUS_STR   = frozenset(["CACHE"])
 
 
 def _login_problem(label: str, url: str, env: str, resp: httpx.Response | None, exc: Exception | None) -> None:
+    url = display_url(url)
     if exc is not None and resp is None:
         warn_once(label, f"{label}: could not reach {url}. Check {env}_URL")
         return

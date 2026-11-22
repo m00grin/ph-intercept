@@ -14,6 +14,7 @@ from .config import (
     HIDE_CLIENT, P2_PLACEHOLDER, env_prefix, ignore_patterns,
 )
 from .notice import clear, warn_once
+from .settings import display_url
 from .redact import public_domain
 
 logger = logging.getLogger(__name__)
@@ -97,8 +98,8 @@ def _problem(inst: _Instance, path: str, code: str) -> None:
         return
     hints = {
         "auth_required": f"set {_name(inst, 'TOKEN')}, or {_name(inst, 'USER')} and {_name(inst, 'PASSWORD')}",
-        "auth_failed": f"could not reach {inst.base}. Check {_name(inst, 'URL')}",
-        "unreachable": f"could not reach {inst.base}. Check {_name(inst, 'URL')}",
+        "auth_failed": f"could not reach {display_url(inst.base)}. Check {_name(inst, 'URL')}",
+        "unreachable": f"could not reach {display_url(inst.base)}. Check {_name(inst, 'URL')}",
         "invalid-token": f"token rejected. Check {_name(inst, 'TOKEN')}",
     }
     warn_once(inst.label, f"{inst.label}: " + hints.get(code, f"API returned '{code}'. Check {_name(inst, 'USER')} / {_name(inst, 'PASSWORD')} / {_name(inst, 'TOTP')}"))
@@ -126,7 +127,8 @@ async def _ensure_auth(http_client: httpx.AsyncClient, inst: _Instance) -> bool:
             params["totp"] = inst.totp
         resp = None
         try:
-            resp = await http_client.get(f"{inst.base}/api/user/login", params=params, timeout=_LOGIN_TIMEOUT)
+            # Form data, not the URL: a URL's query string ends up in proxy and server logs.
+            resp = await http_client.post(f"{inst.base}/api/user/login", data=params, timeout=_LOGIN_TIMEOUT)
             data = resp.json()
             if not isinstance(data, dict):
                 raise ValueError("reply is not a JSON object")
@@ -166,15 +168,19 @@ async def _drop_session(http_client: httpx.AsyncClient, inst: _Instance) -> None
     inst.token = inst.static_token
     inst.login_token = False
     try:
-        await http_client.get(f"{inst.base}/api/user/logout", timeout=1.0, **_auth_args(inst, token))
+        await _send(http_client, inst, "user/logout", None, token, 1.0)
     except Exception:
         pass
 
 
-def _auth_args(inst: _Instance, token: str, params: dict | None = None) -> dict:
+async def _send(http_client: httpx.AsyncClient, inst: _Instance, path: str, params: dict | None,
+                token: str, timeout: float) -> httpx.Response:
+    """Technitium 15 reads the token from an Authorization header. Older releases need
+    it as a parameter; it goes in POST form data, never the URL."""
+    url = f"{inst.base}/api/{path.lstrip('/')}"
     if inst.token_in_query:
-        return {"params": {**(params or {}), "token": token}}
-    return {"params": params, "headers": {"Authorization": f"Bearer {token}"}}
+        return await http_client.post(url, data={**(params or {}), "token": token}, timeout=timeout)
+    return await http_client.get(url, params=params, headers={"Authorization": f"Bearer {token}"}, timeout=timeout)
 
 
 def _wants_query_token(data: dict) -> bool:
@@ -193,18 +199,14 @@ async def _api_call(
     if not await _ensure_auth(http_client, inst):
         return None
     try:
-        resp = await http_client.get(
-            f"{inst.base}/api/{path.lstrip('/')}", timeout=timeout, **_auth_args(inst, inst.token, params),
-        )
+        resp = await _send(http_client, inst, path, params, inst.token, timeout)
         data = resp.json()
         if not isinstance(data, dict):
             raise ValueError("reply is not a JSON object")
         if not inst.token_in_query and _wants_query_token(data):
             inst.token_in_query = True
-            logger.info("%s: this Technitium release takes the API token as a query parameter; using that", inst.label)
-            resp = await http_client.get(
-                f"{inst.base}/api/{path.lstrip('/')}", timeout=timeout, **_auth_args(inst, inst.token, params),
-            )
+            logger.info("%s: this Technitium release takes the API token as a form parameter; using that", inst.label)
+            resp = await _send(http_client, inst, path, params, inst.token, timeout)
             data = resp.json()
             if not isinstance(data, dict):
                 raise ValueError("reply is not a JSON object")

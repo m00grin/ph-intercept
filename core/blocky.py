@@ -13,6 +13,7 @@ from .config import (
     HIDE_CLIENT, P2_PLACEHOLDER, env_prefix, ignore_patterns,
 )
 from .notice import clear, warn_once
+from .settings import display_url
 from .redact import public_domain
 
 logger = logging.getLogger(__name__)
@@ -285,7 +286,7 @@ def _fetch_events(inst: _Instance) -> list[dict]:
 
 def _api_problem(inst: _Instance) -> None:
     warn_once(inst.label, (
-        f"{inst.label}: could not reach {inst.base}/api. Check {inst.env}_URL points at "
+        f"{inst.label}: could not reach {display_url(inst.base)}/api. Check {inst.env}_URL points at "
         f"Blocky's HTTP port (ports.http), not its DNS port"
     ))
 

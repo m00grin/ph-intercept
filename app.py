@@ -114,7 +114,7 @@ def _report_side(slot: int) -> None:
         return
     style = (f"{_settings.neutral_prefix(slot)}_* settings" if side.style == "new"
              else f"{_settings.SPEC[provider]['prefix']}{'' if slot == 1 else '2'}_* settings")
-    url = RESOLVED.env.get(_settings.legacy_name(provider, slot, "url"), "") or "(default)"
+    url = _settings.display_url(RESOLVED.env.get(_settings.legacy_name(provider, slot, "url"), "")) or "(default)"
     creds = [f"{fld} {_secret_state(provider, slot, fld)}"
              for fld in ("username", "password", "token") if fld in _settings.SPEC[provider]["fields"]]
     logger.info("Player %d: %s at %s, from %s%s", slot, _settings.NAMES[provider], url, style,
@@ -142,11 +142,11 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
         if side.provider and (found in (None, side.provider)):
             if found is None:
                 logger.info("Player %d: could not confirm %s at %s (%s); using %s as configured",
-                            slot, _settings.NAMES[side.provider], side.root, reason, side.provider)
+                            slot, _settings.NAMES[side.provider], _settings.display_url(side.root), reason, side.provider)
             break
         if side.provider and found != side.provider:
             msg = (f"{_settings.neutral_prefix(slot)}_TYPE says {side.provider}, but "
-                   f"{side.root} answers like {_settings.NAMES[found]}")
+                   f"{_settings.display_url(side.root)} answers like {_settings.NAMES[found]}")
             target.fail(msg)
             logger.error("Player %d not started: %s", slot, msg)
             return
@@ -154,19 +154,19 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
             side.provider = found
             break
         if reason == "certificate":
-            msg = (f"{side.root} has an HTTPS certificate this container doesn't trust. For a self-signed "
+            msg = (f"{_settings.display_url(side.root)} has an HTTPS certificate this container doesn't trust. For a self-signed "
                    f"certificate, set {_settings.neutral_prefix(slot)}_VERIFY_SSL to false")
             target.fail(msg)
             logger.error("Player %d not started: %s", slot, msg)
             return
         if reason != "unreachable":
-            msg = (f"could not tell which DNS server is at {side.root}: {reason}. "
+            msg = (f"could not tell which DNS server is at {_settings.display_url(side.root)}: {reason}. "
                    f"Check {_settings.neutral_prefix(slot)}_URL, or set {_settings.neutral_prefix(slot)}_TYPE")
             target.fail(msg)
             logger.error("Player %d not started: %s", slot, msg)
             return
-        target.fail(f"waiting for the DNS server at {side.root}")
-        logger.warning("Player %d: no answer from %s yet; retrying in %ds", slot, side.root, int(delay))
+        target.fail(f"waiting for the DNS server at {_settings.display_url(side.root)}")
+        logger.warning("Player %d: no answer from %s yet; retrying in %ds", slot, _settings.display_url(side.root), int(delay))
         await asyncio.sleep(delay)
         delay = min(delay * 2, 60.0)
     err = _settings.credential_error(side, RESOLVED.env)

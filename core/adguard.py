@@ -11,6 +11,7 @@ from .config import (
     ADGUARD2_USERNAME, ADGUARD2_PASSWORD, HIDE_CLIENT, P2_PLACEHOLDER, env_prefix, ignore_patterns,
 )
 from .notice import clear, warn_once
+from .settings import display_url
 from .redact import public_domain
 
 logger = logging.getLogger(__name__)
@@ -167,7 +168,7 @@ def _env(base: str) -> str:
 
 def _report(key: str, base: str, resp: httpx.Response | None) -> bool:
     if resp is None:
-        warn_once(key, f"{key}: could not reach {base}. Check {_env(base)}_URL")
+        warn_once(key, f"{key}: could not reach {display_url(base)}. Check {_env(base)}_URL")
         return False
     if resp.status_code in (401, 403):
         warn_once(key, f"{key}: login rejected (HTTP {resp.status_code}). Check {_env(base)}_USERNAME and {_env(base)}_PASSWORD")
@@ -175,7 +176,7 @@ def _report(key: str, base: str, resp: httpx.Response | None) -> bool:
     if resp.status_code != 200:
         where = ("the address of your AdGuard Home web interface" if _env(base).startswith("BLOCKER")
                  else "the control API (ends in /control)")
-        warn_once(key, f"{key}: unexpected HTTP {resp.status_code} from {base}. Check {_env(base)}_URL points at {where}")
+        warn_once(key, f"{key}: unexpected HTTP {resp.status_code} from {display_url(base)}. Check {_env(base)}_URL points at {where}")
         return False
     clear(key)
     return True

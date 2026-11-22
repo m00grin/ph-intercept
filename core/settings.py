@@ -78,6 +78,15 @@ def root_url(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
 
 
+def display_url(url: str) -> str:
+    """The URL with any user:password@ removed, for logs, messages, and links.
+    Requests still use the URL exactly as configured."""
+    parts = urlsplit(url)
+    if "@" not in parts.netloc:
+        return url
+    return urlunsplit((parts.scheme, parts.netloc.rsplit("@", 1)[1], parts.path, parts.query, parts.fragment))
+
+
 def api_url(provider: str, url: str) -> str:
     return root_url(url) + SPEC[provider]["api"]
 

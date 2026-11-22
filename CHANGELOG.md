@@ -22,6 +22,13 @@ All notable changes to ph-intercept are documented here.
 - **Reproducible, verified image builds** -- every Python package in the image, including the ones the app's libraries pull in, is now installed from a lock file with exact versions and checksums (`--require-hashes`), and the base image is pinned by digest. Before, only the four direct dependencies had versions, so two builds of the same release could differ (and did: the CA bundle package changed between builds). Updates still arrive weekly as reviewed Dependabot pull requests. Alpine's own packages are still upgraded at build time on purpose, so security fixes land between base image releases; each release's SBOM records exactly what went in.
 - **Official provider icons** -- the Pi-hole, AdGuard Home, Technitium, and Blocky icons now come from each project's own artwork, and Technitium's grid logo is drawn with sharp edges at any display scaling.
 
+### Security
+
+- **Passwords stay out of URLs and logs** -- found by new tests that put marker values in every credential and search everything ph-intercept outputs for them:
+  - **URL passwords:** a password written into a URL (`http://user:pass@host`) is removed from every log line, message, and dashboard link. Requests still use the URL as configured.
+  - **Technitium login:** the username, password, and two-factor code now go in a form body instead of the URL, where proxies and web servers log them. The token fallback for Technitium releases before 15 uses a form field too.
+  - **HTTP library logging:** its loggers are pinned to warnings, so turning up the log level can't print request URLs.
+
 ### Fixed
 
 - **A rejected or slow Pi-hole login no longer floods Pi-hole with retries** -- after a failed, refused, or timed-out login, ph-intercept retried with every poll, about three times a second per open page. On a slow Pi a login can take longer than the old 1.5 second timeout, so abandoned logins piled up inside Pi-hole and pinned its CPU. Failed logins now wait 2 seconds, doubling to 30 (60 after Pi-hole's rate limit), the login gets 10 seconds, and a success clears the wait. Applies to the second Pi-hole in 2-player mode too. Tracked down with [@Plxprs](https://github.com/Plxprs) in [#59](https://github.com/m00grin/ph-intercept/issues/59). Thank you!
