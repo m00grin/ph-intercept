@@ -236,7 +236,7 @@ def _choice(name: str, raw: str, default: str, allowed) -> str:
 
 RETURN_URL = _return_url(_env.get("RETURN_URL", ""))
 BG_IMAGE = _bg_image(_env.get("BG_IMAGE", ""))
-BG_MODE = "image" if BG_IMAGE else _choice("BG_MODE", _env.get("BG_MODE", ""), "starfield", BG_MODES)
+BG_MODE = "image" if BG_IMAGE else _choice("BG_MODE", _env.get("BG_MODE", "starfield"), "starfield", BG_MODES)
 READ_ONLY = _env.get("READ_ONLY", "false").strip().lower() in ("true", "1", "yes")
 HIDE_CLIENT = _env.get("HIDE_CLIENT", "false").strip().lower() in ("true", "1", "yes")
 HIDE_DOMAIN = _env.get("HIDE_DOMAIN", "false").strip().lower() in ("true", "1", "yes")
@@ -247,7 +247,7 @@ SKY_PRESETS = {
     "scorpius": {"ra": 17.00, "dec": -30.0},
     "southern_cross": {"ra": 12.47, "dec": -60.0},
 }
-SKY_PRESET = _choice("SKY_PRESET", _env.get("SKY_PRESET", ""), "summer_triangle", tuple(SKY_PRESETS))
+SKY_PRESET = _choice("SKY_PRESET", _env.get("SKY_PRESET", "summer_triangle"), "summer_triangle", tuple(SKY_PRESETS))
 
 def _compile_ignore_patterns(raw: str, env_var: str = "pattern") -> list[re.Pattern]:
     import logging

@@ -114,3 +114,12 @@ def detail(text: str, color: bool = False) -> str:
 def problem(slot: int, text: str, color: bool = False) -> str:
     """A player that can't start, or is waiting: '  P1  not started: ...'"""
     return f"  {_paint(f'P{slot}', _LABEL, color, bold=True)}  {_paint(text, _WARN, color)}"
+
+
+def elapsed(seconds: float) -> str:
+    """'14 s', '1 min 30 s', '12 min'"""
+    seconds = int(round(seconds))
+    if seconds < 60:
+        return f"{seconds} s"
+    minutes, rest = divmod(seconds, 60)
+    return f"{minutes} min {rest} s" if rest and minutes < 10 else f"{minutes} min"

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -131,6 +132,13 @@ def _report_side(slot: int, status: str = "") -> None:
         logger.info(_banner.detail(f"{name} isn't needed for {_settings.NAMES[provider]}, so it's ignored", color=_COLOR))
 
 
+# Detection retries: quick at first, since on a first boot the DNS server is usually seconds from ready.
+_FIRST_RETRY, _MAX_RETRY = 1.0, 15.0
+# While still waiting: a reminder after 1 minute, then 2, 4, 8, ... and at most every 15 minutes.
+_FIRST_REMINDER, _MAX_REMINDER_GAP = 60.0, 900.0
+_monotonic = time.monotonic
+
+
 async def _settle(slot: int, client: httpx.AsyncClient) -> None:
     """Confirm or detect a BLOCKER_* side's provider, then bind it. Strict: a
     config error or a server that matches no provider (or several) is reported
@@ -142,7 +150,7 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
         target.fail(side.error)
         logger.error(_banner.problem(slot, f"not started: {side.error}", _COLOR))
         return
-    delay = 5.0
+    delay, waiting_since, remind_at = _FIRST_RETRY, None, _FIRST_REMINDER
     status = ""
     while True:
         found, reason = await identify(client, side.root)
@@ -175,11 +183,19 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
             target.fail(msg)
             logger.error(_banner.problem(slot, f"not started: {msg}", _COLOR))
             return
-        target.fail(f"waiting for the DNS server at {_settings.display_url(side.root)}")
-        logger.warning(_banner.problem(slot, f"no answer from {_settings.display_url(side.root)} yet, retrying in {int(delay)} s",
-                                       _COLOR))
+        url = _settings.display_url(side.root)
+        target.fail(f"waiting for the DNS server at {url}")
+        if waiting_since is None:
+            # Normal on a first boot: the DNS server's container is often still starting.
+            waiting_since = _monotonic()
+            logger.info(_banner.side(slot, f"waiting for {url} to answer", color=_COLOR))
+        elif _monotonic() - waiting_since >= remind_at:
+            logger.warning(_banner.problem(slot, f"still no answer from {url} after {_banner.elapsed(remind_at)}", _COLOR))
+            remind_at += min(remind_at, _MAX_REMINDER_GAP)
         await asyncio.sleep(delay)
-        delay = min(delay * 2, 60.0)
+        delay = min(delay * 1.5, _MAX_RETRY)
+    if waiting_since is not None and status:
+        status = f"{status} after {_banner.elapsed(_monotonic() - waiting_since)}"
     err = _settings.credential_error(side, RESOLVED.env)
     if err:
         target.fail(err)
