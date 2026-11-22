@@ -475,6 +475,7 @@ async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
             resp = await http_client.get(
                 f"{ADGUARD2_BASE}/status",
                 auth=(ADGUARD2_USERNAME, ADGUARD2_PASSWORD),
+                timeout=10.0,
             )
             if resp.status_code == 401:
                 return f"AdGuard 2 authentication failed. Check {_E2}_USERNAME and {_E2}_PASSWORD"

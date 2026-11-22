@@ -545,6 +545,7 @@ async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
             resp = await http_client.post(
                 f"{PIHOLE2_URL}/auth",
                 json={"password": PIHOLE2_PASSWORD},
+                timeout=_LOGIN_TIMEOUT,
             )
             session = resp.json().get("session", {})
         except Exception:
