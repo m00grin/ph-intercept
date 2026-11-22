@@ -163,6 +163,7 @@ Open `http://your-host:4673`.
 
 ## Technitium DNS notes
 
+- **Version:** Technitium DNS Server 15 or newer. Older releases don't accept the API token the way ph-intercept sends it, so stats and ships stay empty.
 - **Login:** set `BLOCKER_TOKEN`, or `BLOCKER_USERNAME` and `BLOCKER_PASSWORD` (plus `TECHNITIUM_TOTP` if the account uses two-factor codes), not both.
 - **Blocked, cached, or upstream:** Technitium tags each answer with a response type. `Blocked`, `UpstreamBlocked`, `UpstreamBlockedCached`, and `Dropped` become enemies the ship destroys, `Cached` a fast friendly, and everything else an upstream friendly.
 - **HUD:** **STATS** shows **no error** (Technitium's own dashboard count) in place of allowed. **BLOCK LIST** (in place of GRAVITY) forces a block-list update. The settings link opens the Technitium web console.
