@@ -210,6 +210,13 @@ def _resolve_side(slot: int, src: dict, neutral: dict) -> Side:
         legacy = Side(slot, "legacy", explicit)
         legacy.notes.append(f"{legacy_name(explicit, slot, 'url')} is set, so {pre}_URL is ignored")
         return legacy
+    if slot == 2 and not explicit:
+        # Old names win (as the README promises): a legacy second side mirrors player 1's provider.
+        set_legacy = [legacy_name(p, 2, "url") for p in PROVIDERS if not _blank(src.get(legacy_name(p, 2, "url")))]
+        if set_legacy:
+            legacy = Side(slot, "legacy", None)
+            legacy.notes.append(f"{set_legacy[0]} is set, so {pre}_URL is ignored")
+            return legacy
     if slot == 1 and not explicit and not _blank(src.get("PIHOLE_URL")):
         legacy = Side(slot, "legacy", "pihole")
         legacy.notes.append(f"PIHOLE_URL is set, so {pre}_URL is ignored")
