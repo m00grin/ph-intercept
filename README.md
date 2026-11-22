@@ -372,13 +372,15 @@ Each provider's own names still work, exactly as before. Use whichever you like;
 | Pi-hole v6 | Its web address, e.g. `http://192.168.1.2` | `BLOCKER_PASSWORD`: an app password | Nothing |
 | AdGuard Home | Its web address, e.g. `http://192.168.1.2:3000` | `BLOCKER_USERNAME` and `BLOCKER_PASSWORD` | Nothing |
 | Technitium DNS 13+ | Its web console, e.g. `http://192.168.1.2:5380` | `BLOCKER_TOKEN`, or `BLOCKER_USERNAME` and `BLOCKER_PASSWORD` | The **Query Logs (Sqlite)** app from Technitium's App Store |
-| Blocky | Its HTTP port, e.g. `http://192.168.1.2:4000` | None | Its CSV query log, shared read-only: see below |
+| Blocky | Its HTTP port, e.g. `http://192.168.1.2:4000` | None | Its CSV query log, shared read-only, so the same machine: see below |
 
 More on each: [AdGuard Home](adguard/README.md) · [Technitium DNS](technitium/README.md).
 
 ## Blocky setup
 
-Blocky has no API for recent queries, so ph-intercept reads the CSV query log Blocky writes, through a read-only mount. Blocking control and stats use Blocky's REST API, which has no login.
+> **Same machine only, for now.** Blocky has no API for recent queries, so ph-intercept reads the CSV query log Blocky writes, through a read-only mount. That means ph-intercept has to run on the same machine as Blocky (or see Blocky's log folder over a network share). With Blocky on another machine, stats and the blocking controls still work, but no ships appear, and the log says the query log folder isn't mounted.
+
+Blocking control and stats use Blocky's REST API, which has no login.
 
 **1.** In Blocky's `config.yml`, turn on the CSV log and stats (and keep its HTTP port on), then restart Blocky:
 
