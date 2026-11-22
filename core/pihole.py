@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 
 import httpx
 
@@ -15,6 +16,26 @@ _pihole_sid: str | None = None
 _pihole_auth_lock: asyncio.Lock = asyncio.Lock()
 _pihole_ws_clients: set = set()
 _pihole_last_q_time: float = 0.0
+
+_LOGIN_TIMEOUT = 10.0
+_BACKOFF_FIRST = 2.0
+_BACKOFF_MAX = 30.0
+_BACKOFF_RATE_LIMITED = 60.0
+_login_backoff: dict[str, tuple[float, float]] = {}
+
+
+def _login_blocked(label: str) -> bool:
+    entry = _login_backoff.get(label)
+    return entry is not None and time.monotonic() < entry[0]
+
+
+def _login_failed(label: str, resp: httpx.Response | None = None) -> None:
+    prev = _login_backoff.get(label)
+    delay = _BACKOFF_FIRST if prev is None else min(prev[1] * 2, _BACKOFF_MAX)
+    if resp is not None and resp.status_code == 429:
+        delay = max(delay, _BACKOFF_RATE_LIMITED)
+    _login_backoff[label] = (time.monotonic() + delay, delay)
+
 
 _BLOCKED_STATUS_STR = frozenset(["BLOCK", "GRAVITY", "REGEX", "DENYLIST", "SPECIAL", "EDE"])
 _BLOCKED_STATUS_INT = frozenset([1, 4, 5, 6, 7, 8, 9, 10, 11, 15, 16, 18])
@@ -46,25 +67,32 @@ async def _pihole_ensure_auth(http_client: httpx.AsyncClient) -> bool:
     global _pihole_sid
     if _pihole_sid is not None:
         return True
+    if _login_blocked("Pi-hole"):
+        return False
     async with _pihole_auth_lock:
         if _pihole_sid is not None:
             return True
+        if _login_blocked("Pi-hole"):
+            return False
         resp = None
         try:
             resp = await http_client.post(
                 f"{PIHOLE_BASE}/auth",
                 content=json.dumps({"password": os.environ.get("PIHOLE_PASSWORD", "")}),
                 headers={"Content-Type": "application/json"},
+                timeout=_LOGIN_TIMEOUT,
             )
             session = resp.json().get("session", {})
             if session.get("valid"):
                 # Pi-hole omits sid in passwordless/open mode
                 _pihole_sid = session.get("sid") or ""
+                _login_backoff.pop("Pi-hole", None)
                 clear("Pi-hole")
                 return True
             _login_problem("Pi-hole", PIHOLE_BASE, "PIHOLE", resp, None)
         except Exception as exc:
             _login_problem("Pi-hole", PIHOLE_BASE, "PIHOLE", resp, exc)
+        _login_failed("Pi-hole", resp)
         return False
 
 
@@ -314,24 +342,31 @@ async def _p2_ensure_auth(http_client: httpx.AsyncClient) -> bool:
     global _p2_pihole_sid
     if _p2_pihole_sid is not None:
         return True
+    if _login_blocked("Pi-hole 2"):
+        return False
     async with _p2_pihole_auth_lock:
         if _p2_pihole_sid is not None:
             return True
+        if _login_blocked("Pi-hole 2"):
+            return False
         resp = None
         try:
             resp = await http_client.post(
                 f"{PIHOLE2_URL}/auth",
                 content=json.dumps({"password": os.environ.get("PIHOLE2_PASSWORD", "")}),
                 headers={"Content-Type": "application/json"},
+                timeout=_LOGIN_TIMEOUT,
             )
             session = resp.json().get("session", {})
             if session.get("valid"):
                 _p2_pihole_sid = session.get("sid") or ""
+                _login_backoff.pop("Pi-hole 2", None)
                 clear("Pi-hole 2")
                 return True
             _login_problem("Pi-hole 2", PIHOLE2_URL, "PIHOLE2", resp, None)
         except Exception as exc:
             _login_problem("Pi-hole 2", PIHOLE2_URL, "PIHOLE2", resp, exc)
+        _login_failed("Pi-hole 2", resp)
         return False
 
 
