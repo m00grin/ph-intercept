@@ -47,8 +47,10 @@
       const aspect = side === 2 ? C.P2_PROVIDER_ICON_ASPECT : C.PROVIDER_ICON_ASPECT;
       const g = side === 2 ? C.P2_PROVIDER_ICON_GRID : C.PROVIDER_ICON_GRID;
       if (!g) return { x, y: rowY + (rowH - h) / 2, w: Math.round(h * aspect), h };
+      // A grid logo is a solid square, so it reads larger than the other icons at the same
+      // height: aim for about 20px, rounded to whole device pixels per cell (16px at 1x).
       const dpr = Math.min(window.devicePixelRatio || 1, 3);
-      const s = Math.max(1, Math.round(h * dpr / g)) * g / dpr;
+      const s = Math.max(1, Math.round(Math.min(h, 20) * dpr / g)) * g / dpr;
       const snap = v => Math.round(v * dpr) / dpr;
       return { x: snap(x), y: snap(rowY + (rowH - s) / 2), w: s, h: s };
     },
