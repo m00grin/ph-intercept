@@ -241,10 +241,8 @@ async def _broadcast(events: list[dict]) -> None:
         try:
             q.put_nowait(payload)
         except asyncio.QueueFull:
-            try:
-                q.put_nowait(None)  # sentinel so generate() can exit cleanly
-            except asyncio.QueueFull:
-                pass
+            q.get_nowait()   # full: make room, so the close sentinel always lands
+            q.put_nowait(None)
             _pihole_ws_clients.discard(q)
 
 
@@ -435,10 +433,8 @@ async def _p2_broadcast(events: list[dict]) -> None:
         try:
             q.put_nowait(payload)
         except asyncio.QueueFull:
-            try:
-                q.put_nowait(None)
-            except asyncio.QueueFull:
-                pass
+            q.get_nowait()   # full: make room, so the close sentinel always lands
+            q.put_nowait(None)
             _p2_pihole_ws_clients.discard(q)
 
 

@@ -30,6 +30,7 @@ All notable changes to ph-intercept are documented here.
   - **HTTP library logging:** its loggers are pinned to warnings, so turning up the log level can't print request URLs.
 - **Request size limit** -- the API now refuses bodies over 64 KB with a 413 before reading them. Its requests are a few bytes, so nothing legitimate comes close, and a huge POST can no longer make ph-intercept buffer it in memory.
 - **`RETURN_URL` can't be made to run a script** -- the check that stops ESC from opening a `javascript:` link could be bypassed with a leading space, a tab, or a control character, all of which browsers ignore. The URL is now read the way a browser reads it, `vbscript:` and `blob:` are refused too, and a refused URL turns ESC off with a warning in the log. Web addresses, relative paths, and custom app links work as before.
+- **Limits on what a DNS server or a browser can make ph-intercept hold** -- a reply from the DNS server is cut off past 64 MB, so a URL pointed at something that never stops sending can't fill memory. Real replies are a tiny fraction of that, including AdGuard Home's filter status with a large custom rule list. Live-event connections are capped at 100 per side, far more than open tabs ever need, and each player counts on its own.
 - **Security headers on server errors** -- an unexpected error now answers with the same security headers as every other response, and still reveals nothing about the error.
 
 ### Fixed
@@ -45,6 +46,7 @@ All notable changes to ph-intercept are documented here.
 - **Blank or misspelled background settings** -- a blank or unknown `BG_MODE` drew no background at all, and a `BG_IMAGE` of only spaces turned on image mode with no image. Blank now means the default, and an unknown value logs a warning and uses the default. The same goes for `SKY_PRESET`. A `BG_IMAGE` that isn't an `http(s)` address or a `/bg/` path is ignored with a warning, instead of silently showing nothing.
 - **An unknown `PROVIDER` could stop the startup report** -- with a legacy `PROVIDER` that isn't a supported name, ph-intercept warned that it would run as Pi-hole, but kept the unknown name internally, and the startup report could fail on it. It now runs as Pi-hole throughout. `PROVIDER` also ignores surrounding spaces now.
 - **Very long settings in log messages** -- a rejected value is quoted at most 40 characters long, so a huge value can't flood the log.
+- **A tab that stopped reading kept its connection forever** -- when a tab fell far behind, ph-intercept meant to close its live-event connection so the browser would reconnect, but the close signal could never fit in the full queue. The tab then sat on an open connection that got no more events. A tab that disconnected right after connecting was also never released. Both now close and release properly, with every provider.
 - **A malformed reply from Technitium** -- a reply that was valid JSON but not an object could raise an error inside the blocking toggle. It's now treated like any other bad reply.
 
 ### Upgrading

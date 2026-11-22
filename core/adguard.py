@@ -355,10 +355,8 @@ async def _broadcast(events: list[dict], clients: set | None = None) -> None:
         try:
             q.put_nowait(payload)
         except asyncio.QueueFull:
-            try:
-                q.put_nowait(None)
-            except asyncio.QueueFull:
-                pass
+            q.get_nowait()   # full: make room, so the close sentinel always lands
+            q.put_nowait(None)
             clients.discard(q)
 
 

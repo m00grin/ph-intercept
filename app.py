@@ -196,8 +196,43 @@ async def _p2_validate(http_client) -> str | None:
     return await p2_config_error(_side_provider(2) or "pihole")(http_client)
 
 
+_MAX_REPLY = 64 * 1024 * 1024   # far above any real reply (AdGuard's filter status with a huge rule list included)
+
+
+class _CappedStream(httpx.AsyncByteStream):
+    def __init__(self, stream):
+        self._stream = stream
+
+    async def __aiter__(self):
+        total = 0
+        async for chunk in self._stream:
+            total += len(chunk)
+            if total > _MAX_REPLY:
+                raise httpx.ReadError(f"reply larger than {_MAX_REPLY // (1024 * 1024)} MB")
+            yield chunk
+
+    async def aclose(self) -> None:
+        await self._stream.aclose()
+
+
+class _CappedTransport(httpx.AsyncBaseTransport):
+    """Wraps a transport so no reply is read past _MAX_REPLY bytes."""
+
+    def __init__(self, inner: httpx.AsyncBaseTransport):
+        self._inner = inner
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        response = await self._inner.handle_async_request(request)
+        response.stream = _CappedStream(response.stream)
+        return response
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
+
+
 def _client(verify: bool) -> httpx.AsyncClient:
-    return httpx.AsyncClient(timeout=1.5, headers={"User-Agent": "ph-intercept"}, verify=verify)
+    return httpx.AsyncClient(timeout=1.5, headers={"User-Agent": "ph-intercept"}, verify=verify,
+                             transport=_CappedTransport(httpx.AsyncHTTPTransport(verify=verify)))
 
 
 @asynccontextmanager
@@ -446,16 +481,21 @@ async def pihole2_stats(_request: Request) -> JSONResponse:
     })
 
 
-async def pihole2_events(request: Request) -> StreamingResponse:
-    if not TWO_PLAYER_LOCAL_CONFIGURED:
-        return StreamingResponse(iter([]), media_type="text/event-stream")
+_SSE_MAX = 100   # live-event connections per side; a tab holds one per side, and closed tabs are released
+_SSE_OPEN = {1: set(), 2: set()}
+
+
+def _event_stream(slot: int, add, remove, reset):
+    if len(_SSE_OPEN[slot]) >= _SSE_MAX:
+        return JSONResponse({"error": "too many live connections"}, status_code=503)
 
     async def generate():
         q: asyncio.Queue = asyncio.Queue(maxsize=60)
-        add_p2_ws_client(q)
-        reset_p2_watermark()
-        yield ": ok\n\n"
+        _SSE_OPEN[slot].add(q)
         try:
+            add(q)
+            reset()
+            yield ": ok\n\n"
             while True:
                 payload = await q.get()
                 if payload is None:
@@ -464,13 +504,20 @@ async def pihole2_events(request: Request) -> StreamingResponse:
         except asyncio.CancelledError:
             pass
         finally:
-            remove_p2_ws_client(q)
+            remove(q)
+            _SSE_OPEN[slot].discard(q)
 
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
         headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
     )
+
+
+async def pihole2_events(request: Request) -> StreamingResponse:
+    if not TWO_PLAYER_LOCAL_CONFIGURED:
+        return StreamingResponse(iter([]), media_type="text/event-stream")
+    return _event_stream(2, add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark)
 
 
 async def pihole_gravity_update(request: Request) -> JSONResponse:
@@ -501,27 +548,7 @@ async def pihole2_gravity_update(_request: Request) -> JSONResponse:
 
 
 async def pihole_events(request: Request) -> StreamingResponse:
-    async def generate():
-        q: asyncio.Queue = asyncio.Queue(maxsize=60)
-        add_ws_client(q)
-        reset_watermark()
-        yield ": ok\n\n"
-        try:
-            while True:
-                payload = await q.get()
-                if payload is None:
-                    break
-                yield f"data: {payload}\n\n"
-        except asyncio.CancelledError:
-            pass
-        finally:
-            remove_ws_client(q)
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
-    )
+    return _event_stream(1, add_ws_client, remove_ws_client, reset_watermark)
 
 
 app = Starlette(

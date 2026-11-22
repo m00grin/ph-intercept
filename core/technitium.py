@@ -431,10 +431,8 @@ async def _broadcast(inst: _Instance, events: list[dict]) -> None:
         try:
             q.put_nowait(payload)
         except asyncio.QueueFull:
-            try:
-                q.put_nowait(None)  # sentinel so generate() can exit cleanly
-            except asyncio.QueueFull:
-                pass
+            q.get_nowait()   # full: make room, so the close sentinel always lands
+            q.put_nowait(None)
             inst.ws_clients.discard(q)
 
 
