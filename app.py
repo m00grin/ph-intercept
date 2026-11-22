@@ -153,6 +153,12 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
         if found:
             side.provider = found
             break
+        if reason == "certificate":
+            msg = (f"{side.root} has an HTTPS certificate this container doesn't trust. For a self-signed "
+                   f"certificate, set {_settings.neutral_prefix(slot)}_VERIFY_SSL to false")
+            target.fail(msg)
+            logger.error("Player %d not started: %s", slot, msg)
+            return
         if reason != "unreachable":
             msg = (f"could not tell which DNS server is at {side.root}: {reason}. "
                    f"Check {_settings.neutral_prefix(slot)}_URL, or set {_settings.neutral_prefix(slot)}_TYPE")

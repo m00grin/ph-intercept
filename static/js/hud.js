@@ -38,6 +38,8 @@
     bgSkyBox: null,
 
     init(consts) { C = consts; },
+    // Two sides on screen running different providers: shared labels must fit both.
+    mixedPair(S) { return S.twoPlayerMode === 'local' && C.P2_PROVIDER !== C.PROVIDER; },
     // Provider icon box for a menu row. A grid icon is sized to whole device pixels per cell and
     // placed on the device-pixel grid, so its edges stay sharp instead of blending.
     iconBox(x, rowY, rowH, side = 1) {
@@ -588,7 +590,8 @@
       if (INTEL_W >= 50) {
         const hsBlocked = C.P1.hudStats.blocked;
         // Technitium mirrors its dashboard's "No Error" card; others show allowed (total - blocked).
-        const _isTech = C.PROVIDER === 'technitium';
+        // The 2-player rows share one label row, so a mixed pair uses allowed on both.
+        const _isTech = C.PROVIDER === 'technitium' && !HUD.mixedPair(S);
         const hsAllowed = _isTech ? C.P1.hudStats.no_error
           : (C.P1.hudStats.queries != null && C.P1.hudStats.blocked != null ? C.P1.hudStats.queries - C.P1.hudStats.blocked : null);
         const _allowedLabel = _isTech ? 'no error' : 'allowed';
@@ -631,7 +634,8 @@
       // ── GRAVITY / FILTER ───────────────────────────────────
       ctx.save();
       ctx.beginPath(); ctx.rect(TDB_X, SY, TDB_W, _rowH + _lbExtra); ctx.clip();
-      _modLabel(C.PROVIDER_TOGGLE_LABEL, TDB_X + TDB_W / 2, 'center');
+      _modLabel(HUD.mixedPair(S) && C.P2_PROVIDER_TOGGLE_LABEL !== C.PROVIDER_TOGGLE_LABEL ? 'LISTS' : C.PROVIDER_TOGGLE_LABEL,
+                TDB_X + TDB_W / 2, 'center');
       let sigsStr, sigsColor = 'rgba(95,200,230,0.82)';
       if (C.P1.gravityState === 'updating') {
         sigsStr = 'UPDATING';
@@ -884,9 +888,10 @@
         // ── P2 STATS (INTEL) ───────────────────────────────────
         if (INTEL_W >= 50) {
           const _p2Blocked = C.P2.hudStats.blocked;
-          const _p2Allowed = C.P2_PROVIDER === 'technitium' ? C.P2.hudStats.no_error
+          const _p2Tech = C.P2_PROVIDER === 'technitium' && !HUD.mixedPair(S);
+          const _p2Allowed = _p2Tech ? C.P2.hudStats.no_error
             : (C.P2.hudStats.queries != null && _p2Blocked != null ? C.P2.hudStats.queries - _p2Blocked : null);
-          const _p2AllowedLabel = C.P2_PROVIDER === 'technitium' ? 'no error' : 'allowed';
+          const _p2AllowedLabel = _p2Tech ? 'no error' : 'allowed';
           const _p2Total   = C.P2.hudStats.queries;
           const _p2Pct     = C.P2.hudStats.percent;
           const _p2PctColor = _p2Pct == null ? 'rgba(150,150,150,0.50)' : _p2Pct >= 60 ? 'rgba(50,215,120,0.85)' : _p2Pct >= 40 ? 'rgba(210,220,70,0.85)' : 'rgba(255,110,50,0.85)';

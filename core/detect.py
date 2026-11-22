@@ -59,8 +59,9 @@ async def _is_adguard(client: httpx.AsyncClient, root: str, resp) -> bool:
 async def identify(client: httpx.AsyncClient, root: str) -> tuple[str | None, str]:
     """(provider, "") when exactly one matches, else (None, reason).
 
-    reason is "unreachable" when nothing answered at all (worth retrying);
-    anything else is a config problem to report."""
+    reason is "unreachable" when nothing answered at all (worth retrying) and
+    "certificate" when HTTPS failed verification; anything else is a config
+    problem to report."""
     paths = {
         "pihole": "/api/auth",
         "adguard": "/control/status",
@@ -73,6 +74,8 @@ async def identify(client: httpx.AsyncClient, root: str) -> tuple[str | None, st
     )
     by = dict(zip(paths, responses))
     if all(not isinstance(r, httpx.Response) for r in responses):
+        if any("CERTIFICATE_VERIFY_FAILED" in str(r) for r in responses):
+            return None, "certificate"
         return None, "unreachable"
     matches = [p for p, ok in (
         ("pihole", _is_pihole(by["pihole"])),

@@ -459,6 +459,7 @@ On a healthy setup that prints nothing. Otherwise ph-intercept logs one line whe
 | `Player 1: no answer from ... yet; retrying` | The URL and port, and that the container can reach your DNS server over the network. ph-intercept keeps trying. |
 | `Player 1 not started: BLOCKER_TYPE says ..., but ... answers like ...` | `BLOCKER_TYPE` doesn't match the server at `BLOCKER_URL`. Fix either, or leave `BLOCKER_TYPE` out. |
 | `Player 1 not started: BLOCKER_URL points at port 53, the DNS port` | Use the web interface address instead. |
+| `Player 1 not started: ... has an HTTPS certificate this container doesn't trust` | Set `BLOCKER_VERIFY_SSL` to `false` for a self-signed certificate. |
 | `Pi-hole: login rejected (password incorrect). Check BLOCKER_PASSWORD` | Use an app password from **Settings → Web interface / API → Configure app password**. |
 | `Pi-hole: login refused by rate limiting (...), retrying` | Pi-hole throttles logins after a few quick attempts. It clears on its own within a few seconds. |
 | `AdGuard: login rejected (HTTP 401). Check BLOCKER_USERNAME and BLOCKER_PASSWORD` | Your AdGuard Home login. |
