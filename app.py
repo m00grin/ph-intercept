@@ -1,7 +1,9 @@
 """ph-intercept - DNS game (Pi-hole, AdGuard Home, Technitium, and Blocky)."""
 
 import asyncio
+import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -9,7 +11,8 @@ import httpx
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
+from starlette.exceptions import HTTPException
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -268,9 +271,17 @@ def _is_cross_site_write(request: Request) -> bool:
     return False
 
 
+_MAX_BODY = 64 * 1024
+
+
 async def _json_body(request: Request) -> dict | None:
+    raw = b""
+    async for chunk in request.stream():
+        raw += chunk
+        if len(raw) > _MAX_BODY:
+            raise HTTPException(413)
     try:
-        body = await request.json()
+        body = json.loads(raw)
     except Exception:
         return None
     return body if isinstance(body, dict) else None
@@ -280,6 +291,21 @@ def _bad_body() -> JSONResponse:
     return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
 
 
+def _too_big(request: Request) -> bool:
+    try:
+        return int(request.headers.get("content-length", "0")) > _MAX_BODY
+    except ValueError:
+        return True
+
+
+class _OptionalStaticFiles(StaticFiles):
+    """/bg is a folder the user may or may not mount: missing means 404, not 500."""
+
+    async def check_config(self) -> None:
+        if self.directory is not None and os.path.isdir(self.directory):
+            await super().check_config()
+
+
 class ResponseHeaderMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         if _is_cross_site_write(request):
@@ -287,8 +313,14 @@ class ResponseHeaderMiddleware(BaseHTTPMiddleware):
         elif READ_ONLY and request.method == "POST":
             # Every POST route changes the DNS server or the 2-player mode.
             response = JSONResponse({"error": "read-only mode"}, status_code=403)
+        elif _too_big(request):
+            response = JSONResponse({"error": "request body too large"}, status_code=413)
         else:
-            response = await call_next(request)
+            try:
+                response = await call_next(request)
+            except Exception:
+                logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+                response = PlainTextResponse("Internal Server Error", status_code=500)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = _CSP
@@ -507,7 +539,7 @@ app = Starlette(
         Route("/api/pihole2/gravity-update", pihole2_gravity_update, methods=["POST"]),
         Route("/api/pihole2/events", pihole2_events),
         Mount("/static", StaticFiles(directory=_base / "static"), name="static"),
-        Mount("/bg", StaticFiles(directory=_base / "static" / "bg", check_dir=False), name="bg"),
+        Mount("/bg", _OptionalStaticFiles(directory=_base / "static" / "bg", check_dir=False), name="bg"),
     ],
 )
 app.add_middleware(ResponseHeaderMiddleware)

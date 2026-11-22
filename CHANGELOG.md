@@ -28,6 +28,8 @@ All notable changes to ph-intercept are documented here.
   - **URL passwords:** a password written into a URL (`http://user:pass@host`) is removed from every log line, message, and dashboard link. Requests still use the URL as configured.
   - **Technitium login:** the username, password, and two-factor code now go in a form body instead of the URL, where proxies and web servers log them. The token fallback for Technitium releases before 15 uses a form field too.
   - **HTTP library logging:** its loggers are pinned to warnings, so turning up the log level can't print request URLs.
+- **Request size limit** -- the API now refuses bodies over 64 KB with a 413 before reading them. Its requests are a few bytes, so nothing legitimate comes close, and a huge POST can no longer make ph-intercept buffer it in memory.
+- **Security headers on server errors** -- an unexpected error now answers with the same security headers as every other response, and still reveals nothing about the error.
 
 ### Fixed
 
@@ -38,6 +40,7 @@ All notable changes to ph-intercept are documented here.
 
 - **First queries after connecting to an empty query log** -- with Pi-hole, AdGuard Home, or Blocky, if the query log was empty when a page connected (a fresh install, a cleared log, or a new Blocky log folder), the first batch of real queries was taken for old history and never shown. They now appear like any other. Technitium already handled this.
 - **A wrong password or a struggling server no longer turns into a stream of logins** -- Technitium retried its login with every poll, and AdGuard Home fell back to sending the password with every request after a failed login (the same cost as [#58](https://github.com/m00grin/ph-intercept/issues/58)). Both now back off after a failed login like Pi-hole does since this release: 2 seconds, doubling to 30 (60 after a rate limit), reset by a working request. On real AdGuard Home 1.0.0 and 0.107 and Technitium 15, a wrong password went from about 60 login attempts in 20 seconds to 4, and the right password still logs in once. AdGuard setups whose login gives no session (no users, or a proxy that only speaks Basic Auth) keep using Basic Auth, but stop if it's refused.
+- **Background image folder not mounted** -- with no `/app/static/bg` folder mounted, any request under `/bg/` answered with a server error instead of "not found".
 - **A malformed reply from Technitium** -- a reply that was valid JSON but not an object could raise an error inside the blocking toggle. It's now treated like any other bad reply.
 
 ### Upgrading
