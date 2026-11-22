@@ -27,6 +27,8 @@ _SEEN_LIMIT = 500
 # dashboard counter. LastDay is a periodically-cached aggregate that visibly lags.
 _STATS_TYPE = "LastHour"
 _ENTRIES_PER_PAGE = 50
+_LOGIN_TIMEOUT = 10.0
+_BACKOFF_FIRST, _BACKOFF_MAX, _BACKOFF_RATE_LIMITED = 2.0, 30.0, 60.0
 
 
 class _Instance:
@@ -62,6 +64,10 @@ class _Instance:
         # Technitium 15 reads the token from an Authorization header. Older releases
         # only read a token query parameter; switched on the first time one says so.
         self.token_in_query = False
+        # After a failed login, wait before the next one (2 s doubling to 30 s, 60 s
+        # after HTTP 429), so a wrong password can't make every poll log in again.
+        self.login_retry_at = 0.0
+        self.login_delay = 0.0
 
 
 _p1 = _Instance(
@@ -108,14 +114,19 @@ async def _ensure_auth(http_client: httpx.AsyncClient, inst: _Instance) -> bool:
         inst.last_error = "auth_required"
         _problem(inst, "", "auth_required")
         return False
+    if time.monotonic() < inst.login_retry_at:
+        return False
     async with inst.auth_lock:
         if inst.token:
             return True
+        if time.monotonic() < inst.login_retry_at:
+            return False
         params = {"user": inst.user, "pass": inst.password, "includeInfo": "false"}
         if inst.totp:
             params["totp"] = inst.totp
+        resp = None
         try:
-            resp = await http_client.get(f"{inst.base}/api/user/login", params=params, timeout=5.0)
+            resp = await http_client.get(f"{inst.base}/api/user/login", params=params, timeout=_LOGIN_TIMEOUT)
             data = resp.json()
             if not isinstance(data, dict):
                 raise ValueError("reply is not a JSON object")
@@ -123,15 +134,25 @@ async def _ensure_auth(http_client: httpx.AsyncClient, inst: _Instance) -> bool:
             inst.last_error = "auth_failed"
             logger.debug("Technitium login failed", exc_info=True)
             _problem(inst, "", "auth_failed")
+            _login_failed(inst, resp)
             return False
         if data.get("status") == "ok" and data.get("token"):
             inst.token = str(data["token"])
             inst.login_token = True
             inst.last_error = None
+            inst.login_retry_at = inst.login_delay = 0.0
             return True
         inst.last_error = str(data.get("status") or "auth_rejected")
         _problem(inst, "", inst.last_error)
+        _login_failed(inst, resp)
         return False
+
+
+def _login_failed(inst: _Instance, resp: httpx.Response | None) -> None:
+    inst.login_delay = _BACKOFF_FIRST if not inst.login_delay else min(inst.login_delay * 2, _BACKOFF_MAX)
+    if resp is not None and resp.status_code == 429:
+        inst.login_delay = max(inst.login_delay, _BACKOFF_RATE_LIMITED)
+    inst.login_retry_at = time.monotonic() + inst.login_delay
 
 
 async def _drop_session(http_client: httpx.AsyncClient, inst: _Instance) -> None:

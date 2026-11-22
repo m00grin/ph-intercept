@@ -50,21 +50,40 @@ class _SessionAuth(httpx.Auth):
 
     AdGuard Home checks a Basic Auth password with bcrypt on every request, which
     pins the CPU on small devices at our poll rate. A session cookie is a cheap
-    lookup. Falls back to Basic Auth for a minute when login gives no cookie
-    (auth disabled, or a proxy in front that only speaks Basic Auth).
+    lookup. When login answers without a cookie (auth disabled, or a proxy in
+    front that only speaks Basic Auth), Basic Auth is used for a minute.
+
+    Every other login failure (wrong password, rate limit, server down) backs off,
+    2 s doubling to 30 s (60 s after HTTP 429), and requests go out without a
+    password meanwhile, so a bad setup can't turn every poll into a password check.
     """
 
     _FALLBACK_SECONDS = 60
+    _BACKOFF_FIRST, _BACKOFF_MAX, _BACKOFF_RATE_LIMITED = 2.0, 30.0, 60.0
 
     def __init__(self, base: str, creds: tuple[str, str]):
         self.base = base
         self.creds = creds
         self.cookie: str | None = None
         self._basic_until = 0.0
+        self._retry_at = 0.0
+        self._delay = 0.0
         self._lock = asyncio.Lock()
 
     def _with_cookie(self, request: httpx.Request, cookie: str) -> httpx.Request:
         request.headers["Cookie"] = f"agh_session={cookie}"
+        return request
+
+    def _backoff(self, rate_limited: bool = False) -> None:
+        self._delay = self._BACKOFF_FIRST if not self._delay else min(self._delay * 2, self._BACKOFF_MAX)
+        if rate_limited:
+            self._delay = max(self._delay, self._BACKOFF_RATE_LIMITED)
+        self._retry_at = time.monotonic() + self._delay
+        self._basic_until = 0.0
+
+    def _without_credentials(self, request: httpx.Request) -> httpx.Request:
+        request.headers.pop("Cookie", None)
+        request.headers.pop("Authorization", None)
         return request
 
     async def async_auth_flow(self, request: httpx.Request):
@@ -72,23 +91,52 @@ class _SessionAuth(httpx.Auth):
         if cookie:
             response = yield self._with_cookie(request, cookie)
             if response.status_code not in (401, 403):
+                self._delay = 0.0
                 return
-        if time.monotonic() >= self._basic_until:
-            async with self._lock:
-                if self.cookie == cookie and time.monotonic() >= self._basic_until:
-                    login = yield httpx.Request(
-                        "POST", f"{self.base}/login",
-                        json={"name": self.creds[0], "password": self.creds[1]},
-                        headers={"User-Agent": request.headers.get("User-Agent", "ph-intercept")},
-                    )
-                    self.cookie = login.cookies.get("agh_session") if login.status_code == 200 else None
+            if self.cookie == cookie:
+                self.cookie = None
+        now = time.monotonic()
+        if now < self._basic_until:
+            self._check_basic(request, (yield self._basic(request)))
+            return
+        if now < self._retry_at:
+            yield self._without_credentials(request)
+            return
+        async with self._lock:
+            if not self.cookie and time.monotonic() >= self._retry_at and time.monotonic() >= self._basic_until:
+                # Assume failure until proven otherwise, so a dropped connection backs off too.
+                self._backoff()
+                login = yield httpx.Request(
+                    "POST", f"{self.base}/login",
+                    json={"name": self.creds[0], "password": self.creds[1]},
+                    headers={"User-Agent": request.headers.get("User-Agent", "ph-intercept")},
+                )
+                if login.status_code == 200:
+                    # The back-off itself resets only once an authenticated request works.
+                    self._retry_at = 0.0
+                    self.cookie = login.cookies.get("agh_session")
                     if not self.cookie:
                         self._basic_until = time.monotonic() + self._FALLBACK_SECONDS
+                elif login.status_code == 429:
+                    self._backoff(rate_limited=True)
         if self.cookie:
             yield self._with_cookie(request, self.cookie)
+        elif time.monotonic() < self._basic_until:
+            self._check_basic(request, (yield self._basic(request)))
         else:
-            request.headers.pop("Cookie", None)
-            yield next(httpx.BasicAuth(*self.creds).auth_flow(request))
+            yield self._without_credentials(request)
+
+    def _basic(self, request: httpx.Request) -> httpx.Request:
+        request.headers.pop("Cookie", None)
+        return next(httpx.BasicAuth(*self.creds).auth_flow(request))
+
+    def _check_basic(self, request: httpx.Request, response: httpx.Response) -> None:
+        # Rejected, or not AdGuard answering: stop sending the password with every request.
+        json_reply = "json" in response.headers.get("content-type", "")
+        if response.status_code in (401, 403) or (request.method == "GET" and not json_reply):
+            self._backoff()
+        elif response.status_code < 400:
+            self._delay = 0.0
 
 
 _sessions: dict[tuple[str, tuple[str, str]], _SessionAuth] = {}
