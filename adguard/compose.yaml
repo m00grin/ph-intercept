@@ -12,19 +12,17 @@ services:
           pids: 20
 
     environment:
-      PROVIDER: adguard
+      # REQUIRED: the address you open in a browser to manage AdGuard Home.
+      # Example: "http://192.168.1.2:3000"
+      BLOCKER_URL: "http://CHANGE.ME:3000"
 
-      # REQUIRED: AdGuard Home control API endpoint
-      # Example: "http://192.168.1.2:3000/control"
-      ADGUARD_URL: "http://CHANGE.ME:PORT/control"
-
-      # REQUIRED: AdGuard Home username or email for login.
-      ADGUARD_USERNAME: "CHANGE.ME"
+      # REQUIRED: the username you log in to AdGuard Home with
+      BLOCKER_USERNAME: "CHANGE.ME"
 
       # CLI users: Create a .env file in the same dir as this compose file with:
-      #  ADGUARD_PASSWORD=your_adguard_password
-      # Portainer Web users: Add the environment variable: ADGUARD_PASSWORD=your_adguard_password
-      ADGUARD_PASSWORD: ${ADGUARD_PASSWORD}
+      #  BLOCKER_PASSWORD=your_adguard_password
+      # Portainer Web users: Add the environment variable: BLOCKER_PASSWORD=your_adguard_password
+      BLOCKER_PASSWORD: ${BLOCKER_PASSWORD}
 
       # Optional: where ESC navigates to (like your homelab dashboard or homepage)
       # Accepts http://, https://, protocol-relative (//), relative paths, and custom app schemes
@@ -45,12 +43,12 @@ services:
       # picked any time. Leave blank to disable it (CUSTOM shows greyed out in the menu).
       BG_IMAGE: ""
 
-      # SSL certificate verification. Set to "false" if AdGuard uses HTTPS
+      # SSL certificate verification. Set to "false" if AdGuard Home uses HTTPS
       #  with a self-signed certificate. Leave as "true" for HTTP or valid HTTPS.
-      ADGUARD_VERIFY_SSL: "true"
+      BLOCKER_VERIFY_SSL: "true"
 
       # Optional: comma-separated regex patterns. Matching domains spawn no ships. Case-insensitive.
-      # ADGUARD_IGNORE_DOMAINS: .*\.local$,.*\.internal$
+      # IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
       # Optional: "true" makes the page view-only. The server refuses the blocking
       # toggle, filter update and 2-player mode switch; the HUD controls go inert.
@@ -62,17 +60,17 @@ services:
 
       # Optional: comma-separated regex patterns matched against the client name or IP.
       # Queries from matching clients spawn no ships. Case-insensitive.
-      # ADGUARD_IGNORE_CLIENTS: ^uptime-kuma$,^192\.168\.1\.99$
+      # IGNORE_CLIENTS: ^uptime-kuma$,^192\.168\.1\.99$
 
       # Optional: "true" replaces every domain with an opaque per-start token on the
       # server. Repeat queries still group; domain labels and the DOMAIN toggle go away.
       # HIDE_DOMAIN: "true"
 
-      # 2-player local mode: set all three to enable a second AdGuard ship on the right half
-      # ADGUARD2_URL: "http://192.168.1.3:3000/control"
-      # ADGUARD2_USERNAME: "CHANGE.ME"
-      # ADGUARD2_PASSWORD: ${ADGUARD2_PASSWORD}
-      # ADGUARD2_VERIFY_SSL: "true"
+      # 2-player local mode: a second DNS server, any of the four, for a second ship on
+      # the right half. Same settings as above with BLOCKER2_.
+      # BLOCKER2_URL: "http://192.168.1.3:3000"
+      # BLOCKER2_USERNAME: "admin"
+      # BLOCKER2_PASSWORD: ${BLOCKER2_PASSWORD}
 
     volumes:
       # Portainer Web users: This will resolve to /data/compose/<stack-id>/bg/
@@ -98,7 +96,7 @@ services:
       # Host port : container port. Change the left side if 4663 is taken
       - "4663:4653"
 
-    # Optional: point DNS at your AdGuard Home instance
+    # Optional: point DNS at your AdGuard Home (if used for DNS resolution) or resolver directly (like Unbound)
     # dns:
     #   - your.dns.dockernet.ip
 

@@ -19,25 +19,26 @@ Try the [live demo](https://ph-intercept.com/demo/) in your browser first, no in
 
 ---
 
-> **AdGuard Home user?** See the [AdGuard setup guide](adguard/README.md).
->
-> **Technitium DNS user?** See the [Technitium setup guide](technitium/README.md).
->
-> **Blocky user?** Use the same compose below and see [Blocky setup](#blocky-setup).
+> **One compose for every DNS server.** Pi-hole, AdGuard Home, Technitium DNS, and Blocky all use the compose below. ph-intercept works out which one you run. A few servers need one extra step: see [Your DNS server](#your-dns-server).
 
 ## Quick Start
 
-**1.** Get your Pi-hole **app password** (not your web login password): from the Pi-hole admin panel, go to **Settings → Web interface / API → Configure app password**.
+**1.** Have your DNS server's address and login ready (see [Your DNS server](#your-dns-server) for what each one needs):
+
+- **Pi-hole:** an **app password** (not your web login password), from **Settings → Web interface / API → Configure app password**.
+- **AdGuard Home:** your username and password.
+- **Technitium DNS:** an API token (**Administration → Sessions → Create Token**), or your username and password.
+- **Blocky:** no login. It needs its query log shared instead: see [Blocky setup](#blocky-setup).
 
 - **CLI users:** Create a `.env` file in the same directory as your `compose.yaml`:
 
   ```env
-  PIHOLE_PASSWORD=your_pihole_app_password
+  BLOCKER_PASSWORD=your_password
   ```
 
-- **Portainer users:** Skip the `.env` file. Add `PIHOLE_PASSWORD` as an environment variable directly in the Portainer stack config.
+- **Portainer users:** Skip the `.env` file. Add `BLOCKER_PASSWORD` as an environment variable directly in the Portainer stack config.
 
-**2.** Create a `compose.yaml` (copy the example below or grab [`compose.yaml`](compose.yaml) from the repo) and update `PIHOLE_URL` to your Pi-hole's address:
+**2.** Create a `compose.yaml` (copy the example below or grab [`compose.yaml`](compose.yaml) from the repo) and set `BLOCKER_URL` to the address you open in a browser to manage your DNS server. For AdGuard Home or Technitium, also uncomment `BLOCKER_USERNAME`:
 
 ```yaml
 services:
@@ -54,19 +55,23 @@ services:
           pids: 20
 
     environment:
-      # REQUIRED: Pi-hole v6 API endpoint
-      # Example: "http://192.168.1.2:80/api"
-      PIHOLE_URL: "http://CHANGE.ME:PORT/api"
+      # REQUIRED: the address you open in a browser to manage your DNS server.
+      # Works with Pi-hole v6, AdGuard Home, Technitium DNS, and Blocky; ph-intercept
+      # detects which one it is. Example: "http://192.168.1.2"
+      BLOCKER_URL: "http://CHANGE.ME"
 
+      # Pi-hole: an app password. AdGuard Home or Technitium: your login password.
+      # Blocky has no login: leave it out.
       # CLI users: Create a .env file in the same dir as this compose file with:
-      #  PIHOLE_PASSWORD=your_pihole_app_password
-      # Portainer Web users: Add the environment variable: PIHOLE_PASSWORD=your_pihole_app_password
-      PIHOLE_PASSWORD: ${PIHOLE_PASSWORD}
+      #  BLOCKER_PASSWORD=your_password
+      # Portainer Web users: Add the environment variable: BLOCKER_PASSWORD=your_password
+      BLOCKER_PASSWORD: ${BLOCKER_PASSWORD}
 
-      # Using Blocky instead? Uncomment these two lines and the Blocky volume below;
-      # the PIHOLE_* settings are then ignored. See "Blocky setup" in the README.
-      # PROVIDER: blocky
-      # BLOCKY_URL: "http://192.168.1.2:4000"
+      # AdGuard Home and Technitium only: your login username
+      # BLOCKER_USERNAME: "admin"
+
+      # Technitium only: an API token instead of a username and password
+      # BLOCKER_TOKEN: ${BLOCKER_TOKEN}
 
       # Optional: where ESC navigates to (like your homelab dashboard or homepage)
       # Accepts http://, https://, protocol-relative (//), relative paths, and custom app schemes
@@ -87,12 +92,12 @@ services:
       # picked any time. Leave blank to disable it (CUSTOM shows greyed out in the menu).
       BG_IMAGE: ""
 
-      # SSL certificate verification. Set to "false" if Pi-hole uses HTTPS
+      # SSL certificate verification. Set to "false" if your DNS server uses HTTPS
       #  with a self-signed certificate. Leave as "true" for HTTP or valid HTTPS.
-      PIHOLE_VERIFY_SSL: "true"
+      BLOCKER_VERIFY_SSL: "true"
 
       # Optional: comma-separated regex patterns. Matching domains spawn no ships. Case-insensitive.
-      # PIHOLE_IGNORE_DOMAINS: .*\.local$,.*\.internal$
+      # IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
       # Optional: "true" makes the page view-only. The server refuses the blocking
       # toggle, filter update and 2-player mode switch; the HUD controls go inert.
@@ -104,17 +109,16 @@ services:
 
       # Optional: comma-separated regex patterns matched against the client name or IP.
       # Queries from matching clients spawn no ships. Case-insensitive.
-      # PIHOLE_IGNORE_CLIENTS: ^uptime-kuma$,^192\.168\.1\.99$
+      # IGNORE_CLIENTS: ^uptime-kuma$,^192\.168\.1\.99$
 
       # Optional: "true" replaces every domain with an opaque per-start token on the
       # server. Repeat queries still group; domain labels and the DOMAIN toggle go away.
       # HIDE_DOMAIN: "true"
 
-      # 2-player local mode: set the URL (and password if the second Pi-hole has one)
-      # to enable a second Pi-hole ship on the right half
-      # PIHOLE2_URL: "http://192.168.1.3:8053/api"
-      # PIHOLE2_PASSWORD: ${PIHOLE2_PASSWORD}
-      # PIHOLE2_VERIFY_SSL: "true"
+      # 2-player local mode: a second DNS server, any of the four, for a second ship on
+      # the right half. Same settings as above with BLOCKER2_.
+      # BLOCKER2_URL: "http://192.168.1.3"
+      # BLOCKER2_PASSWORD: ${BLOCKER2_PASSWORD}
 
     volumes:
       # Portainer Web users: This will resolve to /data/compose/<stack-id>/bg/
@@ -274,7 +278,7 @@ A hamburger button at the left edge of the HUD opens the **Settings** panel, whi
 - **CRT filter**: a scanline overlay
 - **Auto-hide**: slides the HUD away until you hover it
 - **Background**: switch style and sky region live
-- **Pi-hole**: link to the Pi-hole admin panel
+- **Pi-hole** (or your DNS server's name): link to its admin panel
 
 Display settings are saved to `localStorage` and restored on next load.
 
@@ -312,19 +316,24 @@ The env vars set the **default** background. Each user can also switch it live f
 
 All configuration is via environment variables in `compose.yaml`.
 
-> **Upgrading?** Pull the latest `compose.yaml` to see all current options. Anything you don't set uses its default, so an older compose keeps working.
+> **Upgrading?** Your compose keeps working as it is: every setting from earlier releases (`PIHOLE_URL`, `ADGUARD_PASSWORD`, `PROVIDER`, and the rest) is still read, and wins if both an old and a new name are set. The new names below are the simpler way to set up from scratch. [Older settings](#older-settings) maps one to the other.
 
 ### Required
 
 | Variable | Description |
 |----------|-------------|
-| `PIHOLE_PASSWORD` | Pi-hole app password. CLI: set in a `.env` file. Portainer: add as an environment variable in the stack. Get it from **Settings → Web interface / API → Configure app password**. |
-| `PIHOLE_URL` | Pi-hole v6 API base URL, e.g. `http://192.168.1.x:8053/api` |
+| `BLOCKER_URL` | The address you open in a browser to manage your DNS server, e.g. `http://192.168.1.2`. A pasted `/admin` or `/api` on the end is fine. |
+| `BLOCKER_PASSWORD` | Pi-hole: app password. AdGuard Home or Technitium: login password. Not used by Blocky. CLI: set in a `.env` file. Portainer: add as an environment variable in the stack. |
 
 ### Optional
 
 | Variable | Default | Description |
 |----------|---------|-------------|
+| `BLOCKER_USERNAME` | `""` | AdGuard Home or Technitium login username. |
+| `BLOCKER_TOKEN` | `""` | Technitium API token, instead of a username and password. |
+| `BLOCKER_TYPE` | _(detected)_ | `pihole`, `adguard`, `technitium`, or `blocky`. Leave it out and ph-intercept identifies the server at startup. If set and the server turns out to be something else, ph-intercept says so and doesn't start that side. |
+| `BLOCKER_VERIFY_SSL` | `true` | Set to `false` if your DNS server uses HTTPS with a self-signed certificate. |
+| `BLOCKER_DASHBOARD` | _(derived)_ | Link for the settings menu. Defaults to the server's own web interface. |
 | `RETURN_URL` | `""` | URL that ESC navigates to. Accepts `http://`, `https://`, protocol-relative (`//`), relative paths, and custom app schemes. Leave blank to disable ESC. |
 | `BG_MODE` | `starfield` | Default background: `starfield` · `nebula` · `outrun` · `dark`. Switchable live in-app. |
 | `SKY_PRESET` | `summer_triangle` | Default sky region: `summer_triangle` · `orion` · `scorpius` · `southern_cross`. Switchable live in-app. |
@@ -332,14 +341,40 @@ All configuration is via environment variables in `compose.yaml`.
 | `READ_ONLY` | `false` | Set to `true` for a wall display or a page others can open: the server refuses every request that changes something (blocking toggle, filter update, 2-player mode) with HTTP 403, and the HUD leaves those controls inert. Status and stats stay visible. |
 | `HIDE_CLIENT` | `false` | Set to `true` to drop the client name or IP from every query before it is sent to the browser. The in-app `CLIENT` toggle is hidden. |
 | `HIDE_DOMAIN` | `false` | Set to `true` to replace every domain with an opaque token before it is sent to the browser (HMAC-SHA256 with a random key generated at each start, so tokens can't be looked up from a list of common domains). Repeat queries still group into tiers; domain labels, the letter fragments on a kill and the in-app `DOMAIN` toggle are left out. |
-| `PIHOLE_VERIFY_SSL` | `true` | Set to `false` if Pi-hole uses HTTPS with a self-signed certificate. |
-| `PIHOLE_IGNORE_DOMAINS` | _(unset)_ | Comma-separated regex patterns. Domains that match spawn no ships. Case-insensitive; escape literal dots (`\.local$`). Example: `.*\.local$,.*\.internal$` |
-| `PIHOLE_IGNORE_CLIENTS` | _(unset)_ | Comma-separated regex patterns, matched against the client name and IP. Queries from matching clients spawn no ships. Case-insensitive; escape literal dots (`^192\.168\.1\.99$`). Example: `^uptime-kuma$,^10\.0\.0\.5$` |
-| `PIHOLE2_URL` | _(unset)_ | Second Pi-hole v6 API base URL. Setting a valid URL activates local 2-player split-screen mode. See below. |
-| `PIHOLE2_PASSWORD` | `""` | App password for the second Pi-hole. Omit if it has none. |
-| `PIHOLE2_VERIFY_SSL` | `true` | Set to `false` if the second Pi-hole uses HTTPS with a self-signed certificate. |
+| `IGNORE_DOMAINS` | _(unset)_ | Comma-separated regex patterns. Domains that match spawn no ships, on both sides. Case-insensitive; escape literal dots (`\.local$`). Example: `.*\.local$,.*\.internal$` |
+| `IGNORE_CLIENTS` | _(unset)_ | Comma-separated regex patterns, matched against the client name and IP. Queries from matching clients spawn no ships, on both sides. Case-insensitive; escape literal dots (`^192\.168\.1\.99$`). Example: `^uptime-kuma$,^10\.0\.0\.5$` |
+| `BLOCKER_IGNORE_DOMAINS`, `BLOCKER_IGNORE_CLIENTS` | _(unset)_ | Same, for player 1's side only. `BLOCKER2_IGNORE_*` for player 2's. |
+| `BLOCKER_PASSWORD_FILE` | _(unset)_ | Read the password from a file, for Docker secrets (`/run/secrets/...`). Also `BLOCKER_TOKEN_FILE` and `BLOCKER_USERNAME_FILE`. |
+
+The startup log names the DNS server it found, where each setting came from, and anything it ignored. It never prints a password or token.
+
+### Older settings
+
+Each provider's own names still work, exactly as before. Use whichever you like; if both are set, the provider's own name wins.
+
+| New | Pi-hole | AdGuard Home | Technitium | Blocky |
+|-----|---------|--------------|------------|--------|
+| `BLOCKER_URL` | `PIHOLE_URL` (ends in `/api`) | `ADGUARD_URL` (ends in `/control`) | `TECHNITIUM_URL` | `BLOCKY_URL` |
+| `BLOCKER_USERNAME` | | `ADGUARD_USERNAME` | `TECHNITIUM_USER` | |
+| `BLOCKER_PASSWORD` | `PIHOLE_PASSWORD` | `ADGUARD_PASSWORD` | `TECHNITIUM_PASSWORD` | |
+| `BLOCKER_TOKEN` | | | `TECHNITIUM_TOKEN` | |
+| `BLOCKER_VERIFY_SSL` | `PIHOLE_VERIFY_SSL` | `ADGUARD_VERIFY_SSL` | `TECHNITIUM_VERIFY_SSL` | `BLOCKY_VERIFY_SSL` |
+| `BLOCKER_TYPE` | `PROVIDER` | `PROVIDER` | `PROVIDER` | `PROVIDER` |
+
+`BLOCKER2_*` maps to `PIHOLE2_*`, `ADGUARD2_*`, and so on. The per-provider ignore lists (`PIHOLE_IGNORE_DOMAINS` and the rest) still apply to any side running that provider, together with `IGNORE_*`. Settings only one server has keep that server's name: `TECHNITIUM_TOTP`, `TECHNITIUM_QUERY_LOG_APP`, `TECHNITIUM_QUERY_LOG_CLASS`, and `BLOCKY_LOG_DIR`.
 
 ---
+
+## Your DNS server
+
+| Server | `BLOCKER_URL` | Login | Also needed |
+|--------|---------------|-------|-------------|
+| Pi-hole v6 | Its web address, e.g. `http://192.168.1.2` | `BLOCKER_PASSWORD`: an app password | Nothing |
+| AdGuard Home | Its web address, e.g. `http://192.168.1.2:3000` | `BLOCKER_USERNAME` and `BLOCKER_PASSWORD` | Nothing |
+| Technitium DNS | Its web console, e.g. `http://192.168.1.2:5380` | `BLOCKER_TOKEN`, or `BLOCKER_USERNAME` and `BLOCKER_PASSWORD` | The **Query Logs (Sqlite)** app from Technitium's App Store |
+| Blocky | Its HTTP port, e.g. `http://192.168.1.2:4000` | None | Its CSV query log, shared read-only: see below |
+
+More on each: [AdGuard Home](adguard/README.md) · [Technitium DNS](technitium/README.md).
 
 ## Blocky setup
 
@@ -359,16 +394,14 @@ statistics:
 
 **2.** Give Blocky a host folder for that log, for example `- ./blocky-logs:/logs` in Blocky's compose.
 
-**3.** In the ph-intercept [compose](#quick-start), uncomment `PROVIDER: blocky` and `BLOCKY_URL` (Blocky's HTTP port, not DNS port 53), and mount the same host folder read-only: `- ./blocky-logs:/blocky-logs:ro`. ph-intercept needs to run on the same host as Blocky, or see that folder over a network share.
+**3.** In the ph-intercept [compose](#quick-start), set `BLOCKER_URL` to Blocky's HTTP port (not DNS port 53), drop the `BLOCKER_PASSWORD` line, and uncomment the Blocky volume, pointing it at the same host folder: `- ./blocky-logs:/blocky-logs:ro`. ph-intercept needs to run on the same host as Blocky, or see that folder over a network share.
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `BLOCKY_URL` | `http://blocky:4000` | Blocky's HTTP listener (`ports.http`). |
 | `BLOCKY_LOG_DIR` | `/blocky-logs` | Where the query log folder is mounted in the container. |
-| `BLOCKY_DASHBOARD` | `""` | Optional link for the settings menu, since Blocky has no web UI (for example a Grafana dashboard). |
-| `BLOCKY_VERIFY_SSL` | `true` | Set to `false` for HTTPS with a self-signed certificate. |
-| `BLOCKY_IGNORE_DOMAINS`, `BLOCKY_IGNORE_CLIENTS` | _(unset)_ | Same as the `PIHOLE_IGNORE_*` settings above. |
-| `BLOCKY2_URL`, `BLOCKY2_LOG_DIR` | _(unset)_, `/blocky2-logs` | A second Blocky for [2-player mode](#local-2-player-mode), with its own log folder mounted at `BLOCKY2_LOG_DIR`. Also `BLOCKY2_DASHBOARD` and `BLOCKY2_VERIFY_SSL`. |
+| `BLOCKY2_LOG_DIR` | `/blocky2-logs` | The same for a Blocky on player 2's side in [2-player mode](#local-2-player-mode). |
+
+Blocky has no web interface, so `BLOCKER_DASHBOARD` can point the settings-menu link somewhere useful, for example a Grafana dashboard.
 
 If Blocky's `log.privacy` is on, domains arrive starred out and ph-intercept shows them that way.
 
@@ -376,36 +409,32 @@ If Blocky's `log.privacy` is on, domains arrive starred out and ph-intercept sho
 
 ## Local 2-Player Mode
 
-Two DNS instances can run side by side in split-screen. Player 1's ship occupies the left half of the canvas, Player 2's ship the right. Each instance streams its own events, stats, and controls.
+Two DNS servers can run side by side in split-screen, and they don't have to be the same kind: a Pi-hole on the left and an AdGuard Home on the right works. Player 1's ship occupies the left half of the canvas, Player 2's ship the right. Each side streams its own events, stats, and controls.
 
-Add the second Pi-hole to your `compose.yaml` environment block:
+Add the second server to your `compose.yaml` environment block, with the same settings as the first under `BLOCKER2_`:
 
 ```yaml
-PIHOLE2_URL: "http://192.168.1.3:8053/api"
-PIHOLE2_PASSWORD: ${PIHOLE2_PASSWORD}
+BLOCKER2_URL: "http://192.168.1.3"
+BLOCKER2_PASSWORD: ${BLOCKER2_PASSWORD}
 ```
 
 And add the password to your `.env` file:
 
 ```env
-PIHOLE2_PASSWORD=your_second_pihole_password
+BLOCKER2_PASSWORD=your_second_password
 ```
 
-`PIHOLE2_PASSWORD` can be omitted if the second Pi-hole has no app password set. Setting a valid `PIHOLE2_URL` is all that is required to make the mode available; turn it on from the in-game 2-player panel. On/off state is saved to the `data` volume, so it survives container restarts.
+`BLOCKER2_USERNAME`, `BLOCKER2_TOKEN`, `BLOCKER2_TYPE`, and `BLOCKER2_VERIFY_SSL` work like their player 1 versions. A Blocky on player 2's side mounts its log folder at `/blocky2-logs`. Setting a valid `BLOCKER2_URL` is all that is required to make the mode available; turn it on from the in-game 2-player panel. On/off state is saved to the `data` volume, so it survives container restarts.
 
-> **AdGuard Home?** The second instance mirrors your primary provider, so an AdGuard setup pairs with a second AdGuard Home via `ADGUARD2_URL` / `ADGUARD2_USERNAME` / `ADGUARD2_PASSWORD`. See the [AdGuard 2-player setup](adguard/README.md#local-2-player-mode).
->
-> **Technitium DNS?** Pairs with a second Technitium via `TECHNITIUM2_URL` and `TECHNITIUM2_TOKEN` (or user + password). See the [Technitium 2-player setup](technitium/README.md#local-2-player-mode).
->
-> **Blocky?** Pairs with a second Blocky via `BLOCKY2_URL` and its log folder mounted at `/blocky2-logs`. See [Blocky setup](#blocky-setup).
+> **Already using `PIHOLE2_URL`, `ADGUARD2_URL`, `TECHNITIUM2_URL`, or `BLOCKY2_URL`?** Those keep working as before, pairing with a second server of the same kind. To pair a different kind with your existing setup, add `BLOCKER2_URL` instead; your player 1 settings stay as they are.
 
 ---
 
 ## Requirements
 
-- Pi-hole v6 (v5 is not compatible)
+- One of: Pi-hole v6 (v5 is not compatible), AdGuard Home, Technitium DNS, or Blocky
 - Docker with Compose
-- Network route from the container to your Pi-hole
+- Network route from the container to your DNS server
 - **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64` · `linux/ppc64le`
 
 The container listens on port 4653. The compose file includes an optional static IP block for existing Docker networks.
@@ -426,19 +455,22 @@ On a healthy setup that prints nothing. Otherwise ph-intercept logs one line whe
 
 | Log line | What to check |
 |----------|---------------|
-| `Pi-hole: could not reach http://... Check PIHOLE_URL` | The URL and port, and that the container can reach your Pi-hole over the network. |
-| `Pi-hole: unexpected HTTP 404 reply from .../auth. Check PIHOLE_URL points at the Pi-hole v6 API (ends in /api)` | `PIHOLE_URL` must end in `/api`, not `/admin`. |
-| `Pi-hole: login rejected (password incorrect). Check PIHOLE_PASSWORD` | Use an app password from **Settings → Web interface / API → Configure app password**. |
+| `Player 1 not started: could not tell which DNS server is at ...` | `BLOCKER_URL` should be the address you open in a browser to manage the server, with the web port. Or set `BLOCKER_TYPE`. |
+| `Player 1: no answer from ... yet; retrying` | The URL and port, and that the container can reach your DNS server over the network. ph-intercept keeps trying. |
+| `Player 1 not started: BLOCKER_TYPE says ..., but ... answers like ...` | `BLOCKER_TYPE` doesn't match the server at `BLOCKER_URL`. Fix either, or leave `BLOCKER_TYPE` out. |
+| `Player 1 not started: BLOCKER_URL points at port 53, the DNS port` | Use the web interface address instead. |
+| `Pi-hole: login rejected (password incorrect). Check BLOCKER_PASSWORD` | Use an app password from **Settings → Web interface / API → Configure app password**. |
 | `Pi-hole: login refused by rate limiting (...), retrying` | Pi-hole throttles logins after a few quick attempts. It clears on its own within a few seconds. |
-| `PROVIDER='...' is not recognised ...` | `PROVIDER` must be `pihole`, `adguard`, or `technitium` (or leave it out for Pi-hole). |
+| `AdGuard: login rejected (HTTP 401). Check BLOCKER_USERNAME and BLOCKER_PASSWORD` | Your AdGuard Home login. |
+| `Technitium needs BLOCKER_TOKEN (an API token), or BLOCKER_USERNAME and BLOCKER_PASSWORD` | Set one of the two, not both. |
 
-In 2-player mode the second Pi-hole logs the same lines as `Pi-hole 2`, pointing at the `PIHOLE2_*` variables.
+The same lines name `PIHOLE_URL`, `ADGUARD_PASSWORD`, and so on if you use the [older settings](#older-settings). In 2-player mode the second side logs as `Player 2`, `Pi-hole 2`, and so on, pointing at the `BLOCKER2_*` settings.
 
 ---
 
 ## Privacy
 
-ph-intercept only talks to your own Pi-hole instance(s). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your DNS server through ph-intercept.
+ph-intercept only talks to your own DNS server(s). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your DNS server through ph-intercept.
 
 **Shared screens:** on a wall display or a page other people can open, `READ_ONLY` stops anyone from changing your DNS server, and `HIDE_CLIENT` and `HIDE_DOMAIN` keep client names and domains out of the browser. See [Optional settings](#optional).
 

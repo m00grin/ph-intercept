@@ -8,11 +8,25 @@ All notable changes to ph-intercept are documented here.
 
 ### Added
 
-- **Blocky support** -- set `PROVIDER: blocky` and `BLOCKY_URL` in the same compose Pi-hole users run, and mount Blocky's CSV query log read-only. Blocky has no API for recent queries, so ph-intercept follows the log file Blocky writes (`queryLog.type: csv`), reading only new lines and only while a page is open. Blocking toggle, timed disable, list refresh, and HUD stats use Blocky's REST API. Local 2-player mode works with a second Blocky (`BLOCKY2_URL`). See [Blocky setup](README.md#blocky-setup).
+- **Blocky support** -- ph-intercept now works with Blocky as well as Pi-hole, AdGuard Home, and Technitium. Blocky has no API for recent queries, so ph-intercept follows the CSV query log Blocky writes (`queryLog.type: csv`) through a read-only mount, reading only new lines and only while a page is open. Blocking toggle, timed disable, list refresh, and HUD stats use Blocky's REST API. See [Blocky setup](README.md#blocky-setup).
+- **Mixed-provider 2-player** -- the two sides of local split-screen no longer have to run the same DNS server: a Pi-hole on one side and an AdGuard Home on the other works, with each side's own name, icon, timed-disable choices, and stats labels. Add the second server with `BLOCKER2_URL`. See [Local 2-Player Mode](README.md#local-2-player-mode).
+- **One set of settings for every DNS server** -- `BLOCKER_URL` (the address you open in a browser) and `BLOCKER_PASSWORD`, plus `BLOCKER_USERNAME` or `BLOCKER_TOKEN` where the server needs them. ph-intercept identifies which server answers at startup, strictly: a server that matches none of the four, or a `BLOCKER_TYPE` that doesn't match the server, stops that side with a plain message instead of half-working. A pasted `/admin`, `/api`, or `/#/dashboard` on the end of the address is fine. See [Configuration](README.md#configuration).
+- **Ignore lists per side** -- `IGNORE_DOMAINS` and `IGNORE_CLIENTS` apply to both sides; `BLOCKER_IGNORE_*` and `BLOCKER2_IGNORE_*` to one side only.
+- **Docker secrets** -- every password, token, and username can be read from a file with `*_FILE` (for example `BLOCKER_PASSWORD_FILE=/run/secrets/dns_password`), for the new names and the older ones alike.
+- **Startup report** -- the log now says which DNS server each side found, where its settings came from, and anything it ignored. It never prints a password or token.
 
 ### Changed
 
-- **One compose for more providers** -- Blocky is set up from the main `compose.yaml` instead of a compose of its own, and internally every provider now plugs in through one shared interface. Existing Pi-hole, AdGuard Home, and Technitium setups resolve exactly as before.
+- **One compose for every DNS server** -- the main `compose.yaml` now works for Pi-hole, AdGuard Home, Technitium, and Blocky. The AdGuard and Technitium guides keep their copy-paste composes, filled in for each, and shrink to what's specific to that server.
+- **Official provider icons** -- the Pi-hole, AdGuard Home, Technitium, and Blocky icons now come from each project's own artwork, and Technitium's grid logo is drawn with sharp edges at any display scaling.
+
+### Fixed
+
+- **A rejected or slow Pi-hole login no longer floods Pi-hole with retries** -- after a failed, refused, or timed-out login, ph-intercept retried with every poll, about three times a second per open page. On a slow Pi a login can take longer than the old 1.5 second timeout, so abandoned logins piled up inside Pi-hole and pinned its CPU. Failed logins now wait 2 seconds, doubling to 30 (60 after Pi-hole's rate limit), the login gets 10 seconds, and a success clears the wait. Applies to the second Pi-hole in 2-player mode too. Tracked down with [@Plxprs](https://github.com/Plxprs) in [#59](https://github.com/m00grin/ph-intercept/issues/59). Thank you!
+
+### Upgrading
+
+Nothing to change. Every setting from earlier releases (`PROVIDER`, `PIHOLE_URL`, `ADGUARD_PASSWORD`, `TECHNITIUM_TOKEN`, and the rest) still works exactly as before, and wins if both an older and a newer name are set. A config that uses only the older names behaves exactly as in 1.5.8. See [Older settings](README.md#older-settings).
 
 ---
 

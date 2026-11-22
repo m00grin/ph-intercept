@@ -2,6 +2,8 @@
 
 A live arcade dashboard for your Technitium DNS Server. It runs as a standalone Docker container next to Technitium, streams the DNS queries your network is resolving, and renders them as pixel-art ships: blocked queries are shot down, allowed ones fly through. Toggle blocking, set timed disables, force a block-list update, and switch ships from the HUD.
 
+ph-intercept uses one compose for every DNS server it supports. This page is that compose with the Technitium lines filled in, plus what's specific to Technitium. Everything else is in the [main README](../README.md).
+
 This guide assumes Technitium is already serving DNS for your network, with your router or clients pointed at it so real queries are flowing. ph-intercept only reads from the Technitium HTTP API; it does not touch your DNS configuration. No traffic through Technitium means an empty screen, which is expected.
 
 ---
@@ -25,14 +27,12 @@ That is the entire Technitium-side setup. If the query-log app is missing, the H
 - **CLI users:** Create a `.env` file in the same directory as your `compose.yaml`:
 
   ```env
-  TECHNITIUM_TOKEN=your_api_token
+  BLOCKER_TOKEN=your_api_token
   ```
 
-- **Portainer users:** Skip the `.env` file. Add `TECHNITIUM_TOKEN` as an environment variable directly in the Portainer stack config.
+- **Portainer users:** Skip the `.env` file. Add `BLOCKER_TOKEN` as an environment variable directly in the Portainer stack config.
 
-  (Prefer a username and password? Use `TECHNITIUM_USER` / `TECHNITIUM_PASSWORD` instead, plus `TECHNITIUM_TOTP` if the account has 2FA.)
-
-**2.** Create a `compose.yaml` (copy the example below or grab [`compose.yaml`](compose.yaml) from the repo) and set `TECHNITIUM_URL` to your Technitium web-console address:
+**2.** Create a `compose.yaml` (copy the example below or grab [`compose.yaml`](compose.yaml) from the repo) and set `BLOCKER_URL` to your Technitium web-console address:
 
 ```yaml
 services:
@@ -49,25 +49,22 @@ services:
           pids: 20
 
     environment:
-      PROVIDER: technitium
+      # REQUIRED: the Technitium web console address. Example: "http://192.168.1.2:5380"
+      # The "Query Logs (Sqlite)" app must be installed in Technitium.
+      BLOCKER_URL: "http://CHANGE.ME:5380"
 
-      # REQUIRED: Technitium DNS web-console root (the API lives under /api).
-      # Example: "http://192.168.1.2:5380"
-      TECHNITIUM_URL: "http://CHANGE.ME:5380"
-
-      # Authentication: a permanent API token (recommended) OR user + password.
-      TECHNITIUM_TOKEN: ${TECHNITIUM_TOKEN}
-      # TECHNITIUM_USER: "admin"
-      # TECHNITIUM_PASSWORD: ${TECHNITIUM_PASSWORD}
-      # TECHNITIUM_TOTP: ""   # only if the account has 2FA enabled
-
-      # The "Query Logs (Sqlite)" DNS app must be installed in Technitium.
-      # These match its default install name / class path; change only if you
-      # installed the app under a different name.
-      # TECHNITIUM_QUERY_LOG_APP: "Query Logs (Sqlite)"
-      # TECHNITIUM_QUERY_LOG_CLASS: "QueryLogsSqlite.App"
+      # An API token (Administration > Sessions > Create Token) OR a username and password.
+      # CLI users: Create a .env file in the same dir as this compose file with:
+      #  BLOCKER_TOKEN=your_api_token
+      # Portainer Web users: Add the environment variable: BLOCKER_TOKEN=your_api_token
+      BLOCKER_TOKEN: ${BLOCKER_TOKEN}
+      # BLOCKER_USERNAME: "admin"
+      # BLOCKER_PASSWORD: ${BLOCKER_PASSWORD}
+      # TECHNITIUM_TOTP: ""
 
       # Optional: where ESC navigates to (like your homelab dashboard or homepage)
+      # Accepts http://, https://, protocol-relative (//), relative paths, and custom app schemes
+      # Leave blank ("") to disable ESC entirely
       RETURN_URL: ""
 
       # Background. These set the DEFAULT; each user can also switch the background live
@@ -86,10 +83,10 @@ services:
 
       # SSL certificate verification. Set to "false" if Technitium uses HTTPS
       #  with a self-signed certificate. Leave as "true" for HTTP or valid HTTPS.
-      TECHNITIUM_VERIFY_SSL: "true"
+      BLOCKER_VERIFY_SSL: "true"
 
-      # Optional: comma-separated regex patterns. Matching domains spawn no ships.
-      # TECHNITIUM_IGNORE_DOMAINS: .*\.local$,.*\.internal$
+      # Optional: comma-separated regex patterns. Matching domains spawn no ships. Case-insensitive.
+      # IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
       # Optional: "true" makes the page view-only. The server refuses the blocking
       # toggle, filter update and 2-player mode switch; the HUD controls go inert.
@@ -99,25 +96,23 @@ services:
       # so it never reaches the browser. Also hides the in-app CLIENT toggle.
       # HIDE_CLIENT: "true"
 
-      # Optional: comma-separated regex patterns matched against the client IP.
+      # Optional: comma-separated regex patterns matched against the client name or IP.
       # Queries from matching clients spawn no ships. Case-insensitive.
-      # TECHNITIUM_IGNORE_CLIENTS: ^192\.168\.1\.99$
+      # IGNORE_CLIENTS: ^uptime-kuma$,^192\.168\.1\.99$
 
       # Optional: "true" replaces every domain with an opaque per-start token on the
       # server. Repeat queries still group; domain labels and the DOMAIN toggle go away.
       # HIDE_DOMAIN: "true"
 
-      # 2-player local mode: set the URL and a token (or user + password) to enable
-      # a second Technitium ship on the right half. The second instance also needs
-      # the Query Logs (Sqlite) app installed.
-      # TECHNITIUM2_URL: "http://192.168.1.3:5380"
-      # TECHNITIUM2_TOKEN: ${TECHNITIUM2_TOKEN}
-      # TECHNITIUM2_USER: "admin"
-      # TECHNITIUM2_PASSWORD: ${TECHNITIUM2_PASSWORD}
-      # TECHNITIUM2_VERIFY_SSL: "true"
+      # 2-player local mode: a second DNS server, any of the four, for a second ship on
+      # the right half. Same settings as above with BLOCKER2_.
+      # BLOCKER2_URL: "http://192.168.1.3:5380"
+      # BLOCKER2_TOKEN: ${BLOCKER2_TOKEN}
 
     volumes:
+      # Portainer Web users: This will resolve to /data/compose/<stack-id>/bg/
       - ./bg:/app/static/bg
+      # Persists 2-player mode state across container restarts
       - data:/app/data
 
     cap_drop:
@@ -138,6 +133,20 @@ services:
       # Host port : container port. Change the left side if 4673 is taken
       - "4673:4653"
 
+    # Optional: point DNS at your Technitium (if used for DNS resolution) or resolver directly (like Unbound)
+    # dns:
+    #   - your.dns.dockernet.ip
+
+    # Optional: only needed if you use static IPs on a custom Docker network
+    # Uncomment both networks blocks if you need this
+    # networks:
+    #   intercept_net:
+    #     ipv4_address: this.container.dockernet.ip
+
+# networks:
+#   intercept_net:
+#     external: true
+
 volumes:
   data:
 ```
@@ -152,141 +161,12 @@ Open `http://your-host:4673`.
 
 ---
 
-## Image Tags
+## Technitium DNS notes
 
-| Tag | What it is |
-|-----|------------|
-| `:latest` | Latest stable release. |
-| `:X.Y.Z` | Pinned release (e.g. `1.5.8`). |
-| `:develop` | GHCR only. Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
+- **Login:** set `BLOCKER_TOKEN`, or `BLOCKER_USERNAME` and `BLOCKER_PASSWORD` (plus `TECHNITIUM_TOTP` if the account uses two-factor codes), not both.
+- **Blocked, cached, or upstream:** Technitium tags each answer with a response type. `Blocked`, `UpstreamBlocked`, `UpstreamBlockedCached`, and `Dropped` become enemies the ship destroys, `Cached` a fast friendly, and everything else an upstream friendly.
+- **HUD:** **STATS** shows **no error** (Technitium's own dashboard count) in place of allowed. **BLOCK LIST** (in place of GRAVITY) forces a block-list update. The settings link opens the Technitium web console.
+- **2-player:** the second side can be another Technitium (with its own Query Logs app) or any other supported server. See [Local 2-Player Mode](../README.md#local-2-player-mode).
+- **Settings from before 1.6** (`PROVIDER: technitium`, `TECHNITIUM_URL`, `TECHNITIUM_TOKEN`, `TECHNITIUM_USER`, `TECHNITIUM_PASSWORD`) still work exactly as before. See [Older settings](../README.md#older-settings).
 
-Images are also published to other registries, and you can build from source. See [Other Ways to Get It](../README.md#other-ways-to-get-it).
-
----
-
-## Configuration
-
-All configuration is via environment variables in `compose.yaml`.
-
-> **Upgrading?** Pull the latest `compose.yaml` to see all current options. Anything you don't set uses its default, so an older compose keeps working.
-
-### Required
-
-| Variable | Description |
-|----------|-------------|
-| `PROVIDER` | Set to `technitium`. |
-| `TECHNITIUM_URL` | Technitium web-console root, e.g. `http://192.168.1.x:5380`. The API is reached under `/api`. |
-| `TECHNITIUM_TOKEN` **or** `TECHNITIUM_USER` + `TECHNITIUM_PASSWORD` | Authentication. A permanent API token is recommended; alternatively supply console username and password. |
-
-### Optional
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `TECHNITIUM_TOTP` | `""` | Time-based one-time code, only if the account has 2FA enabled. Not needed with an API token. |
-| `TECHNITIUM_QUERY_LOG_APP` | `Query Logs (Sqlite)` | Installed name of the query-log DNS app. |
-| `TECHNITIUM_QUERY_LOG_CLASS` | `QueryLogsSqlite.App` | Class path of the query-log DNS app. |
-| `TECHNITIUM_VERIFY_SSL` | `true` | Set to `false` if Technitium uses HTTPS with a self-signed certificate. |
-| `TECHNITIUM_IGNORE_DOMAINS` | _(unset)_ | Comma-separated regex patterns. Domains that match spawn no ships. Case-insensitive; escape literal dots (`\.local$`). Example: `.*\.local$,.*\.internal$` |
-| `TECHNITIUM_IGNORE_CLIENTS` | _(unset)_ | Comma-separated regex patterns, matched against the client IP (Technitium logs no client name). Queries from matching clients spawn no ships. Escape literal dots. Example: `^192\.168\.1\.99$,^10\.0\.0\.` |
-| `RETURN_URL` | `""` | URL that ESC navigates to. Accepts `http://`, `https://`, protocol-relative (`//`), relative paths, and custom app schemes. Leave blank to disable ESC. |
-| `BG_MODE` | `starfield` | Default background: `starfield` · `nebula` · `outrun` · `dark`. Switchable live in-app. |
-| `SKY_PRESET` | `summer_triangle` | Default sky region: `summer_triangle` · `orion` · `scorpius` · `southern_cross`. Switchable live in-app. |
-| `BG_IMAGE` | `""` | Custom image URL or `/bg/filename.jpg`. When set, it's the default and enables the in-app `CUSTOM` option; blank leaves `CUSTOM` disabled. |
-| `READ_ONLY` | `false` | Set to `true` for a wall display or a page others can open: the server refuses every request that changes something (blocking toggle, filter update, 2-player mode) with HTTP 403, and the HUD leaves those controls inert. Status and stats stay visible. |
-| `HIDE_CLIENT` | `false` | Set to `true` to drop the client name or IP from every query before it is sent to the browser. The in-app `CLIENT` toggle is hidden. |
-| `HIDE_DOMAIN` | `false` | Set to `true` to replace every domain with an opaque token before it is sent to the browser (HMAC-SHA256 with a random key generated at each start, so tokens can't be looked up from a list of common domains). Repeat queries still group into tiers; domain labels, the letter fragments on a kill and the in-app `DOMAIN` toggle are left out. |
-| `TECHNITIUM2_URL` | _(unset)_ | Second Technitium console URL. Setting a valid URL activates local 2-player split-screen mode. See below. |
-| `TECHNITIUM2_TOKEN` | `""` | API token for the second instance (or use user + password below). |
-| `TECHNITIUM2_USER` / `TECHNITIUM2_PASSWORD` | `""` | Console credentials for the second instance. |
-| `TECHNITIUM2_TOTP` | `""` | TOTP code for the second instance, if it has 2FA. |
-| `TECHNITIUM2_VERIFY_SSL` | `true` | Set to `false` if the second instance uses HTTPS with a self-signed certificate. |
-| `TECHNITIUM2_QUERY_LOG_APP` / `TECHNITIUM2_QUERY_LOG_CLASS` | _(inherits primary)_ | Override only if the second instance's query-log app differs from the first. |
-
----
-
-## Local 2-Player Mode
-
-Two Technitium instances can run side by side in split-screen. P1's ship occupies the left half of the canvas, P2's ship the right. Each instance streams its own query events independently.
-
-Add the second Technitium to your `compose.yaml` environment block:
-
-```yaml
-TECHNITIUM2_URL: "http://192.168.1.3:5380"
-TECHNITIUM2_TOKEN: ${TECHNITIUM2_TOKEN}
-```
-
-And add the token to your `.env` file:
-
-```env
-TECHNITIUM2_TOKEN=your_second_technitium_token
-```
-
-The second instance also needs the **Query Logs (Sqlite)** app installed. Setting a valid `TECHNITIUM2_URL` is all that is required to activate split-screen mode; toggle it on from the in-game 2-player panel. The second instance mirrors the primary provider, so Technitium pairs with Technitium (a Pi-hole second instance uses `PIHOLE2_*`, AdGuard uses `ADGUARD2_*`).
-
----
-
-## Blocked, cached, or upstream
-
-Technitium tags each answer with a response type, which ph-intercept maps to the same three visuals the other providers use:
-
-- **Blocked** (`Blocked`, `UpstreamBlocked`, `UpstreamBlockedCached`, `Dropped`) -> enemy the ship destroys.
-- **Cached** -> a fast friendly.
-- Everything else (`Recursive`, `Authoritative`) -> an upstream friendly.
-
----
-
-## Gameplay, ship, HUD, and background
-
-The entities, ship roster, HUD, and background modes are shared across all providers. See the [main README](../README.md#entities) for the full walkthrough of entity tiers, the seven selectable ships, the four HUD panels, and the starfield / nebula / outrun / dark backgrounds.
-
-With Technitium, the HUD differs in three places:
-
-- **STATS:** shows **no error** (Technitium's own dashboard count) in place of allowed.
-- **BLOCK LIST** (in place of GRAVITY): the arrow forces a block-list update and confirms when done.
-- **Settings:** the provider link opens the Technitium web console.
-
-**Portainer:** drop image files into `/data/compose/<stack-id>/bg/` on the Portainer host (where the `./bg` bind mount resolves).
-
----
-
-## Requirements
-
-- Technitium DNS Server (recent version) with the **Query Logs (Sqlite)** app installed
-- Docker with Compose
-- Network route from the container to your Technitium instance
-- **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64` · `linux/ppc64le`
-
-The container listens on port 4653 internally, mapped to host port 4673 by default. The compose file includes an optional static IP block for existing Docker networks.
-
-Curious what everyone runs it on? I'm asking in a [quick poll](https://github.com/m00grin/ph-intercept/discussions/52) instead of collecting any data.
-
----
-
-## Troubleshooting
-
-If something's off, check the logs first:
-
-```bash
-docker logs ph-intercept 2>&1 | grep -v '^INFO:'
-```
-
-On a healthy setup that prints nothing. Otherwise ph-intercept logs one line when a problem starts, and one line when it clears:
-
-| Log line | What to check |
-|----------|---------------|
-| `Technitium: set TECHNITIUM_TOKEN, or TECHNITIUM_USER and TECHNITIUM_PASSWORD` | No credentials are set. An API token is easiest. |
-| `Technitium: could not reach http://... Check TECHNITIUM_URL` | The URL and port, and that the container can reach Technitium over the network. |
-| `Technitium: token rejected. Check TECHNITIUM_TOKEN` | Create a new API token in Technitium and update `TECHNITIUM_TOKEN`. |
-| `Technitium: API returned '...'. Check TECHNITIUM_USER / TECHNITIUM_PASSWORD / TECHNITIUM_TOTP` | The login was refused. Check the user, password, and TOTP code if you use one. |
-| `Technitium query log: API returned '...'. Install the 'Query Logs (Sqlite)' DNS app, ...` | Install the **Query Logs (Sqlite)** app, or check `TECHNITIUM_QUERY_LOG_APP` / `TECHNITIUM_QUERY_LOG_CLASS` if you renamed it. Stats still work without it, but no ships spawn. |
-| `PROVIDER='...' is not recognised ...` | `PROVIDER` must be `technitium` here. |
-
-In 2-player mode the second instance logs the same lines as `Technitium 2`, pointing at the `TECHNITIUM2_*` variables.
-
----
-
-## Privacy
-
-ph-intercept only talks to your own Technitium instance(s). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your DNS server through ph-intercept.
-
-**Shared screens:** on a wall display or a page other people can open, `READ_ONLY` stops anyone from changing your DNS server, and `HIDE_CLIENT` and `HIDE_DOMAIN` keep client names and domains out of the browser. See [Optional settings](#optional).
+Configuration, troubleshooting, and privacy: see the [main README](../README.md#configuration).

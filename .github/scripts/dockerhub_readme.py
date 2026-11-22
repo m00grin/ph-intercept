@@ -25,12 +25,15 @@ SITE = "https://ph-intercept.com/"
 ROOT = Path(__file__).resolve().parents[2]
 
 # (folder, heading on Docker Hub, sections to bring over, in order)
+# Every provider uses the main Quick Start compose; only Technitium needs setup steps
+# on its own side, so only those come over. Links to the guides go to GitHub.
 PROVIDERS = [
-    ("adguard", "AdGuard Home setup", ["Quick Start"]),
-    ("technitium", "Technitium DNS setup", ["What you need first", "Quick Start"]),
+    ("technitium", "Technitium DNS setup", ["What you need first"]),
 ]
-# GitHub-only sections left out of the Docker Hub page
+# GitHub-only sections left out of the Docker Hub page, and ### subsections the same way.
+# Links to a dropped subsection go to it on GitHub.
 DROP = ["Other Ways to Get It", "Testing"]
+DROP_SUB = ["Older settings"]
 BADGE_LINE = re.compile(r'^<a href="[^"]+"><img [^>]*src="https://img\.shields\.io/[^"]*"[^>]*></a>\n', re.MULTILINE)
 
 
@@ -150,6 +153,25 @@ def drop_optional_examples(text: str) -> str:
     return "".join(out)
 
 
+def drop_subsections(body: str) -> str:
+    """Remove each DROP_SUB '### ' subsection, up to the next '### ' heading or the end."""
+    out, skipping, fence = [], False, False
+    for line in body.splitlines(keepends=True):
+        if line.lstrip().startswith("```"):
+            fence = not fence
+        if not fence and line.startswith("### "):
+            skipping = line[4:].strip() in DROP_SUB
+        if not skipping:
+            out.append(line)
+    text = "".join(out)
+    if skipping and not text.endswith("\n\n"):
+        text += "\n"
+    for title in DROP_SUB:
+        anchor = slug(title).removeprefix("user-content-")
+        text = text.replace(f"](#{anchor})", f"]({BLOB}README.md#{anchor})")
+    return text
+
+
 def strip_trailing_rule(body: str) -> str:
     return re.sub(r"\n---\s*$", "\n", body.rstrip() + "\n")
 
@@ -213,6 +235,7 @@ def build() -> str:
     pre, sections = split_sections(main_text)
     pre = re.sub(r"\n{3,}", "\n\n", BADGE_LINE.sub("", pre))
     sections = [(h, b) for h, b in sections if title_of(h) not in DROP]
+    sections = [(h, drop_subsections(b)) for h, b in sections]
 
     blocks = []
     for folder, heading, wanted in PROVIDERS:
@@ -223,7 +246,7 @@ def build() -> str:
             sys.exit(f"{folder}/README.md is missing section(s): {', '.join(missing)}")
         body = "".join(strip_trailing_rule(demote(found[w][0] + found[w][1])) + "\n" for w in wanted)
         body = drop_shared_comments(body, shared)
-        note = ("> Compose comments shared with the Pi-hole setup are trimmed here. "
+        note = ("> Use the [Quick Start](#quick-start) compose above. "
                 "Optional settings are listed under [Configuration](#configuration).\n\n")
         # Links inside a guide are relative to its folder.
         body = re.sub(r"\]\((?!https?:|#|/)([^)]+)\)", lambda m: f"]({folder}/{m.group(1)})", body)
