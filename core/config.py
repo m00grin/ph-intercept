@@ -1,6 +1,7 @@
 import logging
 import re
 
+from .log import configure as _configure_logging
 from .settings import PROVIDERS, display_url, resolve as _resolve
 
 # The HTTP library logs every request URL at INFO, query string included. Keep it
@@ -11,6 +12,7 @@ for _name in ("httpx", "httpcore"):
 # Legacy names win; BLOCKER_* fill in what they leave unset (see core/settings.py).
 RESOLVED = _resolve()
 _env = RESOLVED.env
+LOG_LEVEL = _configure_logging(_env.get("LOG_LEVEL", "info"))
 SIDES = RESOLVED.sides
 SIDE1, SIDE2 = SIDES[1], SIDES[2]
 
@@ -259,7 +261,7 @@ def _compile_ignore_patterns(raw: str, env_var: str = "pattern") -> list[re.Patt
         try:
             patterns.append(re.compile(p, re.IGNORECASE))
         except re.error as e:
-            logging.getLogger(__name__).warning("%s: invalid pattern %r skipped (%s)", env_var, p, e)
+            logging.getLogger("ph-intercept").warning("%s: invalid pattern %r skipped (%s)", env_var, p, e)
     return patterns
 
 IGNORE_DOMAIN_PATTERNS: list[re.Pattern] = _compile_ignore_patterns(

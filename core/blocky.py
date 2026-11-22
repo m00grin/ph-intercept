@@ -16,7 +16,7 @@ from .notice import clear, warn_once
 from .settings import display_url
 from .redact import public_domain
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ph-intercept")
 
 # Blocky has no query-log API. With queryLog.type: csv it appends one
 # tab-separated row per query to <target>/YYYY-MM-DD_ALL.log (no header), and

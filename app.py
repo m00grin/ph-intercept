@@ -32,13 +32,7 @@ from core.multiplayer import get_status as mp_status, set_mode as mp_set_mode
 from core.providers import Slot, p2_config_error, surface
 
 logger = logging.getLogger("ph-intercept")
-if not logger.handlers:
-    # Same bare-message format the default warning output already uses, plus the INFO startup report.
-    _handler = logging.StreamHandler()
-    _handler.setFormatter(logging.Formatter("%(message)s"))
-    logger.addHandler(_handler)
-    logger.setLevel(logging.INFO)
-_COLOR = sys.stderr.isatty()   # color only for a real terminal; a container's log stays plain
+_COLOR = _banner.COLOR
 
 # Dashboard link and TLS verification for the primary instance, per provider.
 _P1_SETTINGS = {
@@ -267,7 +261,7 @@ async def lifespan(_app):
     if TWO_PLAYER_LOCAL_CONFIGURED:
         _http_client2 = _client(_P2_VERIFY_SSL)
         tasks.append(asyncio.create_task(query_p2_poller(_http_client2)))
-    for line in _banner.lines(_COLOR):
+    for line in _banner.lines(_COLOR, _config.LOG_LEVEL):
         logger.info(line)
     for note in RESOLVED.notes:
         logger.warning(note)

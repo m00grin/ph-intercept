@@ -13,11 +13,11 @@ from .config import (
     TECHNITIUM2_TOTP, TECHNITIUM2_LOG_APP, TECHNITIUM2_LOG_CLASS,
     HIDE_CLIENT, P2_PLACEHOLDER, env_prefix, ignore_patterns,
 )
-from .notice import clear, warn_once
+from .notice import clear, shape, warn_once
 from .settings import display_url
 from .redact import public_domain
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ph-intercept")
 
 # Query log entries are returned newest-first with only second-granular
 # timestamps, so there is no reliable monotonic watermark. Instead we dedup by a
@@ -205,7 +205,7 @@ async def _api_call(
             raise ValueError("reply is not a JSON object")
         if not inst.token_in_query and _wants_query_token(data):
             inst.token_in_query = True
-            logger.info("%s: this Technitium release takes the API token as a form parameter; using that", inst.label)
+            logger.info(shape(f"{inst.label}: this release takes the API token as a form parameter; using that", "info"))
             resp = await _send(http_client, inst, path, params, inst.token, timeout)
             data = resp.json()
             if not isinstance(data, dict):

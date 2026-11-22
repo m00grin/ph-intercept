@@ -14,7 +14,7 @@ from .notice import clear, warn_once
 from .settings import display_url
 from .redact import public_domain
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ph-intercept")
 
 _E1, _E2 = env_prefix("ADGUARD", 1), env_prefix("ADGUARD", 2)
 _IGNORE = {1: ignore_patterns("adguard", 1), 2: ignore_patterns("adguard", 2)}

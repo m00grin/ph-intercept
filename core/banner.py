@@ -4,7 +4,11 @@ The ship is the game's own sprite (static/js/splash.js) and the colors are the
 brand's (white ship, the site's blue on the wordmark). Color is used only when
 the output is a terminal; a container's log is plain, the art is the same.
 """
+import sys
+
 from .version import VERSION
+
+COLOR = sys.stderr.isatty()   # color only for a real terminal; a container's log stays plain
 
 SHIP = [
     "000000000010000000000", "000000000111000000000", "000000000111000000000", "000000000111000000000",
@@ -80,7 +84,7 @@ def _wordmark_rows() -> list[str]:
     return ["0".join(_FONT[ch][r] for ch in WORD) for r in range(5)]
 
 
-def lines(color: bool) -> list[str]:
+def lines(color: bool, log_level: str = "info") -> list[str]:
     """The banner, one log line per entry."""
     word_rows = _wordmark_rows()
     width = len(word_rows[0])
@@ -88,7 +92,8 @@ def lines(color: bool) -> list[str]:
     ship = [ship_pad + row for row in _blocks(SHIP, [_WHITE] * len(SHIP), color)]
     word = _blocks(word_rows, _WORD_ROWS, color)
     tag = " " * ((width - len(TAG)) // 2) + _paint(TAG, _TAG, color)
-    version = "  " + _paint("version", _MUTED, color) + "  " + _paint(VERSION, _LABEL, color, bold=True)
+    version = ("  " + _paint("version", _MUTED, color) + "  " + _paint(VERSION, _LABEL, color, bold=True)
+               + "   " + _paint("log level", _MUTED, color) + "  " + _paint(log_level, _LABEL, color))
     return ["", *ship, "", *word, tag, "", version]
 
 
@@ -123,3 +128,8 @@ def elapsed(seconds: float) -> str:
         return f"{seconds} s"
     minutes, rest = divmod(seconds, 60)
     return f"{minutes} min {rest} s" if rest and minutes < 10 else f"{minutes} min"
+
+
+def ok(slot: int, text: str, color: bool = False) -> str:
+    """A player back to normal: '  P2  AdGuard Home: connection OK again'"""
+    return f"  {_paint(f'P{slot}', _LABEL, color, bold=True)}  {_paint(text, _GOOD, color)}"

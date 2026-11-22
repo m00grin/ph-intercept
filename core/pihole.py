@@ -13,7 +13,7 @@ from .notice import clear, warn_once
 from .settings import display_url
 from .redact import public_domain
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ph-intercept")
 
 # Watermark meaning "connected while the query log was empty": real query times are
 # Unix timestamps, so everything logged afterwards counts as new.
