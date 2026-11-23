@@ -9,6 +9,7 @@ import time
 import httpx
 
 from .config import (
+    p2_name, p2_name_cap,
     BLOCKY_BASE, BLOCKY_LOG_DIR, BLOCKY2_BASE, BLOCKY2_LOG_DIR,
     HIDE_CLIENT, P2_PLACEHOLDER, env_prefix, ignore_patterns,
 )
@@ -497,7 +498,7 @@ async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
         except Exception:
             code, body = 0, None
         if code != 200 or body is None:
-            return f"Could not reach Blocky 2. Check {_E2}_URL points at its HTTP port (ports.http)"
+            return f"Could not reach {p2_name('blocky', 'Blocky')}. Check {_E2}_URL points at its HTTP port (ports.http)"
     if not os.path.isdir(_p2.log_dir):
-        return f"Blocky 2 query log not found at {_p2.log_dir}. Mount its queryLog.target there read-only"
+        return f"{p2_name_cap('blocky', 'Blocky')} query log not found at {_p2.log_dir}. Mount its queryLog.target there read-only"
     return None

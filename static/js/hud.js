@@ -482,7 +482,7 @@
               ctx.restore();
             }
             ctx.textAlign = 'left';
-            const _ph2Lbl = C.P2_PROVIDER_NAME + ' 2';
+            const _ph2Lbl = C.P2_PROVIDER === C.PROVIDER ? C.P2_PROVIDER_NAME + ' 2' : C.P2_PROVIDER_NAME;   // "ADGUARD 2" only beside another AdGuard
             const _ph2LblX = _icon2X + _icon2W + 12;
             C._fitLabelFont(_ph2Lbl, (smX + smw - 19) - _ph2LblX - 4, _fSub);
             ctx.fillStyle = ph2Hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';

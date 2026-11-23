@@ -6,6 +6,7 @@ import time
 import httpx
 
 from .config import (
+    p2_name, p2_name_cap,
     PIHOLE_BASE, PIHOLE_PASSWORD, PIHOLE2_URL, PIHOLE2_PASSWORD,
     HIDE_CLIENT, P2_PLACEHOLDER, env_prefix, ignore_patterns,
 )
@@ -555,11 +556,11 @@ async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
             )
             session = resp.json().get("session", {})
         except Exception:
-            return f"Could not reach Pi-hole 2. Check {_E2}_URL"
+            return f"Could not reach {p2_name('pihole', 'Pi-hole')}. Check {_E2}_URL"
         if resp.status_code == 429:
-            return "Pi-hole 2 is rate-limiting logins. Wait a few seconds and try again"
+            return f"{p2_name_cap('pihole', 'Pi-hole')} is rate-limiting logins. Wait a few seconds and try again"
         if not session.get("valid"):
-            return f"Pi-hole 2 authentication failed. Check {_E2}_PASSWORD"
+            return f"{p2_name_cap('pihole', 'Pi-hole')} authentication failed. Check {_E2}_PASSWORD"
         if session.get("sid"):
             try:
                 await http_client.delete(

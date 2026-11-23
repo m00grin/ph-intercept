@@ -7,6 +7,7 @@ from collections import deque
 import httpx
 
 from .config import (
+    p2_name, p2_name_cap,
     TECHNITIUM_BASE, TECHNITIUM_TOKEN, TECHNITIUM_USER, TECHNITIUM_PASSWORD,
     TECHNITIUM_TOTP, TECHNITIUM_LOG_APP, TECHNITIUM_LOG_CLASS,
     TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
@@ -79,6 +80,11 @@ _p2 = _Instance(
     "Technitium 2", env_prefix("TECHNITIUM", 2), TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
     TECHNITIUM2_TOTP, TECHNITIUM2_LOG_APP, TECHNITIUM2_LOG_CLASS, slot=2,
 )
+
+
+def _the(name: str) -> str:
+    """'the Technitium 2', but 'player 2's Technitium' already reads as a possessive."""
+    return name if name.startswith("player") else f"the {name}"
 
 
 def _name(inst: _Instance, suffix: str) -> str:
@@ -534,7 +540,7 @@ async def probe_p2(http_client: httpx.AsyncClient) -> str | None:
     """Validate that the second Technitium instance is reachable, authenticated,
     and exposes the query-log app. Returns a user-facing error string or None."""
     if not await _ensure_auth(http_client, _p2):
-        return f"Technitium 2 authentication failed. Check {_name(_p2, 'TOKEN')} or {_name(_p2, 'USER')} / {_name(_p2, 'PASSWORD')}"
+        return f"{p2_name_cap('technitium', 'Technitium')} authentication failed. Check {_name(_p2, 'TOKEN')} or {_name(_p2, 'USER')} / {_name(_p2, 'PASSWORD')}"
     logs = await _api_call(
         http_client, _p2, "logs/query",
         {"name": _p2.log_app, "classPath": _p2.log_class, "pageNumber": "1", "entriesPerPage": "1"},
@@ -542,8 +548,8 @@ async def probe_p2(http_client: httpx.AsyncClient) -> str | None:
     )
     if logs is None:
         if _p2.last_error in _AUTH_ERRORS:
-            return f"Could not reach or authenticate with Technitium 2. Check {_name(_p2, 'URL')} and credentials"
-        return ("Could not read the Technitium 2 query log. Install the 'Query Logs (Sqlite)' DNS app "
+            return f"Could not reach or authenticate with {p2_name('technitium', 'Technitium')}. Check {_name(_p2, 'URL')} and credentials"
+        return (f"Could not read {_the(p2_name('technitium', 'Technitium'))} query log. Install the 'Query Logs (Sqlite)' DNS app "
                 "and check TECHNITIUM2_QUERY_LOG_APP / TECHNITIUM2_QUERY_LOG_CLASS")
     return None
 
@@ -558,7 +564,7 @@ async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
     if not (TECHNITIUM2_BASE.startswith("http://") or TECHNITIUM2_BASE.startswith("https://")):
         return f"{_name(_p2, 'URL')} must start with http:// or https://"
     if not (TECHNITIUM2_TOKEN or (TECHNITIUM2_USER and TECHNITIUM2_PASSWORD)):
-        return f"Technitium 2 needs {_name(_p2, 'TOKEN')}, or {_name(_p2, 'USER')} and {_name(_p2, 'PASSWORD')}"
+        return f"{p2_name_cap('technitium', 'Technitium')} needs {_name(_p2, 'TOKEN')}, or {_name(_p2, 'USER')} and {_name(_p2, 'PASSWORD')}"
     if http_client:
         return await probe_p2(http_client)
     return None

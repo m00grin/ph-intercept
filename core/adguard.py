@@ -7,6 +7,7 @@ from datetime import datetime
 import httpx
 
 from .config import (
+    p2_name, p2_name_cap,
     ADGUARD_BASE, ADGUARD_USERNAME, ADGUARD_PASSWORD, ADGUARD2_BASE,
     ADGUARD2_USERNAME, ADGUARD2_PASSWORD, HIDE_CLIENT, P2_PLACEHOLDER, env_prefix, ignore_patterns,
 )
@@ -529,9 +530,9 @@ async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
                 timeout=10.0,
             )
             if resp.status_code == 401:
-                return f"AdGuard 2 authentication failed. Check {_E2}_USERNAME and {_E2}_PASSWORD"
+                return f"{p2_name_cap('adguard', 'AdGuard')} authentication failed. Check {_E2}_USERNAME and {_E2}_PASSWORD"
             if resp.status_code != 200:
-                return f"Could not reach AdGuard 2. Check {_E2}_URL"
+                return f"Could not reach {p2_name('adguard', 'AdGuard')}. Check {_E2}_URL"
         except Exception:
-            return f"Could not reach AdGuard 2. Check {_E2}_URL"
+            return f"Could not reach {p2_name('adguard', 'AdGuard')}. Check {_E2}_URL"
     return None

@@ -196,6 +196,22 @@ def p2_settings(provider: str) -> tuple[bool, str, bool]:
     return configured, DASHBOARD_OVERRIDE[2] or dashboard, verify
 
 
+def p2_name(provider: str, short: str) -> str:
+    """How messages name player 2's ad-blocker: "AdGuard 2" when player 1 runs the same kind,
+    else "player 2's AdGuard Home" (a second AdGuard isn't accurate next to a Pi-hole)."""
+    if SIDES[1].provider == provider:
+        return f"{short} 2"
+    return f"player 2's {_NAMES_FULL[provider]}"
+
+
+def p2_name_cap(provider: str, short: str) -> str:
+    name = p2_name(provider, short)
+    return name[0].upper() + name[1:]
+
+
+_NAMES_FULL = {"pihole": "Pi-hole", "adguard": "AdGuard Home", "technitium": "Technitium", "blocky": "Blocky"}
+
+
 def neutral_verify(slot: int) -> bool:
     return _neutral_verify(slot)
 
