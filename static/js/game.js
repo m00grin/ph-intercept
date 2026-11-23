@@ -312,16 +312,12 @@
     { label: '1 HR',     timer: 3600, ms: 3600000 },
     { label: 'TOMORROW', timerFn: _secsUntilMidnight },
     { label: 'DISABLE',  timer: null, ms: 0 },
-  ] : p === 'technitium' ? [   // Technitium's own "Disable Blocking For" menu
-    { label: '1 MIN',   timer: 60,    ms: 60000 },
-    { label: '2 MIN',   timer: 120,   ms: 120000 },
-    { label: '5 MIN',   timer: 300,   ms: 300000 },
-    { label: '10 MIN',  timer: 600,   ms: 600000 },
-    { label: '15 MIN',  timer: 900,   ms: 900000 },
-    { label: '30 MIN',  timer: 1800,  ms: 1800000 },
-    { label: '1 HR',    timer: 3600,  ms: 3600000 },
-    { label: '3 HR',    timer: 10800, ms: 10800000 },
-    { label: 'DISABLE', timer: null,  ms: 0 },
+  ] : p === 'technitium' ? [   // from Technitium's own "Disable Blocking For" menu (1, 2, 5, 10, 15, 30 min, 1, 3 hr), trimmed
+    { label: '1 MIN',   timer: 60,   ms: 60000 },
+    { label: '5 MIN',   timer: 300,  ms: 300000 },
+    { label: '30 MIN',  timer: 1800, ms: 1800000 },
+    { label: '1 HR',    timer: 3600, ms: 3600000 },
+    { label: 'DISABLE', timer: null, ms: 0 },
   ] : [
     { label: '10 SEC', timer: 10,  ms: 10000 },
     { label: '30 SEC', timer: 30,  ms: 30000 },
