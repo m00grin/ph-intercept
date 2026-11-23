@@ -675,20 +675,22 @@
       // Update arrow - left side of section
       const _aW = bmpW(ARROW_DOWN_BMP) * ARROW_PX;
       const _aX = TDB_X + Math.round(30 * _fs), _aY = SY + Math.round(_rowH * 0.48);
-      let arrowCol = C.P1.arrowHovered ? 'rgba(255,190,50,0.95)' : 'rgba(95,200,230,0.55)';
-      let arrowGlw = C.P1.arrowHovered ? 'rgba(255,190,50,0.50)' : null;
-      if (C.P1.gravityState === 'updating') {
-        const p = (0.65 + 0.35 * Math.sin(S.t * 0.008)).toFixed(2);
-        arrowCol = `rgba(255,190,50,${p})`; arrowGlw = 'rgba(255,190,50,0.35)';
-        drawBmp(ctx, ARROW_DOWN_BMP, _aX, _aY + Math.round(Math.max(0, Math.sin(S.t * 0.005)) * 3), arrowCol, arrowGlw, ARROW_PX);
-      } else {
-        if (C.P1.gravityState === 'done') {
-          const flash = Math.max(0, 1 - (S.t - C.P1.gravityDoneAt) / 1200);
-          if (flash > 0.01) { arrowCol = `rgba(50,215,120,${(0.5+0.5*flash).toFixed(2)})`; arrowGlw = `rgba(50,215,120,${(flash*0.4).toFixed(2)})`; }
+      if (!window.READ_ONLY) {   // read-only: no list-update arrow, only the count
+        let arrowCol = C.P1.arrowHovered ? 'rgba(255,190,50,0.95)' : 'rgba(95,200,230,0.55)';
+        let arrowGlw = C.P1.arrowHovered ? 'rgba(255,190,50,0.50)' : null;
+        if (C.P1.gravityState === 'updating') {
+          const p = (0.65 + 0.35 * Math.sin(S.t * 0.008)).toFixed(2);
+          arrowCol = `rgba(255,190,50,${p})`; arrowGlw = 'rgba(255,190,50,0.35)';
+          drawBmp(ctx, ARROW_DOWN_BMP, _aX, _aY + Math.round(Math.max(0, Math.sin(S.t * 0.005)) * 3), arrowCol, arrowGlw, ARROW_PX);
+        } else {
+          if (C.P1.gravityState === 'done') {
+            const flash = Math.max(0, 1 - (S.t - C.P1.gravityDoneAt) / 1200);
+            if (flash > 0.01) { arrowCol = `rgba(50,215,120,${(0.5+0.5*flash).toFixed(2)})`; arrowGlw = `rgba(50,215,120,${(flash*0.4).toFixed(2)})`; }
+          }
+          drawBmp(ctx, ARROW_DOWN_BMP, _aX, _aY, arrowCol, arrowGlw, ARROW_PX);
         }
-        drawBmp(ctx, ARROW_DOWN_BMP, _aX, _aY, arrowCol, arrowGlw, ARROW_PX);
       }
-      C.P1.arrowHitbox = { x: _aX - _aW / 2 - 4, y: _aY - 14, w: _aW + 8, h: 28 };
+      C.P1.arrowHitbox = window.READ_ONLY ? { x: 0, y: 0, w: 0, h: 0 } : { x: _aX - _aW / 2 - 4, y: _aY - 14, w: _aW + 8, h: 28 };
       ctx.restore();
 
       // ── SHIPS / OPTIONS ────────────────────────────────────
@@ -958,20 +960,22 @@
         ctx.fillStyle = _p2SigsColor; ctx.fillText(_p2SigsStr, TDB_X + TDB_W / 2, _yVal2);
         const _p2aW = bmpW(ARROW_DOWN_BMP) * ARROW_PX;
         const _p2aX = TDB_X + Math.round(30 * _fs), _p2aY = _p2RowSY + Math.round(_rowH * 0.48);
-        let _p2ArrowCol = C.P2.arrowHovered ? 'rgba(255,190,50,0.95)' : 'rgba(95,200,230,0.55)';
-        let _p2ArrowGlw = C.P2.arrowHovered ? 'rgba(255,190,50,0.50)' : null;
-        if (C.P2.gravityState === 'updating') {
-          const _p2ap = (0.65 + 0.35 * Math.sin(S.t * 0.008)).toFixed(2);
-          _p2ArrowCol = `rgba(255,190,50,${_p2ap})`; _p2ArrowGlw = 'rgba(255,190,50,0.35)';
-          drawBmp(ctx, ARROW_DOWN_BMP, _p2aX, _p2aY + Math.round(Math.max(0, Math.sin(S.t * 0.005)) * 3), _p2ArrowCol, _p2ArrowGlw, ARROW_PX);
-        } else {
-          if (C.P2.gravityState === 'done') {
-            const _p2flash = Math.max(0, 1 - (S.t - C.P2.gravityDoneAt) / 1200);
-            if (_p2flash > 0.01) { _p2ArrowCol = `rgba(50,215,120,${(0.5+0.5*_p2flash).toFixed(2)})`; _p2ArrowGlw = `rgba(50,215,120,${(_p2flash*0.4).toFixed(2)})`; }
+        if (!window.READ_ONLY) {
+          let _p2ArrowCol = C.P2.arrowHovered ? 'rgba(255,190,50,0.95)' : 'rgba(95,200,230,0.55)';
+          let _p2ArrowGlw = C.P2.arrowHovered ? 'rgba(255,190,50,0.50)' : null;
+          if (C.P2.gravityState === 'updating') {
+            const _p2ap = (0.65 + 0.35 * Math.sin(S.t * 0.008)).toFixed(2);
+            _p2ArrowCol = `rgba(255,190,50,${_p2ap})`; _p2ArrowGlw = 'rgba(255,190,50,0.35)';
+            drawBmp(ctx, ARROW_DOWN_BMP, _p2aX, _p2aY + Math.round(Math.max(0, Math.sin(S.t * 0.005)) * 3), _p2ArrowCol, _p2ArrowGlw, ARROW_PX);
+          } else {
+            if (C.P2.gravityState === 'done') {
+              const _p2flash = Math.max(0, 1 - (S.t - C.P2.gravityDoneAt) / 1200);
+              if (_p2flash > 0.01) { _p2ArrowCol = `rgba(50,215,120,${(0.5+0.5*_p2flash).toFixed(2)})`; _p2ArrowGlw = `rgba(50,215,120,${(_p2flash*0.4).toFixed(2)})`; }
+            }
+            drawBmp(ctx, ARROW_DOWN_BMP, _p2aX, _p2aY, _p2ArrowCol, _p2ArrowGlw, ARROW_PX);
           }
-          drawBmp(ctx, ARROW_DOWN_BMP, _p2aX, _p2aY, _p2ArrowCol, _p2ArrowGlw, ARROW_PX);
         }
-        C.P2.arrowHitbox = { x: _p2aX - _p2aW / 2 - 4, y: _p2aY - 14, w: _p2aW + 8, h: 28 };
+        C.P2.arrowHitbox = window.READ_ONLY ? { x: 0, y: 0, w: 0, h: 0 } : { x: _p2aX - _p2aW / 2 - 4, y: _p2aY - 14, w: _p2aW + 8, h: 28 };
         ctx.restore();
 
         // ── P2 SHIP ────────────────────────────────────────────
