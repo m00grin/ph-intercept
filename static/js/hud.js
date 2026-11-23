@@ -39,6 +39,11 @@
 
     init(consts) { C = consts; },
     // Two sides on screen running different providers: shared labels must fit both.
+    // Row height for a menu opening upward from the HUD: 26px, smaller only when a long
+    // menu (Technitium's has nine rows) wouldn't fit above the HUD on a short screen.
+    menuRowH(n, hudTop, pad) {
+      return Math.max(18, Math.min(26, Math.floor((hudTop - 6 - 4 - pad * 2) / n)));
+    },
     mixedPair(S) { return S.twoPlayerMode === 'local' && C.P2_PROVIDER !== C.PROVIDER; },
     // Provider icon box for a menu row. A grid icon is sized to whole device pixels per cell and
     // placed on the device-pixel grid, so its edges stay sharp instead of blending.
@@ -285,9 +290,9 @@
 
       // Disable menu - opens upward, bracket-outline style
       if (C.P1.shieldMenuOpen) {
-        const mw = 150, mItemH = 26, mPad = 8;
+        const mw = 150, mPad = 8, mItemH = HUD.menuRowH(C.DISABLE_OPTIONS.length, SY, mPad);
         const mh = C.DISABLE_OPTIONS.length * mItemH + mPad * 2;
-        const menuX = Math.max(0, Math.min(S.W - mw, Math.round(INT_W / 2 - mw / 2))), menuY = SY - mh - 6;
+        const menuX = Math.max(0, Math.min(S.W - mw, Math.round(INT_W / 2 - mw / 2))), menuY = Math.max(4, SY - mh - 6);   // on a very short screen, overlap the HUD rather than leave the screen
         ctx.fillStyle = 'rgba(8,11,16,0.92)';
         ctx.fillRect(menuX, menuY, mw, mh);
         const _menuGlow = ctx.createLinearGradient(0, menuY, 0, menuY + 24);
@@ -854,10 +859,10 @@
 
         // P2 shield (disable) menu
         if (C.P2.shieldMenuOpen) {
-          const _p2mw = 150, _p2mItemH = 26, _p2mPad = 8;
+          const _p2mw = 150, _p2mPad = 8, _p2mItemH = HUD.menuRowH(C.P2_DISABLE_OPTIONS.length, SY, _p2mPad);
           const _p2mh = C.P2_DISABLE_OPTIONS.length * _p2mItemH + _p2mPad * 2;
           const _p2menuX = Math.max(0, Math.min(S.W - _p2mw, Math.round(INT_W / 2 - _p2mw / 2)));
-          const _p2menuY = SY - _p2mh - 6;
+          const _p2menuY = Math.max(4, SY - _p2mh - 6);
           ctx.fillStyle = 'rgba(8,11,16,0.92)'; ctx.fillRect(_p2menuX, _p2menuY, _p2mw, _p2mh);
           const _p2mGlow = ctx.createLinearGradient(0, _p2menuY, 0, _p2menuY + 24);
           _p2mGlow.addColorStop(0, 'rgba(140,160,175,0.07)'); _p2mGlow.addColorStop(1, 'rgba(140,160,175,0)');

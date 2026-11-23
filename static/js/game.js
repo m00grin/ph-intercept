@@ -312,6 +312,16 @@
     { label: '1 HR',     timer: 3600, ms: 3600000 },
     { label: 'TOMORROW', timerFn: _secsUntilMidnight },
     { label: 'DISABLE',  timer: null, ms: 0 },
+  ] : p === 'technitium' ? [   // Technitium's own "Disable Blocking For" menu
+    { label: '1 MIN',   timer: 60,    ms: 60000 },
+    { label: '2 MIN',   timer: 120,   ms: 120000 },
+    { label: '5 MIN',   timer: 300,   ms: 300000 },
+    { label: '10 MIN',  timer: 600,   ms: 600000 },
+    { label: '15 MIN',  timer: 900,   ms: 900000 },
+    { label: '30 MIN',  timer: 1800,  ms: 1800000 },
+    { label: '1 HR',    timer: 3600,  ms: 3600000 },
+    { label: '3 HR',    timer: 10800, ms: 10800000 },
+    { label: 'DISABLE', timer: null,  ms: 0 },
   ] : [
     { label: '10 SEC', timer: 10,  ms: 10000 },
     { label: '30 SEC', timer: 30,  ms: 30000 },
@@ -4051,8 +4061,13 @@
         p2CrewCount: P2.crewMembers.length,
         entities: P1.entities.length,
         p2Entities: P2.entities.length,
+        shieldMenu: P1.shieldMenuOpen ? P1.shieldMenuPopupBox : null,
+        p2ShieldMenu: P2.shieldMenuOpen ? P2.shieldMenuPopupBox : null,
+        shieldItems: (P1.shieldMenuItems || []).map(i => i.hitbox),
+        p2ShieldItems: (P2.shieldMenuItems || []).map(i => i.hitbox),
       }),
       setBlocking: (e, t = null) => setBlocking(e, t),
+      openShieldMenu: (side = 1) => { (side === 2 ? P2 : P1).shieldMenuOpen = true; },
       setP2Blocking: (e, t = null) => setP2Blocking(e, t),
       // Open a canvas-drawn menu directly. Only the settings menu has a DOM
       // affordance (#settings-btn); the rest are canvas hit-tested, so the
