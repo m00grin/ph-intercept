@@ -396,7 +396,7 @@ queryLog:
   type: csv          # not csv-client
   target: /logs
 statistics:
-  enable: true       # optional: query counts in the HUD
+  enable: true       # optional: query counts and denylist size in the HUD
 ```
 
 **2.** Give Blocky a host folder for that log, for example `- ./blocky-logs:/logs` in Blocky's compose.
