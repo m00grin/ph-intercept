@@ -89,7 +89,7 @@ services:
       # IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
       # Optional: "true" makes the page view-only. The server refuses the blocking
-      # toggle, filter update and 2-player mode switch; the HUD controls go inert.
+      # toggle, list update, and 2-player mode switch; the HUD disables or hides them.
       # READ_ONLY: "true"
 
       # Optional: "true" drops the client name/IP from every query on the server,
@@ -169,8 +169,8 @@ Open `http://your-host:4673`.
 - **Version:** Technitium DNS Server 13 or newer is fully tested. On 11 and 12, stats and the controls are tested too; live queries need the same Query Logs app, which couldn't be installed in the test setup.
 - **Login:** set `BLOCKER_TOKEN`, or `BLOCKER_USERNAME` and `BLOCKER_PASSWORD` (plus `TECHNITIUM_TOTP` if the account uses two-factor codes), not both.
 - **Blocked, cached, or upstream:** Technitium tags each answer with a response type. `Blocked`, `UpstreamBlocked`, `UpstreamBlockedCached`, and `Dropped` become enemies the ship destroys, `Cached` a fast friendly, and everything else an upstream friendly.
-- **HUD:** **STATS** shows **no error** (Technitium's own dashboard count) in place of allowed. **BLOCK LIST** (in place of GRAVITY) forces a block-list update. The settings link opens the Technitium web console.
-- **2-player:** the second side can be another Technitium (with its own Query Logs app) or any other supported server. See [Local 2-Player Mode](../README.md#local-2-player-mode).
+- **HUD:** **STATS** shows **no error** (Technitium's own dashboard count) in place of allowed, except in a 2-player pair with a different ad-blocker, where both sides show allowed. **BLOCK LIST** (in place of GRAVITY) shows the number of blocked zones (from block lists plus your own blocked zones), and its arrow forces a block-list update. The timed-disable menu offers 1, 5, and 30 min and 1 hr (from Technitium's own choices), plus a full disable. The settings link opens the Technitium web console.
+- **2-player:** the second side can be another Technitium (with its own Query Logs app) or any other supported ad-blocker. See [Local 2-Player Mode](../README.md#local-2-player-mode).
 - **Settings from before 1.6** (`PROVIDER: technitium`, `TECHNITIUM_URL`, `TECHNITIUM_TOKEN`, `TECHNITIUM_USER`, `TECHNITIUM_PASSWORD`) still work exactly as before. See [Older settings](../README.md#older-settings).
 
 Configuration, troubleshooting, and privacy: see the [main README](../README.md#configuration).

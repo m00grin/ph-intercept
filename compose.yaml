@@ -57,7 +57,7 @@ services:
       # IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
       # Optional: "true" makes the page view-only. The server refuses the blocking
-      # toggle, filter update and 2-player mode switch; the HUD controls go inert.
+      # toggle, list update, and 2-player mode switch; the HUD disables or hides them.
       # READ_ONLY: "true"
 
       # Optional: "true" drops the client name/IP from every query on the server,

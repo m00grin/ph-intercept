@@ -1,6 +1,6 @@
 # ph-intercept - AdGuard Home
 
-A DNS dashboard that runs as a standalone Docker container alongside your AdGuard Home instance. Streams live DNS query events from the AdGuard Home API and renders them as pixel-art friendlies and enemies. Blocked queries are destroyed by the ship, allowed queries fly through. Toggle protection, set timed blocks, trigger filter list updates, and switch ships from the HUD.
+A DNS dashboard that runs as a standalone Docker container alongside your AdGuard Home instance. Streams live DNS query events from the AdGuard Home API and renders them as pixel-art friendlies and enemies. Blocked queries are destroyed by the ship, allowed queries fly through. Toggle protection, set timed disables, trigger filter list updates, and switch ships from the HUD.
 
 ph-intercept uses one compose for every ad-blocker it supports. This page is that compose with the AdGuard Home lines filled in, plus what's specific to AdGuard Home. Everything else is in the [main README](../README.md).
 
@@ -76,7 +76,7 @@ services:
       # IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
       # Optional: "true" makes the page view-only. The server refuses the blocking
-      # toggle, filter update and 2-player mode switch; the HUD controls go inert.
+      # toggle, list update, and 2-player mode switch; the HUD disables or hides them.
       # READ_ONLY: "true"
 
       # Optional: "true" drops the client name/IP from every query on the server,
@@ -157,8 +157,8 @@ Open `http://your-host:4663`.
 - **Address:** `BLOCKER_URL` is the address of the AdGuard Home web interface, the one you log in at, for example `http://192.168.1.2:3000` or `http://192.168.1.2` if it runs on port 80. A pasted `/#/dashboard` on the end is fine.
 - **Versions:** AdGuard Home 0.107.52 or newer, including 1.0.
 - **Login:** ph-intercept logs in once and reuses the session, so it doesn't make AdGuard Home check your password on every request.
-- **HUD:** **BLOCKLIST** shows the number of rules in your blocklists, and the arrow runs **Check for updates**. The timed-disable menu offers AdGuard Home's own choices, including until tomorrow.
-- **2-player:** the second side can be another AdGuard Home or any other supported server. See [Local 2-Player Mode](../README.md#local-2-player-mode).
+- **HUD:** **BLOCKLIST** shows the number of rules in your blocklists, and the arrow runs **Check for updates**. The timed-disable menu offers AdGuard Home's own choices: 30 sec, 1 min, 10 min, 1 hr, and until tomorrow, plus a full disable.
+- **2-player:** the second side can be another AdGuard Home or any other supported ad-blocker. See [Local 2-Player Mode](../README.md#local-2-player-mode).
 - **Settings from before 1.6** (`PROVIDER: adguard`, `ADGUARD_URL` ending in `/control`, `ADGUARD_USERNAME`, `ADGUARD_PASSWORD`) still work exactly as before. See [Older settings](../README.md#older-settings).
 
 Configuration, troubleshooting, and privacy: see the [main README](../README.md#configuration).

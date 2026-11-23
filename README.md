@@ -5,9 +5,9 @@
 <a href="https://github.com/m00grin/ph-intercept/actions/workflows/codeql.yml"><img alt="CodeQL status" src="https://img.shields.io/github/actions/workflow/status/m00grin/ph-intercept/codeql.yml?style=for-the-badge&label=CodeQL&logo=github&logoColor=fff"></a>
 <a href="https://www.bestpractices.dev/projects/16750"><img alt="OpenSSF Best Practices" src="https://img.shields.io/cii/level/16750?style=for-the-badge&label=OpenSSF%20Best%20Practices&logo=linuxfoundation&logoColor=fff"></a>
 
-A Pi-hole, AdGuard Home, Technitium DNS, and Blocky visualizer and dashboard that runs as a standalone Docker container. Streams live DNS query events from your Pi-hole v6, AdGuard Home, Technitium DNS, or Blocky server and renders them as pixel-art friendlies and enemies. Blocked queries are destroyed by the ship, allowed queries fly through. Toggle blocking, set timed blocks, update block lists, and switch ships from the HUD.
+A Pi-hole, AdGuard Home, Technitium DNS, and Blocky visualizer and dashboard that runs as a standalone Docker container. Streams live DNS query events from your Pi-hole v6, AdGuard Home, Technitium DNS, or Blocky server and renders them as pixel-art friendlies and enemies. Blocked queries are destroyed by the ship, allowed queries fly through. Toggle blocking, set timed disables, update block lists, and switch ships from the HUD.
 
-Designed to be dropped in alongside an existing DNS setup with no extra dependencies. Two instances can run side by side in [local 2-player split-screen](#local-2-player-mode).
+Designed to be dropped in alongside an existing DNS setup with no extra dependencies. Two ad-blockers, even different kinds, can run side by side in [local 2-player split-screen](#local-2-player-mode).
 
 Try the [live demo](https://ph-intercept.com/demo/) in your browser first, no install needed.
 
@@ -38,7 +38,7 @@ Try the [live demo](https://ph-intercept.com/demo/) in your browser first, no in
 
 - **Portainer users:** Skip the `.env` file. Add `BLOCKER_PASSWORD` as an environment variable directly in the Portainer stack config.
 
-**2.** Create a `compose.yaml` (copy the example below or grab [`compose.yaml`](compose.yaml) from the repo) and set `BLOCKER_URL` to the address you open in a browser to manage your ad-blocker. For AdGuard Home or Technitium, also uncomment `BLOCKER_USERNAME`:
+**2.** Create a `compose.yaml` (copy the example below or grab [`compose.yaml`](compose.yaml) from the repo) and set `BLOCKER_URL` to the address you open in a browser to manage your ad-blocker. For AdGuard Home, also uncomment `BLOCKER_USERNAME`; for Technitium, `BLOCKER_USERNAME` or `BLOCKER_TOKEN`:
 
 ```yaml
 services:
@@ -100,7 +100,7 @@ services:
       # IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
       # Optional: "true" makes the page view-only. The server refuses the blocking
-      # toggle, filter update and 2-player mode switch; the HUD controls go inert.
+      # toggle, list update, and 2-player mode switch; the HUD disables or hides them.
       # READ_ONLY: "true"
 
       # Optional: "true" drops the client name/IP from every query on the server,
@@ -265,11 +265,11 @@ Seven ships are selectable from the HUD: **Protector** (NSEA Protector, default)
 
 A strip across the bottom, divided into four panels:
 
-**INTERCEPT:** blocking status and toggle. Click to open a menu with timed-disable options (10 sec, 30 sec, 5 min) or a full disable. A countdown shows during a timed block; it survives navigation and syncs if blocking changes remotely.
+**INTERCEPT:** blocking status and toggle. Click to open a menu of timed disables (your ad-blocker's own choices) or a full disable. A countdown shows during a timed disable; it survives navigation and syncs if blocking changes remotely.
 
-**STATS:** total queries, blocked, allowed, and block percentage. Updated live.
+**STATS:** total queries, blocked, allowed, and block percentage. Updated live. Technitium says **no error** for allowed.
 
-**Lists:** block list size, named the way your ad-blocker names it: GRAVITY (Pi-hole), BLOCKLIST (AdGuard Home), BLOCK LIST (Technitium), or DENYLIST (Blocky). The arrow triggers a list update and confirms when done.
+**Lists:** block list size, named the way your ad-blocker names it: GRAVITY (Pi-hole), BLOCKLIST (AdGuard Home), BLOCK LIST (Technitium), or DENYLIST (Blocky). A mixed pair reads LISTS. The arrow triggers a list update and confirms when done.
 
 **SHIPS:** active ship name. Click to open the ship selector.
 
@@ -281,7 +281,7 @@ A hamburger button at the left edge of the HUD opens the **Settings** panel, whi
 - **CRT filter**: a scanline overlay
 - **Auto-hide**: slides the HUD away until you hover it
 - **Background**: switch style and sky region live
-- **Pi-hole** (or your ad-blocker's name): link to its admin panel
+- **Pi-hole** (or your ad-blocker's name): opens its web interface, one per player
 
 Display settings are saved to `localStorage` and restored on next load.
 
@@ -341,9 +341,9 @@ All configuration is via environment variables in `compose.yaml`.
 | `BG_MODE` | `starfield` | Default background: `starfield` · `nebula` · `outrun` · `dark`. Switchable live in-app. |
 | `SKY_PRESET` | `summer_triangle` | Default sky region: `summer_triangle` · `orion` · `scorpius` · `southern_cross`. Switchable live in-app. |
 | `BG_IMAGE` | `""` | Custom image URL or `/bg/filename.jpg`. When set, it's the default and enables the in-app `CUSTOM` option; blank leaves `CUSTOM` disabled. |
-| `READ_ONLY` | `false` | Set to `true` for a wall display or a page others can open: the server refuses every request that changes something (blocking toggle, filter update, 2-player mode) with HTTP 403, and the HUD leaves those controls inert. Status and stats stay visible. |
+| `READ_ONLY` | `false` | Set to `true` for a wall display or a page others can open: the server refuses every request that changes something (blocking toggle, list update, 2-player mode) with HTTP 403, and the HUD disables or hides those controls. Status and stats stay visible. |
 | `HIDE_CLIENT` | `false` | Set to `true` to drop the client name or IP from every query before it is sent to the browser. The in-app `CLIENT` toggle is hidden. |
-| `HIDE_DOMAIN` | `false` | Set to `true` to replace every domain with an opaque token before it is sent to the browser (HMAC-SHA256 with a random key generated at each start, so tokens can't be looked up from a list of common domains). Repeat queries still group into tiers; domain labels, the letter fragments on a kill and the in-app `DOMAIN` toggle are left out. |
+| `HIDE_DOMAIN` | `false` | Set to `true` to replace every domain with an opaque token before it is sent to the browser (HMAC-SHA256 with a random key generated at each start, so tokens can't be looked up from a list of common domains). Repeat queries still group into tiers; domain labels, the letter fragments on a kill, and the in-app `DOMAIN` toggle are left out. |
 | `IGNORE_DOMAINS` | _(unset)_ | Comma-separated regex patterns. Domains that match spawn no ships, on both sides. Case-insensitive; escape literal dots (`\.local$`). Example: `.*\.local$,.*\.internal$` |
 | `IGNORE_CLIENTS` | _(unset)_ | Comma-separated regex patterns, matched against the client name and IP. Queries from matching clients spawn no ships, on both sides. Case-insensitive; escape literal dots (`^192\.168\.1\.99$`). Example: `^uptime-kuma$,^10\.0\.0\.5$` |
 | `BLOCKER_IGNORE_DOMAINS`, `BLOCKER_IGNORE_CLIENTS` | _(unset)_ | Same, for player 1's side only. `BLOCKER2_IGNORE_*` for player 2's. |
@@ -354,7 +354,7 @@ The startup log shows what each player found and which settings it used. It neve
 
 ### Older settings
 
-Each provider's own names still work, exactly as before. Use whichever you like; if both are set, the provider's own name wins.
+The names from before 1.6 (each ad-blocker's own) still work, exactly as before. Blocky, new in 1.6, has its own names too. Use whichever you like; if both are set, the ad-blocker's own name wins.
 
 | New | Pi-hole | AdGuard Home | Technitium | Blocky |
 |-----|---------|--------------|------------|--------|
@@ -366,7 +366,7 @@ Each provider's own names still work, exactly as before. Use whichever you like;
 | `BLOCKER_TYPE` | `PROVIDER` | `PROVIDER` | `PROVIDER` | `PROVIDER` |
 | `BLOCKER_DASHBOARD` | | | | `BLOCKY_DASHBOARD` |
 
-`BLOCKER2_*` maps to `PIHOLE2_*`, `ADGUARD2_*`, and so on. The per-provider ignore lists (`PIHOLE_IGNORE_DOMAINS` and the rest) still apply to any side running that provider, together with `IGNORE_*`. Settings only one server has keep that server's name: `TECHNITIUM_TOTP`, `TECHNITIUM_QUERY_LOG_APP`, `TECHNITIUM_QUERY_LOG_CLASS`, and `BLOCKY_LOG_DIR`.
+`BLOCKER2_*` maps to `PIHOLE2_*`, `ADGUARD2_*`, and so on. `BLOCKER2_TYPE` is new and has no older name: an older `*2_URL` on its own pairs with a second server of the same kind as player 1. The per-provider ignore lists (`PIHOLE_IGNORE_DOMAINS` and the rest) still apply to any side running that provider, together with `IGNORE_*`. Settings only one server has keep that server's name: `TECHNITIUM_TOTP`, `TECHNITIUM_QUERY_LOG_APP`, `TECHNITIUM_QUERY_LOG_CLASS`, and `BLOCKY_LOG_DIR`.
 
 ---
 
@@ -383,7 +383,7 @@ More on each: [AdGuard Home](adguard/README.md) · [Technitium DNS](technitium/R
 
 ## Blocky setup
 
-> **Same machine only, for now.** Blocky has no API for recent queries, so ph-intercept reads the CSV query log Blocky writes, through a read-only mount. That means ph-intercept has to run on the same machine as Blocky (or see Blocky's log folder over a network share). With Blocky on another machine, stats and the blocking controls still work, but no ships appear, and the log says the query log folder isn't mounted.
+> **Same machine only, for now.** Blocky has no API for recent queries, so ph-intercept reads the CSV query log Blocky writes, through a read-only mount. That means ph-intercept has to run on the same machine as Blocky (or see Blocky's log folder over a network share). With Blocky on another machine, stats and the blocking controls still work, but no ships appear, and the log says it found no log files in the query log folder.
 
 Blocking control and stats use Blocky's REST API, which has no login.
 
@@ -431,9 +431,9 @@ And add the password to your `.env` file:
 BLOCKER2_PASSWORD=your_second_password
 ```
 
-`BLOCKER2_USERNAME`, `BLOCKER2_TOKEN`, `BLOCKER2_TYPE`, and `BLOCKER2_VERIFY_SSL` work like their player 1 versions. A Blocky on player 2's side mounts its log folder at `/blocky2-logs`. Setting a valid `BLOCKER2_URL` is all that is required to make the mode available; turn it on from the in-game 2-player panel. On/off state is saved to the `data` volume, so it survives container restarts.
+The other `BLOCKER2_*` settings work like their player 1 versions. A Blocky on player 2's side mounts its log folder at `/blocky2-logs`. Setting a valid `BLOCKER2_URL` is all that is required to make the mode available; turn it on from **2-player mode** in the settings menu. On/off state is saved to the `data` volume, so it survives container restarts.
 
-> **Already using `PIHOLE2_URL`, `ADGUARD2_URL`, `TECHNITIUM2_URL`, or `BLOCKY2_URL`?** Those keep working as before, pairing with a second server of the same kind. To pair a different kind with your existing setup, add `BLOCKER2_URL` instead; your player 1 settings stay as they are.
+> **Already using `PIHOLE2_URL`, `ADGUARD2_URL`, or `TECHNITIUM2_URL`?** Those keep working as before, pairing with a second server of the same kind. To pair a different kind with your existing setup, replace that line with `BLOCKER2_URL` (an older `*2_URL` wins if both are set); your player 1 settings stay as they are.
 
 ---
 
@@ -493,13 +493,14 @@ I may have gone a little overboard.
 
 ph-intercept is developed against a suite of about 1,500 tests that I run locally before every release: about 1,400 unit and integration tests, and about 150 browser tests run in Chromium, Firefox, and WebKit. CI builds the images and scans them (CodeQL and Trivy). The suite lives on my machine for now; I'm working on bringing it into this repository with CI in a future release.
 
-- **Ad-blockers:** every one (Pi-hole, AdGuard Home, Technitium, Blocky) on both sides of 2-player mode, run against fake servers that misbehave on purpose: wrong passwords, rate limits, timeouts, errors, HTML where JSON should be, and truncated replies. Each failure is checked against a request budget, so no failure can make ph-intercept hammer your ad-blocker, and real servers back these up: Pi-hole 2026.11, AdGuard Home 0.107 and 1.0, Technitium 11 to 15, and Blocky 0.37
+- **Ad-blockers:** every one (Pi-hole, AdGuard Home, Technitium, Blocky) on both sides of 2-player mode, run against fake servers that misbehave on purpose: wrong passwords, rate limits, timeouts, errors, HTML where JSON should be, and truncated replies. Each failure is checked against a request budget, so no failure can make ph-intercept hammer your ad-blocker, and real servers back these up: Pi-hole 2026.11, AdGuard Home 0.107 and 1.0, Technitium 11 to 15, and Blocky 0.28 to 0.37
 - **Secrets:** marker values in every password, token, and secret file, then every log line (at debug, tracebacks included), API reply, and live event is searched for them
 - **Hostile input:** every route and method, cross-site requests, oversized and malformed bodies, path traversal, and every setting given values nobody should set
 - **Limits:** reply sizes, live connections, slow and closed tabs, a runaway query log, memory over a busy network, and many screens open at once
 - **API and config:** every route, security headers, input validation, environment parsing, the `READ_ONLY`, `HIDE_CLIENT`, and `HIDE_DOMAIN` modes, and a gate that resolves every example compose from earlier releases and checks the result is unchanged
 - **2-player mode:** routes, state persistence, and the races between two sides
 - **Browser:** Playwright tests for page load, canvas sizing, live updates and reconnects, settings persistence, blocked storage, sprite recovery, back-forward cache, and hostile domains and messages reaching the page
+- **Architectures:** the image run on emulated architectures, and on a real Raspberry Pi Zero 2 W and Raspberry Pi Zero W
 - **Devices:** emulated device profiles and viewports, including Raspberry Pi touchscreens, Fire tablets, iPads, Android tablets, HiDPI displays, 4K, ultrawides, and orientation changes
 - **Pixels:** a canvas baseline that hashes rendered scenes, so a drawing regression can't hide behind passing behavior tests
 - **Mutation testing:** [mutmut](https://github.com/boxed/mutmut) makes deliberate small bugs in the settings, provider-detection, and provider layers and checks that a test catches each one
