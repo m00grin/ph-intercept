@@ -24,7 +24,7 @@ This is also the most tested release yet: about 1,500 tests, with the browser te
 
 ### Changed
 
-- **Faster, calmer first start** -- while the ad-blocker is still starting, ph-intercept logs one waiting line, retries after 1 second and then a little longer each time (up to 15), and logs `● detected after 6 s` when it answers. Before, it waited 5, 10, 20, then 40 seconds and logged every try. An ad-blocker that stays silent gets a reminder after 1, 2, 4, 8, and 16 minutes, then every 15. An AdGuard Home still in its first-run setup is waited for too.
+- **Faster, calmer first start** -- while the ad-blocker is still starting, ph-intercept logs one waiting line, retries after 1 second and then a little longer each time (up to 15), and logs `● detected after 6 s` when it answers. Before, it waited 5, 10, 20, then 40 seconds and logged every try. If it stays silent, the log adds a reminder after 1, 2, 4, 8, and 16 minutes, then every 15. An AdGuard Home still in its first-run setup is waited for too.
 - **Quieter log** -- the web server no longer logs each request, so stats polls and health checks don't bury real messages. Ad-blocker messages match the startup report, for example `P2  AdGuard Home: login rejected...`, with one more line when the problem clears.
 - **Simpler example composes** -- one `compose.yaml` works for all four ad-blockers. The AdGuard Home and Technitium guides keep a ready-to-copy compose and cover only what's specific to them.
 - **Read-only screens hide the list-update arrows** -- they can't be used with `READ_ONLY` on; the list counts stay.
