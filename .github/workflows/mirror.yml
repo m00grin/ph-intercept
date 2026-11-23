@@ -1,4 +1,4 @@
-name: Mirror release to Codeberg + GitLab (self-hosted)
+name: Mirror release to Codeberg + GitLab + Quay (self-hosted)
 
 on:
   workflow_run:
@@ -38,9 +38,17 @@ jobs:
           GITLAB_USERNAME: ${{ vars.GITLAB_USERNAME }}
           HAS_CODEBERG_TOKEN: ${{ secrets.CODEBERG_TOKEN != '' }}
           HAS_GITLAB_TOKEN: ${{ secrets.GITLAB_TOKEN != '' }}
+          QUAY_USERNAME: ${{ vars.QUAY_USERNAME }}
+          HAS_QUAY_TOKEN: ${{ secrets.QUAY_TOKEN != '' }}
         run: |
           if [ -z "$CODEBERG_USERNAME" ] || [ "$HAS_CODEBERG_TOKEN" != "true" ] || [ -z "$GITLAB_USERNAME" ] || [ "$HAS_GITLAB_TOKEN" != "true" ]; then
             echo "::error::Set CODEBERG_USERNAME and GITLAB_USERNAME variables and CODEBERG_TOKEN and GITLAB_TOKEN secrets first."
+            exit 1
+          fi
+          if [ -z "$QUAY_USERNAME" ]; then
+            echo "::warning::QUAY_USERNAME is not set, so Quay is skipped."
+          elif [ "$HAS_QUAY_TOKEN" != "true" ]; then
+            echo "::error::QUAY_USERNAME is set but the QUAY_TOKEN secret is missing."
             exit 1
           fi
 
@@ -98,6 +106,29 @@ jobs:
         env:
           SRC: ghcr.io/m00grin/ph-intercept@${{ steps.src.outputs.digest }}
           DEST: registry.gitlab.com/m00grin/ph-intercept
+          VERSION: ${{ steps.ver.outputs.version }}
+          MINOR: ${{ steps.ver.outputs.minor }}
+          DIGEST: ${{ steps.src.outputs.digest }}
+        run: |
+          docker buildx imagetools create --tag "$DEST:$VERSION" --tag "$DEST:$MINOR" --tag "$DEST:latest" "$SRC"
+          for tag in "$VERSION" "$MINOR" latest; do
+            got=$(docker buildx imagetools inspect "$DEST:$tag" --format '{{.Manifest.Digest}}')
+            [ "$got" = "$DIGEST" ] || { echo "::error::$DEST:$tag is $got, expected $DIGEST"; exit 1; }
+          done
+
+      - name: Log in to Quay
+        if: ${{ !cancelled() && vars.QUAY_USERNAME != '' }}
+        uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        with:
+          registry: quay.io
+          username: ${{ vars.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_TOKEN }}
+
+      - name: Copy to Quay
+        if: ${{ !cancelled() && vars.QUAY_USERNAME != '' }}
+        env:
+          SRC: ghcr.io/m00grin/ph-intercept@${{ steps.src.outputs.digest }}
+          DEST: quay.io/m00grin/ph-intercept
           VERSION: ${{ steps.ver.outputs.version }}
           MINOR: ${{ steps.ver.outputs.minor }}
           DIGEST: ${{ steps.src.outputs.digest }}

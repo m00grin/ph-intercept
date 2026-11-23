@@ -199,6 +199,7 @@ GitHub is where the work happens and where every image is built. Each release is
 | [Docker Hub](https://hub.docker.com/r/m00grin/ph-intercept) | `docker.io/m00grin/ph-intercept` | Release tags. |
 | [Codeberg](https://codeberg.org/m00grin/-/packages/container/ph-intercept) | `codeberg.org/m00grin/ph-intercept` | `:latest` and the last few releases. |
 | [GitLab](https://gitlab.com/m00grin/ph-intercept/container_registry) | `registry.gitlab.com/m00grin/ph-intercept` | Release tags. |
+| [Quay](https://quay.io/repository/m00grin/ph-intercept) | `quay.io/m00grin/ph-intercept` | Release tags. |
 
 Use the tags from [Image Tags](#image-tags).
 
