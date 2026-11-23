@@ -339,7 +339,7 @@
         for (const it of _sitems) { _togH += smItemH; if (it.divAfter) _togH += smDivH; }
         // Background section: a single BACKGROUND row; mode + sky presets live in flyouts off it.
         const _bgRows = 1;
-        const smh = smPad + _togH + _bgRows * smItemH + (_has2P ? smDivH + smItemH : 0) + smDivH + smPhRowH + (S.twoPlayerMode === 'local' && window.P2_DASHBOARD ? smPhRowH : 0) + smPad;
+        const smh = smPad + _togH + _bgRows * smItemH + (_has2P ? smDivH + smItemH : 0) + smDivH + smPhRowH + (S.twoPlayerMode === 'local' ? smPhRowH : 0) + smPad;
         const smX = 6, smY = SY - smh - 6;
         HUD.settingsMenuPopupBox = { x: smX, y: smY, w: smw, h: smh };
         ctx.fillStyle = 'rgba(8,11,16,0.92)';
@@ -446,7 +446,11 @@
         // Pi-hole admin link row
         {
           const phHb = { x: smX, y: siy, w: smw, h: smPhRowH };
-          const phHov = S.mouseX >= phHb.x && S.mouseX <= phHb.x + phHb.w && S.mouseY >= phHb.y && S.mouseY <= phHb.y + phHb.h;
+          // A row links out only when there's a web interface to open (Blocky has none unless
+          // BLOCKER_DASHBOARD names one); otherwise it's a plain label naming the ad-blocker.
+          const _p1Link = /^https?:\/\//i.test((document.getElementById('pihole-link') || { dataset: {} }).dataset.href || '');
+          const _sameKind = C.P2_PROVIDER === C.PROVIDER;
+          const phHov = _p1Link && S.mouseX >= phHb.x && S.mouseX <= phHb.x + phHb.w && S.mouseY >= phHb.y && S.mouseY <= phHb.y + phHb.h;
           if (phHov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(phHb.x, phHb.y, phHb.w, phHb.h); }
           // Provider icon (Pi-hole, AdGuard, or Technitium)
           const { x: iconX, y: iconY, w: iconW, h: iconH } = HUD.iconBox(smX + 12, siy, smPhRowH);
@@ -458,25 +462,28 @@
           }
           // Label (shrink to fit so long names don't collide with the link arrow at smX+smw-14)
           ctx.textAlign = 'left';
-          const _phLbl = _isP2 ? C.PROVIDER_NAME + ' 1' : C.PROVIDER_NAME;
+          const _phLbl = _isP2 && _sameKind ? C.PROVIDER_NAME + ' 1' : C.PROVIDER_NAME;   // numbered only beside the same kind
           const _phLblX = iconX + iconW + 12;
           C._fitLabelFont(_phLbl, (smX + smw - 19) - _phLblX - 4, _fSub);
           ctx.fillStyle = phHov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
           ctx.fillText(_phLbl, _phLblX, siy + smPhRowH / 2 + 6);
-          // External link arrow drawn with lines
-          const _ax = smX + smw - 14, _ay = siy + smPhRowH / 2;
-          ctx.strokeStyle = phHov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
-          ctx.lineWidth = 1.5; ctx.lineCap = 'round';
-          ctx.beginPath();
-          ctx.moveTo(_ax - 5, _ay + 4); ctx.lineTo(_ax + 4, _ay - 4);
-          ctx.moveTo(_ax - 1, _ay - 4); ctx.lineTo(_ax + 4, _ay - 4); ctx.lineTo(_ax + 4, _ay + 1);
-          ctx.stroke();
-          HUD.settingsMenuItems.push({ key: 'pihole-link', hitbox: phHb });
+          if (_p1Link) {
+            // External link arrow drawn with lines
+            const _ax = smX + smw - 14, _ay = siy + smPhRowH / 2;
+            ctx.strokeStyle = phHov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
+            ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(_ax - 5, _ay + 4); ctx.lineTo(_ax + 4, _ay - 4);
+            ctx.moveTo(_ax - 1, _ay - 4); ctx.lineTo(_ax + 4, _ay - 4); ctx.lineTo(_ax + 4, _ay + 1);
+            ctx.stroke();
+            HUD.settingsMenuItems.push({ key: 'pihole-link', hitbox: phHb });
+          }
           siy += smPhRowH;
-          // PI-HOLE 2 admin link (local 2P mode only)
-          if (S.twoPlayerMode === 'local' && window.P2_DASHBOARD) {
+          // Player 2's row (local 2P mode only): always shown, a link only when there's one to open
+          if (S.twoPlayerMode === 'local') {
             const ph2Hb = { x: smX, y: siy, w: smw, h: smPhRowH };
-            const ph2Hov = !phHov && S.mouseX >= ph2Hb.x && S.mouseX <= ph2Hb.x + ph2Hb.w && S.mouseY >= ph2Hb.y && S.mouseY <= ph2Hb.y + ph2Hb.h;
+            const _p2Link = /^https?:\/\//i.test(window.P2_DASHBOARD || '');
+            const ph2Hov = _p2Link && !phHov && S.mouseX >= ph2Hb.x && S.mouseX <= ph2Hb.x + ph2Hb.w && S.mouseY >= ph2Hb.y && S.mouseY <= ph2Hb.y + ph2Hb.h;
             ctx.strokeStyle = 'rgba(140,160,175,0.10)'; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(smX + 30, siy + 0.5); ctx.lineTo(smX + smw - 10, siy + 0.5); ctx.stroke();
             if (ph2Hov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(ph2Hb.x, ph2Hb.y, ph2Hb.w, ph2Hb.h); }
@@ -487,19 +494,21 @@
               ctx.restore();
             }
             ctx.textAlign = 'left';
-            const _ph2Lbl = C.P2_PROVIDER === C.PROVIDER ? C.P2_PROVIDER_NAME + ' 2' : C.P2_PROVIDER_NAME;   // "ADGUARD 2" only beside another AdGuard
+            const _ph2Lbl = _sameKind ? C.P2_PROVIDER_NAME + ' 2' : C.P2_PROVIDER_NAME;   // numbered only beside the same kind
             const _ph2LblX = _icon2X + _icon2W + 12;
             C._fitLabelFont(_ph2Lbl, (smX + smw - 19) - _ph2LblX - 4, _fSub);
             ctx.fillStyle = ph2Hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
             ctx.fillText(_ph2Lbl, _ph2LblX, siy + smPhRowH / 2 + 6);
-            const _a2x = smX + smw - 14, _a2y = siy + smPhRowH / 2;
-            ctx.strokeStyle = ph2Hov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
-            ctx.lineWidth = 1.5; ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.moveTo(_a2x - 5, _a2y + 4); ctx.lineTo(_a2x + 4, _a2y - 4);
-            ctx.moveTo(_a2x - 1, _a2y - 4); ctx.lineTo(_a2x + 4, _a2y - 4); ctx.lineTo(_a2x + 4, _a2y + 1);
-            ctx.stroke();
-            HUD.settingsMenuItems.push({ key: 'pihole-link-2', hitbox: ph2Hb });
+            if (_p2Link) {
+              const _a2x = smX + smw - 14, _a2y = siy + smPhRowH / 2;
+              ctx.strokeStyle = ph2Hov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
+              ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+              ctx.beginPath();
+              ctx.moveTo(_a2x - 5, _a2y + 4); ctx.lineTo(_a2x + 4, _a2y - 4);
+              ctx.moveTo(_a2x - 1, _a2y - 4); ctx.lineTo(_a2x + 4, _a2y - 4); ctx.lineTo(_a2x + 4, _a2y + 1);
+              ctx.stroke();
+              HUD.settingsMenuItems.push({ key: 'pihole-link-2', hitbox: ph2Hb });
+            }
           }
         }
         // ── Background flyouts: mode list, with a sky-preset list cascading off STARS ──
