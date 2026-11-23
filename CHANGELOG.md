@@ -31,7 +31,7 @@ This is also the most tested release yet: about 1,500 tests, with the browser te
 - **Each ad-blocker's own word for its lists** -- GRAVITY (Pi-hole), BLOCKLIST (AdGuard Home, which read FILTER before), BLOCK LIST (Technitium), DENYLIST (Blocky), or LISTS for a mixed pair.
 - **Technitium's own timed-disable choices** -- 1, 5, and 30 minutes, 1 hour, and off, from Technitium's own menu, in place of Pi-hole's 10 seconds, 30 seconds, and 5 minutes. On very short screens, a long menu shrinks its rows or overlaps the HUD instead of running off the screen.
 - **Reproducible image builds** -- every Python package, indirect ones included, is installed from a lock file with exact versions and checksums, and the base image is pinned by digest. Before, two builds of the same release could differ.
-- **Official ad-blocker icons** -- from each project's own artwork, with Technitium's grid icon sharp at any display scaling.
+- **Official ad-blocker icons** -- each one is drawn exactly from its project's own artwork.
 - **Docs** -- the README lists the tested versions (AdGuard Home 0.107.52 and newer, Technitium 13 and newer, with 11 and 12 partly, and Blocky 0.28 and newer) and the new log lines, and [SECURITY.md](SECURITY.md) explains how to verify a release and how the build machine is locked down. The CasaOS app, awaiting review in its store, uses the new settings.
 
 ### Security
