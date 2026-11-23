@@ -182,7 +182,7 @@ Open `http://your-host:4653`.
 | Tag | What it is |
 |-----|------------|
 | `:latest` | Latest stable release. |
-| `:X.Y.Z` | Pinned release (e.g. `1.5.8`). |
+| `:X.Y.Z` | Pinned release (e.g. `1.6.0`). |
 | `:develop` | GHCR only. Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
 
 ---

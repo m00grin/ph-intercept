@@ -4,7 +4,7 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
-## [Unreleased]
+## [1.6.0] - 2026-11-22
 
 1.6 adds Blocky as a fourth supported ad-blocker, alongside Pi-hole, AdGuard Home, and Technitium. The two sides of 2-player mode can now run different ad-blockers, and one set of `BLOCKER_*` settings works for all four. Settings from earlier releases keep working unchanged.
 

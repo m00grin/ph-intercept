@@ -1,7 +1,7 @@
 name: ph-intercept
 services:
   ph-intercept:
-    image: m00grin/ph-intercept:1.5.8
+    image: m00grin/ph-intercept:1.6.0
     container_name: ph-intercept
     restart: unless-stopped
     network_mode: bridge
@@ -141,10 +141,10 @@ x-casaos:
     - amd64
     - arm64
     - arm
-  version: "1.5.8"
-  update_at: "2026-11-21"
+  version: "1.6.0"
+  update_at: "2026-11-22"
   release_notes:
-    en_US: "Fixed: High AdGuard Home CPU use while the dashboard is open. Changed: Docs; CI."
+    en_US: "Added: Blocky support; 2-player with two different ad-blockers; One set of settings for every ad-blocker; Ignore lists for both sides or one; Docker secrets; Startup banner and report; LOG_LEVEL; SBOM; More places to get the image. Changed: Faster, calmer first start; Quieter log; Simpler example composes; Each ad-blocker's own word for its lists; Technitium's own timed-disable choices; Reproducible image builds; Official ad-blocker icons; Docs. Security: Passwords stay out of URLs and logs; Request size limit; RETURN_URL can't run a script; Limits on replies and connections; Security headers on errors. Fixed: Pi-hole login retries could overload Pi-hole; AdGuard Home and Technitium login retries; Technitium releases before 15; Every open screen added load on the ad-blocker; 2-player wouldn't start with a slow second ad-blocker; First queries missing after an empty query log; A screen that stopped reading kept its connection forever; Some log lines never appeared; Unknown PROVIDER could break the startup report; Blank or misspelled background settings; /bg/ without a background folder; Malformed Technitium replies."
   website: https://hub.docker.com/r/m00grin/ph-intercept
   repo: https://github.com/m00grin/ph-intercept
   support: https://github.com/m00grin/ph-intercept/issues
