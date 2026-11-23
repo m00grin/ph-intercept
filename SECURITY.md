@@ -24,7 +24,7 @@ docker buildx imagetools inspect ghcr.io/m00grin/ph-intercept:latest --format '{
 
 The output names the Actions run (`runDetails.builder.id`) and the commit it built from (the `org.opencontainers.image.revision` label). That commit should match the one the signed tag points to, which ties the image to the source I signed.
 
-Releases after 1.5.8 also include an SBOM, the list of packages inside each image:
+Releases after 1.5.8 also include an SBOM, a list of the packages inside each image: the Python packages and the Python runtime. Alpine's own system libraries aren't listed yet; that's planned for the next release.
 
 ```bash
 docker buildx imagetools inspect ghcr.io/m00grin/ph-intercept:latest --format '{{json .SBOM}}'

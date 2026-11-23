@@ -19,7 +19,7 @@ This is also the most tested release yet: about 1,500 tests, with the browser te
 - **Docker secrets** -- passwords, tokens, and usernames can be read from a file with `*_FILE`, for example `BLOCKER_PASSWORD_FILE=/run/secrets/blocker_password`, with the older setting names too.
 - **Startup banner and report** -- the log opens with the ph-intercept ship drawn in text, the version, and the log level, then a line per player: the ad-blocker it found, its address (passwords removed), and the settings it used. A side that can't start says why. Passwords and tokens are never printed.
 - **`LOG_LEVEL`** -- `info` (the default), `debug` for troubleshooting, `warning` for problems only, or `error`.
-- **SBOM** -- release images now carry a list of every package inside them. See [SECURITY.md](SECURITY.md#verifying-a-release).
+- **SBOM** -- release images now carry a list of the packages inside them: the Python packages and runtime. Alpine's own system libraries aren't listed yet. See [SECURITY.md](SECURITY.md#verifying-a-release).
 - **More places to get the image** -- releases are also published, unchanged, to Codeberg and GitLab. The README shows how to build from a signed release tag.
 
 ### Changed
