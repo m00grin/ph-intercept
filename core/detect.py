@@ -56,10 +56,17 @@ async def _is_adguard(client: httpx.AsyncClient, root: str, resp) -> bool:
     return home.status_code in (301, 302, 303, 307, 308) and home.headers.get("location", "").endswith("login.html")
 
 
+def _adguard_setting_up(resp) -> bool:
+    """A fresh AdGuard Home sends every request to its setup wizard until that's done."""
+    return (isinstance(resp, httpx.Response) and resp.status_code in (301, 302, 303, 307, 308)
+            and resp.headers.get("location", "").endswith("/install.html"))
+
+
 async def identify(client: httpx.AsyncClient, root: str) -> tuple[str | None, str]:
     """(provider, "") when exactly one matches, else (None, reason).
 
-    reason is "unreachable" when nothing answered at all (worth retrying) and
+    reason is "unreachable" when nothing answered at all, or "adguard-setup" for an
+    AdGuard Home that hasn't finished its first-run setup (both worth waiting for);
     "certificate" when HTTPS failed verification; anything else is a config
     problem to report."""
     paths = {
@@ -85,6 +92,8 @@ async def identify(client: httpx.AsyncClient, root: str) -> tuple[str | None, st
     ) if ok]
     if len(matches) == 1:
         return matches[0], ""
+    if not matches and _adguard_setting_up(by["adguard"]):
+        return None, "adguard-setup"
     if not matches:
         return None, "no Pi-hole, AdGuard Home, Technitium, or Blocky answered there"
     return None, "it answered like more than one of " + ", ".join(matches)

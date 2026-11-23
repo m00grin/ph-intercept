@@ -112,6 +112,7 @@ def _report_side(slot: int, status: str = "") -> None:
     if not provider:
         err = target.error if isinstance(target, Slot) else None
         logger.info(_banner.side(slot, f"not started: {err}" if err else "waiting for the ad-blocker", color=_COLOR))
+        _spoke(slot)
         return
     style = (f"{_settings.neutral_prefix(slot)}_* settings" if side.style == "new"
              else f"{_settings.SPEC[provider]['prefix']}{'' if slot == 1 else '2'}_* settings")
@@ -124,6 +125,7 @@ def _report_side(slot: int, status: str = "") -> None:
         logger.info(_banner.detail(note, color=_COLOR))
     for name in _settings.unused_fields(side, RESOLVED.source):
         logger.info(_banner.detail(f"{name} isn't needed for {_settings.NAMES[provider]}, so it's ignored", color=_COLOR))
+    _spoke(slot)
 
 
 # Detection retries: quick at first, since on a first boot the ad-blocker is usually seconds from ready.
@@ -131,6 +133,23 @@ _FIRST_RETRY, _MAX_RETRY = 1.0, 15.0
 # While still waiting: a reminder after 1 minute, then 2, 4, 8, ... and at most every 15 minutes.
 _FIRST_REMINDER, _MAX_REMINDER_GAP = 60.0, 900.0
 _monotonic = time.monotonic
+# Player 2's lines wait for player 1's first one (at most a few seconds), so the report reads in order.
+_P1_SPOKE = asyncio.Event()
+
+
+def _spoke(slot: int) -> None:
+    if slot == 1:
+        _P1_SPOKE.set()
+
+
+async def _after_p1(step):
+    try:
+        await asyncio.wait_for(_P1_SPOKE.wait(), 5.0)
+    except TimeoutError:
+        pass
+    result = step()
+    if asyncio.iscoroutine(result):
+        await result
 
 
 async def _settle(slot: int, client: httpx.AsyncClient) -> None:
@@ -143,23 +162,25 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
     if side.error:
         target.fail(side.error)
         logger.error(_banner.problem(slot, f"not started: {side.error}", _COLOR))
+        _spoke(slot)
         return
-    delay, waiting_since, remind_at = _FIRST_RETRY, None, _FIRST_REMINDER
+    delay, waiting_since, remind_at, last_reason = _FIRST_RETRY, None, _FIRST_REMINDER, ""
     status = ""
     while True:
         found, reason = await identify(client, side.root)
-        if side.provider and (found in (None, side.provider)):
+        if side.provider and (found in (None, side.provider)) and reason != "adguard-setup":
             status = "confirmed" if found else ""
             if found is None:
                 logger.info(_banner.side(slot, f"could not confirm {_settings.NAMES[side.provider]} at "
                                                f"{_settings.display_url(side.root)} ({reason}); using it as configured",
                                          color=_COLOR))
             break
-        if side.provider and found != side.provider:
+        if side.provider and found and found != side.provider:
             msg = (f"{_settings.neutral_prefix(slot)}_TYPE says {side.provider}, but "
                    f"{_settings.display_url(side.root)} answers like {_settings.NAMES[found]}")
             target.fail(msg)
             logger.error(_banner.problem(slot, f"not started: {msg}", _COLOR))
+            _spoke(slot)
             return
         if found:
             side.provider = found
@@ -170,22 +191,31 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
                    f"certificate, set {_settings.neutral_prefix(slot)}_VERIFY_SSL to false")
             target.fail(msg)
             logger.error(_banner.problem(slot, f"not started: {msg}", _COLOR))
+            _spoke(slot)
             return
-        if reason != "unreachable":
+        if reason not in ("unreachable", "adguard-setup"):
             msg = (f"could not tell which ad-blocker is at {_settings.display_url(side.root)}: {reason}. "
                    f"Check {_settings.neutral_prefix(slot)}_URL, or set {_settings.neutral_prefix(slot)}_TYPE")
             target.fail(msg)
             logger.error(_banner.problem(slot, f"not started: {msg}", _COLOR))
+            _spoke(slot)
             return
         url = _settings.display_url(side.root)
-        target.fail(f"waiting for the ad-blocker at {url}")
-        if waiting_since is None:
+        setting_up = reason == "adguard-setup"
+        what = (f"AdGuard Home at {url} to finish its setup (open it in a browser)" if setting_up
+                else f"{url} to answer")
+        target.fail(f"waiting for {what}")
+        if waiting_since is None or reason != last_reason:
             # Normal on a first boot: the ad-blocker's container is often still starting.
-            waiting_since = _monotonic()
-            logger.info(_banner.side(slot, f"waiting for {url} to answer", color=_COLOR))
+            waiting_since = waiting_since or _monotonic()
+            logger.info(_banner.side(slot, f"waiting for {what}", color=_COLOR))
+            _spoke(slot)
         elif _monotonic() - waiting_since >= remind_at:
-            logger.warning(_banner.problem(slot, f"still no answer from {url} after {_banner.elapsed(remind_at)}", _COLOR))
+            still = (f"AdGuard Home at {url} still hasn't finished its setup" if setting_up
+                     else f"still no answer from {url}")
+            logger.warning(_banner.problem(slot, f"{still} after {_banner.elapsed(remind_at)}", _COLOR))
             remind_at += min(remind_at, _MAX_REMINDER_GAP)
+        last_reason = reason
         await asyncio.sleep(delay)
         delay = min(delay * 1.5, _MAX_RETRY)
     if waiting_since is not None and status:
@@ -194,6 +224,7 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
     if err:
         target.fail(err)
         logger.error(_banner.problem(slot, f"not started: {err}", _COLOR))
+        _spoke(slot)
         return
     if slot == 1:
         _DASHBOARD, _VERIFY_SSL = _p1_settings(side.provider)
@@ -204,7 +235,9 @@ async def _settle(slot: int, client: httpx.AsyncClient) -> None:
         SIDE2.provider = side.provider
         _, _P2_DASHBOARD, _P2_VERIFY_SSL = _config.p2_settings(side.provider)
         _P2.bind(side.provider)
+        _report_side(slot, status)
         _report_side(2)
+        return
     _report_side(slot, status)
 
 
@@ -270,11 +303,9 @@ async def lifespan(_app):
     else:
         _report_side(1)
     if isinstance(_P2, Slot) and SIDE2.style == "new":
-        tasks.append(asyncio.create_task(_settle(2, _http_client2)))
-    elif _P2 is not None and not isinstance(_P2, Slot):
-        _report_side(2)
-    elif _P2 is None:
-        _report_side(2)
+        tasks.append(asyncio.create_task(_after_p1(lambda: _settle(2, _http_client2))))
+    elif _P2 is None or not isinstance(_P2, Slot):
+        tasks.append(asyncio.create_task(_after_p1(lambda: _report_side(2))))
     yield
     for t in tasks:
         t.cancel()

@@ -137,10 +137,17 @@ _P2_BY_PROVIDER = {
 }
 
 
+_LEGACY2_URLS = ("PIHOLE2_URL", "ADGUARD2_URL", "TECHNITIUM2_URL", "BLOCKY2_URL")
+
+
 def env_prefix(legacy: str, slot: int) -> str:
-    """Prefix to name in messages: BLOCKER / BLOCKER2 for a new-style side, else the legacy one."""
+    """Prefix to name in messages: BLOCKER / BLOCKER2 for a new-style side, else the legacy one.
+    An unconfigured second side follows the first side's style, so the message names the
+    setting that fits the rest of the user's compose."""
     if SIDES[slot].style == "new":
         return "BLOCKER" if slot == 1 else "BLOCKER2"
+    if slot == 2 and SIDES[1].style == "new" and not any(_env.get(n, "").strip() for n in _LEGACY2_URLS):
+        return "BLOCKER2"
     return legacy if slot == 1 else f"{legacy}2"
 
 
