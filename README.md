@@ -350,7 +350,7 @@ All configuration is via environment variables in `compose.yaml`.
 | `BLOCKER_PASSWORD_FILE` | _(unset)_ | Read the password from a file, for Docker secrets (`/run/secrets/...`). Also `BLOCKER_TOKEN_FILE` and `BLOCKER_USERNAME_FILE`. |
 | `LOG_LEVEL` | `info` | How much goes in the container log. `info`: the startup banner, a line per player, and real events. `debug`: extra detail for troubleshooting. `warning`: problems only. `error`: errors only. |
 
-At startup the log shows a banner with the version, then a line per player: the ad-blocker it found, its address, where its settings came from, and anything it ignored. It never prints a password or token.
+The startup log shows what each player found and which settings it used. It never prints a password or token.
 
 ### Older settings
 
@@ -475,7 +475,7 @@ It starts with the banner and a line per player. After that, ph-intercept logs o
 
 The same lines name `PIHOLE_URL`, `ADGUARD_PASSWORD`, and so on if you use the [older settings](#older-settings). In 2-player mode the second side logs as `P2`, pointing at the `BLOCKER2_*` settings.
 
-The example compose's `logging:` block caps the log at three files of 10 MB, so even `LOG_LEVEL: debug` left on can't fill the disk.
+The compose's `logging:` block caps the log at 30 MB, so even `debug` left on can't fill the disk.
 
 ---
 

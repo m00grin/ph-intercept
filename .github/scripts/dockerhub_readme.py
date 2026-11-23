@@ -32,7 +32,7 @@ PROVIDERS = [
 ]
 # GitHub-only sections left out of the Docker Hub page, and ### subsections the same way.
 # Links to a dropped subsection go to it on GitHub.
-DROP = ["Other Ways to Get It", "Entities", "Testing"]
+DROP = ["Other Ways to Get It", "Testing"]
 DROP_SUB = ["Older settings"]
 BADGE_LINE = re.compile(r'^<a href="[^"]+"><img [^>]*src="https://img\.shields\.io/[^"]*"[^>]*></a>\n', re.MULTILINE)
 
@@ -84,6 +84,21 @@ def fenced_comments(text: str) -> set:
         elif fence and line.strip().startswith("#"):
             out.add(line.strip())
     return out
+
+
+SETUP_NOTE = re.compile(r"^\s*#\s*(CLI users:|Portainer Web users:|\s*BLOCKER2?_PASSWORD=your_)")
+
+
+def drop_setup_notes(text: str) -> str:
+    """Remove the compose's .env and Portainer comment lines. Quick Start step 1 says the
+    same just above the compose, and on Docker Hub every byte counts toward the cap."""
+    out, fence = [], False
+    for line in text.splitlines(keepends=True):
+        if line.lstrip().startswith("```"):
+            fence = not fence
+        if not (fence and SETUP_NOTE.match(line)):
+            out.append(line)
+    return "".join(out)
 
 
 def drop_shared_comments(text: str, shared: set) -> str:
@@ -267,7 +282,7 @@ def build() -> str:
             inserted = True
     if not inserted:
         sys.exit("README.md has no '## Quick Start' section to anchor the provider setups after")
-    return site_images(fix_links(drop_optional_examples(docker_hub_image("".join(out)))))
+    return site_images(fix_links(drop_setup_notes(drop_optional_examples(docker_hub_image("".join(out))))))
 
 
 def main() -> None:
