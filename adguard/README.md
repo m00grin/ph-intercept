@@ -2,7 +2,7 @@
 
 A DNS dashboard that runs as a standalone Docker container alongside your AdGuard Home instance. Streams live DNS query events from the AdGuard Home API and renders them as pixel-art friendlies and enemies. Blocked queries are destroyed by the ship, allowed queries fly through. Toggle protection, set timed blocks, trigger filter list updates, and switch ships from the HUD.
 
-Designed to be dropped in alongside an existing AdGuard Home setup with no extra dependencies.
+ph-intercept uses one compose for every ad-blocker it supports. This page is that compose with the AdGuard Home lines filled in, plus what's specific to AdGuard Home. Everything else is in the [main README](../README.md).
 
 <img alt="ph-intercept shooting down blocked DNS queries live" src="https://raw.githubusercontent.com/m00grin/ph-intercept/main/docs/demo.gif" />
 
@@ -10,17 +10,17 @@ Designed to be dropped in alongside an existing AdGuard Home setup with no extra
 
 ## Quick Start
 
-**1.** Have your AdGuard Home **username** and **password** ready (the credentials you use to log in to the AdGuard Home web interface).
+**1.** Have your AdGuard Home **username** and **password** ready (the ones you use to log in to the AdGuard Home web interface).
 
 - **CLI users:** Create a `.env` file in the same directory as your `compose.yaml`:
 
   ```env
-  ADGUARD_PASSWORD=your_adguard_password
+  BLOCKER_PASSWORD=your_adguard_password
   ```
 
-- **Portainer users:** Skip the `.env` file. Add `ADGUARD_PASSWORD` as an environment variable directly in the Portainer stack config.
+- **Portainer users:** Skip the `.env` file. Add `BLOCKER_PASSWORD` as an environment variable directly in the Portainer stack config.
 
-**2.** Create a `compose.yaml` (copy the example below or grab [`compose.yaml`](compose.yaml) from the repo) and update `ADGUARD_URL` and `ADGUARD_USERNAME` to match your setup:
+**2.** Create a `compose.yaml` (copy the example below or grab [`compose.yaml`](compose.yaml) from the repo) and set `BLOCKER_URL` and `BLOCKER_USERNAME`:
 
 ```yaml
 services:
@@ -37,19 +37,17 @@ services:
           pids: 20
 
     environment:
-      PROVIDER: adguard
+      # REQUIRED: the address you open in a browser to manage AdGuard Home.
+      # Example: "http://192.168.1.2:3000"
+      BLOCKER_URL: "http://CHANGE.ME:3000"
 
-      # REQUIRED: AdGuard Home control API endpoint
-      # Example: "http://192.168.1.2:3000/control"
-      ADGUARD_URL: "http://CHANGE.ME:PORT/control"
-
-      # REQUIRED: AdGuard Home username or email for login.
-      ADGUARD_USERNAME: "CHANGE.ME"
+      # REQUIRED: the username you log in to AdGuard Home with
+      BLOCKER_USERNAME: "CHANGE.ME"
 
       # CLI users: Create a .env file in the same dir as this compose file with:
-      #  ADGUARD_PASSWORD=your_adguard_password
-      # Portainer Web users: Add the environment variable: ADGUARD_PASSWORD=your_adguard_password
-      ADGUARD_PASSWORD: ${ADGUARD_PASSWORD}
+      #  BLOCKER_PASSWORD=your_adguard_password
+      # Portainer Web users: Add the environment variable: BLOCKER_PASSWORD=your_adguard_password
+      BLOCKER_PASSWORD: ${BLOCKER_PASSWORD}
 
       # Optional: where ESC navigates to (like your homelab dashboard or homepage)
       # Accepts http://, https://, protocol-relative (//), relative paths, and custom app schemes
@@ -70,12 +68,12 @@ services:
       # picked any time. Leave blank to disable it (CUSTOM shows greyed out in the menu).
       BG_IMAGE: ""
 
-      # SSL certificate verification. Set to "false" if AdGuard uses HTTPS
+      # SSL certificate verification. Set to "false" if AdGuard Home uses HTTPS
       #  with a self-signed certificate. Leave as "true" for HTTP or valid HTTPS.
-      ADGUARD_VERIFY_SSL: "true"
+      BLOCKER_VERIFY_SSL: "true"
 
       # Optional: comma-separated regex patterns. Matching domains spawn no ships. Case-insensitive.
-      # ADGUARD_IGNORE_DOMAINS: .*\.local$,.*\.internal$
+      # IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
       # Optional: "true" makes the page view-only. The server refuses the blocking
       # toggle, filter update and 2-player mode switch; the HUD controls go inert.
@@ -87,17 +85,20 @@ services:
 
       # Optional: comma-separated regex patterns matched against the client name or IP.
       # Queries from matching clients spawn no ships. Case-insensitive.
-      # ADGUARD_IGNORE_CLIENTS: ^uptime-kuma$,^192\.168\.1\.99$
+      # IGNORE_CLIENTS: ^uptime-kuma$,^192\.168\.1\.99$
 
       # Optional: "true" replaces every domain with an opaque per-start token on the
       # server. Repeat queries still group; domain labels and the DOMAIN toggle go away.
       # HIDE_DOMAIN: "true"
 
-      # 2-player local mode: set all three to enable a second AdGuard ship on the right half
-      # ADGUARD2_URL: "http://192.168.1.3:3000/control"
-      # ADGUARD2_USERNAME: "CHANGE.ME"
-      # ADGUARD2_PASSWORD: ${ADGUARD2_PASSWORD}
-      # ADGUARD2_VERIFY_SSL: "true"
+      # Optional: how much goes in the container log: info (default), debug, warning, or error
+      # LOG_LEVEL: info
+
+      # 2-player local mode: a second ad-blocker, any of the four, for a second ship on
+      # the right half. Same settings as above with BLOCKER2_.
+      # BLOCKER2_URL: "http://192.168.1.3:3000"
+      # BLOCKER2_USERNAME: "admin"
+      # BLOCKER2_PASSWORD: ${BLOCKER2_PASSWORD}
 
     volumes:
       # Portainer Web users: This will resolve to /data/compose/<stack-id>/bg/
@@ -123,7 +124,7 @@ services:
       # Host port : container port. Change the left side if 4663 is taken
       - "4663:4653"
 
-    # Optional: point DNS at your AdGuard Home instance
+    # Optional: point DNS at your AdGuard Home (if used for DNS resolution) or resolver directly (like Unbound)
     # dns:
     #   - your.dns.dockernet.ip
 
@@ -151,126 +152,13 @@ Open `http://your-host:4663`.
 
 ---
 
-## Image Tags
+## AdGuard Home notes
 
-| Tag | What it is |
-|-----|------------|
-| `:latest` | Latest stable release. |
-| `:X.Y.Z` | Pinned release (e.g. `1.5.8`). |
-| `:develop` | GHCR only. Built automatically on every push to the `develop` branch. May be unstable. Good for trying out what I'm working on. |
+- **Address:** `BLOCKER_URL` is the address of the AdGuard Home web interface, the one you log in at, for example `http://192.168.1.2:3000` or `http://192.168.1.2` if it runs on port 80. A pasted `/#/dashboard` on the end is fine.
+- **Versions:** AdGuard Home 0.107.52 or newer, including 1.0.
+- **Login:** ph-intercept logs in once and reuses the session, so it doesn't make AdGuard Home check your password on every request.
+- **HUD:** **BLOCKLIST** shows the number of rules in your blocklists, and the arrow runs **Check for updates**. The timed-disable menu offers AdGuard Home's own choices, including until tomorrow.
+- **2-player:** the second side can be another AdGuard Home or any other supported server. See [Local 2-Player Mode](../README.md#local-2-player-mode).
+- **Settings from before 1.6** (`PROVIDER: adguard`, `ADGUARD_URL` ending in `/control`, `ADGUARD_USERNAME`, `ADGUARD_PASSWORD`) still work exactly as before. See [Older settings](../README.md#older-settings).
 
-Images are also published to other registries, and you can build from source. See [Other Ways to Get It](../README.md#other-ways-to-get-it).
-
----
-
-## Gameplay, ship, HUD, and background
-
-The entities, ship roster, HUD, and background modes are shared across all providers. See the [main README](../README.md#entities) for the full walkthrough of entity tiers, the seven selectable ships, the four HUD panels, and the starfield / nebula / outrun / dark backgrounds.
-
-With AdGuard Home, the HUD differs in three places:
-
-- **INTERCEPT:** shows protection status. The timed-disable menu offers 30 sec, 1 min, 10 min, 1 hr, and Tomorrow, plus a full disable.
-- **FILTER** (in place of GRAVITY): total rules across all active filter lists. The arrow triggers a filter list refresh and confirms when done.
-- **Settings:** the provider link opens the AdGuard Home web interface.
-
-**Portainer:** drop image files into `/data/compose/<stack-id>/bg/` on the Portainer host (where the `./bg` bind mount resolves).
-
----
-
-## Configuration
-
-All configuration is via environment variables in `compose.yaml`.
-
-> **Upgrading?** Pull the latest `compose.yaml` to see all current options. Anything you don't set uses its default, so an older compose keeps working.
-
-### Required
-
-| Variable | Description |
-|----------|-------------|
-| `ADGUARD_URL` | AdGuard Home control API base URL, e.g. `http://192.168.1.x:3000/control` |
-| `ADGUARD_USERNAME` | AdGuard Home username or email address. |
-| `ADGUARD_PASSWORD` | AdGuard Home password. CLI: set in a `.env` file. Portainer: add as an environment variable in the stack. |
-
-### Optional
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `ADGUARD_VERIFY_SSL` | `true` | Set to `false` if AdGuard Home uses HTTPS with a self-signed certificate. |
-| `ADGUARD_IGNORE_DOMAINS` | _(unset)_ | Comma-separated regex patterns. Domains that match spawn no ships. Case-insensitive; escape literal dots (`\.local$`). Example: `.*\.local$,.*\.internal$` |
-| `ADGUARD_IGNORE_CLIENTS` | _(unset)_ | Comma-separated regex patterns, matched against the client name and IP. Queries from matching clients spawn no ships. Case-insensitive; escape literal dots (`^192\.168\.1\.99$`). Example: `^uptime-kuma$,^10\.0\.0\.5$` |
-| `RETURN_URL` | `""` | URL that ESC navigates to. Accepts `http://`, `https://`, protocol-relative (`//`), relative paths, and custom app schemes. Leave blank to disable ESC. |
-| `BG_MODE` | `starfield` | Default background: `starfield` · `nebula` · `outrun` · `dark`. Switchable live in-app. |
-| `SKY_PRESET` | `summer_triangle` | Default sky region: `summer_triangle` · `orion` · `scorpius` · `southern_cross`. Switchable live in-app. |
-| `BG_IMAGE` | `""` | Custom image URL or `/bg/filename.jpg`. When set, it's the default and enables the in-app `CUSTOM` option; blank leaves `CUSTOM` disabled. |
-| `READ_ONLY` | `false` | Set to `true` for a wall display or a page others can open: the server refuses every request that changes something (blocking toggle, filter update, 2-player mode) with HTTP 403, and the HUD leaves those controls inert. Status and stats stay visible. |
-| `HIDE_CLIENT` | `false` | Set to `true` to drop the client name or IP from every query before it is sent to the browser. The in-app `CLIENT` toggle is hidden. |
-| `HIDE_DOMAIN` | `false` | Set to `true` to replace every domain with an opaque token before it is sent to the browser (HMAC-SHA256 with a random key generated at each start, so tokens can't be looked up from a list of common domains). Repeat queries still group into tiers; domain labels, the letter fragments on a kill and the in-app `DOMAIN` toggle are left out. |
-| `ADGUARD2_URL` | _(unset)_ | Second AdGuard Home control API base URL. Setting a valid URL activates local 2-player split-screen mode. See below. |
-| `ADGUARD2_USERNAME` | `""` | Username or email for the second AdGuard Home instance. |
-| `ADGUARD2_PASSWORD` | `""` | Password for the second AdGuard Home instance. |
-| `ADGUARD2_VERIFY_SSL` | `true` | Set to `false` if the second AdGuard Home uses HTTPS with a self-signed certificate. |
-
----
-
-## Local 2-Player Mode
-
-Two AdGuard Home instances can run side by side in split-screen. P1's ship occupies the left half of the canvas, P2's ship the right. Each instance streams its own query events independently.
-
-Add the second AdGuard Home to your `compose.yaml` environment block:
-
-```yaml
-ADGUARD2_URL: "http://192.168.1.3:3000/control"
-ADGUARD2_USERNAME: "admin"
-ADGUARD2_PASSWORD: ${ADGUARD2_PASSWORD}
-```
-
-And add the password to your `.env` file:
-
-```env
-ADGUARD2_PASSWORD=your_second_adguard_password
-```
-
-Setting a valid `ADGUARD2_URL` is all that is required to activate split-screen mode; toggle it on from the in-game 2-player panel. The second instance mirrors the primary provider, so AdGuard pairs with AdGuard (a Pi-hole second instance uses `PIHOLE2_*` instead).
-
----
-
-## Requirements
-
-- AdGuard Home v0.107.28 or newer
-- Docker with Compose
-- Network route from the container to your AdGuard Home instance
-- **Architecture:** `linux/amd64` · `linux/arm64` · `linux/arm/v7` · `linux/arm/v6` · `linux/386` · `linux/riscv64` · `linux/ppc64le`
-
-The container listens on port 4653 internally, mapped to host port 4663 by default. The compose file includes an optional static IP block for existing Docker networks.
-
-Curious what everyone runs it on? I'm asking in a [quick poll](https://github.com/m00grin/ph-intercept/discussions/52) instead of collecting any data.
-
----
-
-## Troubleshooting
-
-If something's off, check the logs first:
-
-```bash
-docker logs ph-intercept 2>&1 | grep -v '^INFO:'
-```
-
-On a healthy setup that prints nothing. Otherwise ph-intercept logs one line when a problem starts, and one line when it clears:
-
-| Log line | What to check |
-|----------|---------------|
-| `AdGuard: could not reach http://... Check ADGUARD_URL` | The URL and port, and that the container can reach AdGuard Home over the network. |
-| `AdGuard: login rejected (HTTP 401). Check ADGUARD_USERNAME and ADGUARD_PASSWORD` | The username (or email) and password you log in to AdGuard Home with. |
-| `AdGuard: unexpected HTTP 404 from ... Check ADGUARD_URL points at the control API (ends in /control)` | `ADGUARD_URL` must end in `/control`. |
-| `AdGuard query log: ...` | Same checks as the lines above, for the query log endpoint. |
-| `PROVIDER='...' is not recognised ...` | `PROVIDER` must be `adguard` here. |
-
-In 2-player mode the second instance logs the same lines as `AdGuard 2`, pointing at the `ADGUARD2_*` variables.
-
----
-
-## Privacy
-
-ph-intercept only talks to your own AdGuard Home instance(s). It never phones home, has no analytics, and collects nothing. Your display settings (ship, background, toggles) are saved in your browser's local storage and never leave it. Requests from other websites to the blocking controls are refused, so a page you visit can't toggle your DNS server through ph-intercept.
-
-**Shared screens:** on a wall display or a page other people can open, `READ_ONLY` stops anyone from changing your DNS server, and `HIDE_CLIENT` and `HIDE_DOMAIN` keep client names and domains out of the browser. See [Optional settings](#optional).
+Configuration, troubleshooting, and privacy: see the [main README](../README.md#configuration).

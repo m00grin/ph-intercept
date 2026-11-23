@@ -12,28 +12,18 @@ services:
           pids: 20
 
     environment:
-      PROVIDER: technitium
+      # REQUIRED: the Technitium web console address. Example: "http://192.168.1.2:5380"
+      # The "Query Logs (Sqlite)" app must be installed in Technitium.
+      BLOCKER_URL: "http://CHANGE.ME:5380"
 
-      # REQUIRED: Technitium DNS web-console root (the API lives under /api).
-      # Example: "http://192.168.1.2:5380"
-      TECHNITIUM_URL: "http://CHANGE.ME:5380"
-
-      # Authentication: use EITHER a permanent API token OR a username + password.
-      # A token is recommended (create one under Administration > Sessions >
-      # Create Token in the Technitium console).
-      # CLI users: put the secret in a .env file next to this compose file.
-      # Portainer Web users: add it as an environment variable.
-      TECHNITIUM_TOKEN: ${TECHNITIUM_TOKEN}
-      # TECHNITIUM_USER: "admin"
-      # TECHNITIUM_PASSWORD: ${TECHNITIUM_PASSWORD}
-      # TECHNITIUM_TOTP: ""   # only if the account has 2FA enabled
-
-      # REQUIRED for the query feed: the "Query Logs (Sqlite)" DNS app must be
-      # installed in Technitium (Apps > App Store > Query Logs (Sqlite)). These
-      # match its default install name and class path; only change them if you
-      # installed the app under a different name.
-      # TECHNITIUM_QUERY_LOG_APP: "Query Logs (Sqlite)"
-      # TECHNITIUM_QUERY_LOG_CLASS: "QueryLogsSqlite.App"
+      # An API token (Administration > Sessions > Create Token) OR a username and password.
+      # CLI users: Create a .env file in the same dir as this compose file with:
+      #  BLOCKER_TOKEN=your_api_token
+      # Portainer Web users: Add the environment variable: BLOCKER_TOKEN=your_api_token
+      BLOCKER_TOKEN: ${BLOCKER_TOKEN}
+      # BLOCKER_USERNAME: "admin"
+      # BLOCKER_PASSWORD: ${BLOCKER_PASSWORD}
+      # TECHNITIUM_TOTP: ""
 
       # Optional: where ESC navigates to (like your homelab dashboard or homepage)
       # Accepts http://, https://, protocol-relative (//), relative paths, and custom app schemes
@@ -56,10 +46,10 @@ services:
 
       # SSL certificate verification. Set to "false" if Technitium uses HTTPS
       #  with a self-signed certificate. Leave as "true" for HTTP or valid HTTPS.
-      TECHNITIUM_VERIFY_SSL: "true"
+      BLOCKER_VERIFY_SSL: "true"
 
       # Optional: comma-separated regex patterns. Matching domains spawn no ships. Case-insensitive.
-      # TECHNITIUM_IGNORE_DOMAINS: .*\.local$,.*\.internal$
+      # IGNORE_DOMAINS: .*\.local$,.*\.internal$
 
       # Optional: "true" makes the page view-only. The server refuses the blocking
       # toggle, filter update and 2-player mode switch; the HUD controls go inert.
@@ -69,22 +59,21 @@ services:
       # so it never reaches the browser. Also hides the in-app CLIENT toggle.
       # HIDE_CLIENT: "true"
 
-      # Optional: comma-separated regex patterns matched against the client IP.
+      # Optional: comma-separated regex patterns matched against the client name or IP.
       # Queries from matching clients spawn no ships. Case-insensitive.
-      # TECHNITIUM_IGNORE_CLIENTS: ^192\.168\.1\.99$
+      # IGNORE_CLIENTS: ^uptime-kuma$,^192\.168\.1\.99$
 
       # Optional: "true" replaces every domain with an opaque per-start token on the
       # server. Repeat queries still group; domain labels and the DOMAIN toggle go away.
       # HIDE_DOMAIN: "true"
 
-      # 2-player local mode: set the URL and a token (or user + password) to enable
-      # a second Technitium ship on the right half. The second instance also needs
-      # the Query Logs (Sqlite) app installed.
-      # TECHNITIUM2_URL: "http://192.168.1.3:5380"
-      # TECHNITIUM2_TOKEN: ${TECHNITIUM2_TOKEN}
-      # TECHNITIUM2_USER: "admin"
-      # TECHNITIUM2_PASSWORD: ${TECHNITIUM2_PASSWORD}
-      # TECHNITIUM2_VERIFY_SSL: "true"
+      # Optional: how much goes in the container log: info (default), debug, warning, or error
+      # LOG_LEVEL: info
+
+      # 2-player local mode: a second ad-blocker, any of the four, for a second ship on
+      # the right half. Same settings as above with BLOCKER2_.
+      # BLOCKER2_URL: "http://192.168.1.3:5380"
+      # BLOCKER2_TOKEN: ${BLOCKER2_TOKEN}
 
     volumes:
       # Portainer Web users: This will resolve to /data/compose/<stack-id>/bg/
@@ -110,7 +99,7 @@ services:
       # Host port : container port. Change the left side if 4673 is taken
       - "4673:4653"
 
-    # Optional: point DNS at your Technitium DNS server
+    # Optional: point DNS at your Technitium (if used for DNS resolution) or resolver directly (like Unbound)
     # dns:
     #   - your.dns.dockernet.ip
 

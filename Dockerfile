@@ -1,11 +1,11 @@
-FROM python:3.15-alpine3.24
+FROM python:3.15-alpine3.24@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
 WORKDIR /app
 ARG TARGETVARIANT
 RUN --mount=type=bind,source=requirements.txt,target=requirements.txt \
     apk upgrade --no-cache \
     && if [ "$TARGETVARIANT" = "v6" ]; then export PIP_NO_BINARY=markupsafe; fi \
-    && pip install --no-cache-dir --root-user-action=ignore -r requirements.txt \
+    && pip install --no-cache-dir --root-user-action=ignore --require-hashes -r requirements.txt \
     && pip uninstall --root-user-action=ignore -y pip \
     && PYLIB=$(python -c 'import sysconfig; print(sysconfig.get_path("stdlib"))') \
     && rm -rf "$PYLIB"/ensurepip "$PYLIB"/idlelib "$PYLIB"/tkinter \
@@ -21,4 +21,4 @@ USER 1000
 EXPOSE 4653
 HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
     CMD ["wget", "--spider", "-q", "-T", "2", "http://127.0.0.1:4653/api/2p/status"]
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4653", "--timeout-graceful-shutdown", "2", "--no-server-header"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "4653", "--timeout-graceful-shutdown", "2", "--no-server-header", "--log-level", "warning"]

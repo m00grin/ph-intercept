@@ -38,6 +38,27 @@
     bgSkyBox: null,
 
     init(consts) { C = consts; },
+    // Two sides on screen running different providers: shared labels must fit both.
+    // Row height for a menu opening upward from the HUD: 26px, smaller only when a long
+    // menu (Technitium's has nine rows) wouldn't fit above the HUD on a short screen.
+    menuRowH(n, hudTop, pad) {
+      return Math.max(18, Math.min(26, Math.floor((hudTop - 6 - 4 - pad * 2) / n)));
+    },
+    mixedPair(S) { return S.twoPlayerMode === 'local' && C.P2_PROVIDER !== C.PROVIDER; },
+    // Provider icon box for a menu row. A grid icon is sized to whole device pixels per cell and
+    // placed on the device-pixel grid, so its edges stay sharp instead of blending.
+    iconBox(x, rowY, rowH, side = 1) {
+      const h = rowH - 8;
+      const aspect = side === 2 ? C.P2_PROVIDER_ICON_ASPECT : C.PROVIDER_ICON_ASPECT;
+      const g = side === 2 ? C.P2_PROVIDER_ICON_GRID : C.PROVIDER_ICON_GRID;
+      if (!g) return { x, y: rowY + (rowH - h) / 2, w: Math.round(h * aspect), h };
+      // A grid logo is a solid square, so it reads larger than the other icons at the same
+      // height: aim for about 20px, rounded to whole device pixels per cell (16px at 1x).
+      const dpr = Math.min(window.devicePixelRatio || 1, 3);
+      const s = Math.max(1, Math.round(Math.min(h, 20) * dpr / g)) * g / dpr;
+      const snap = v => Math.round(v * dpr) / dpr;
+      return { x: snap(x), y: snap(rowY + (rowH - s) / 2), w: s, h: s };
+    },
 
     // S carries the per-frame values; see the call site in render().
     draw(ctx, S) {
@@ -269,9 +290,9 @@
 
       // Disable menu - opens upward, bracket-outline style
       if (C.P1.shieldMenuOpen) {
-        const mw = 150, mItemH = 26, mPad = 8;
+        const mw = 150, mPad = 8, mItemH = HUD.menuRowH(C.DISABLE_OPTIONS.length, SY, mPad);
         const mh = C.DISABLE_OPTIONS.length * mItemH + mPad * 2;
-        const menuX = Math.max(0, Math.min(S.W - mw, Math.round(INT_W / 2 - mw / 2))), menuY = SY - mh - 6;
+        const menuX = Math.max(0, Math.min(S.W - mw, Math.round(INT_W / 2 - mw / 2))), menuY = Math.max(4, SY - mh - 6);   // on a very short screen, overlap the HUD rather than leave the screen
         ctx.fillStyle = 'rgba(8,11,16,0.92)';
         ctx.fillRect(menuX, menuY, mw, mh);
         const _menuGlow = ctx.createLinearGradient(0, menuY, 0, menuY + 24);
@@ -318,7 +339,7 @@
         for (const it of _sitems) { _togH += smItemH; if (it.divAfter) _togH += smDivH; }
         // Background section: a single BACKGROUND row; mode + sky presets live in flyouts off it.
         const _bgRows = 1;
-        const smh = smPad + _togH + _bgRows * smItemH + (_has2P ? smDivH + smItemH : 0) + smDivH + smPhRowH + (S.twoPlayerMode === 'local' && window.P2_DASHBOARD ? smPhRowH : 0) + smPad;
+        const smh = smPad + _togH + _bgRows * smItemH + (_has2P ? smDivH + smItemH : 0) + smDivH + smPhRowH + (S.twoPlayerMode === 'local' ? smPhRowH : 0) + smPad;
         const smX = 6, smY = SY - smh - 6;
         HUD.settingsMenuPopupBox = { x: smX, y: smY, w: smw, h: smh };
         ctx.fillStyle = 'rgba(8,11,16,0.92)';
@@ -425,12 +446,14 @@
         // Pi-hole admin link row
         {
           const phHb = { x: smX, y: siy, w: smw, h: smPhRowH };
-          const phHov = S.mouseX >= phHb.x && S.mouseX <= phHb.x + phHb.w && S.mouseY >= phHb.y && S.mouseY <= phHb.y + phHb.h;
+          // A row links out only when there's a web interface to open (Blocky has none unless
+          // BLOCKER_DASHBOARD names one); otherwise it's a plain label naming the ad-blocker.
+          const _p1Link = /^https?:\/\//i.test((document.getElementById('pihole-link') || { dataset: {} }).dataset.href || '');
+          const _sameKind = C.P2_PROVIDER === C.PROVIDER;
+          const phHov = _p1Link && S.mouseX >= phHb.x && S.mouseX <= phHb.x + phHb.w && S.mouseY >= phHb.y && S.mouseY <= phHb.y + phHb.h;
           if (phHov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(phHb.x, phHb.y, phHb.w, phHb.h); }
           // Provider icon (Pi-hole, AdGuard, or Technitium)
-          const _iconAspect = C.PROVIDER_ICON_ASPECT;
-          const iconH = smPhRowH - 8, iconW = Math.round(iconH * _iconAspect);
-          const iconX = smX + 12, iconY = siy + (smPhRowH - iconH) / 2;
+          const { x: iconX, y: iconY, w: iconW, h: iconH } = HUD.iconBox(smX + 12, siy, smPhRowH);
           if (C._phIcon.complete && C._phIcon.naturalWidth > 0) {
             ctx.save();
             ctx.globalAlpha = phHov ? 0.88 : 0.45;
@@ -439,49 +462,53 @@
           }
           // Label (shrink to fit so long names don't collide with the link arrow at smX+smw-14)
           ctx.textAlign = 'left';
-          const _phLbl = _isP2 ? C.PROVIDER_NAME + ' 1' : C.PROVIDER_NAME;
+          const _phLbl = _isP2 && _sameKind ? C.PROVIDER_NAME + ' 1' : C.PROVIDER_NAME;   // numbered only beside the same kind
           const _phLblX = iconX + iconW + 12;
           C._fitLabelFont(_phLbl, (smX + smw - 19) - _phLblX - 4, _fSub);
           ctx.fillStyle = phHov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
           ctx.fillText(_phLbl, _phLblX, siy + smPhRowH / 2 + 6);
-          // External link arrow drawn with lines
-          const _ax = smX + smw - 14, _ay = siy + smPhRowH / 2;
-          ctx.strokeStyle = phHov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
-          ctx.lineWidth = 1.5; ctx.lineCap = 'round';
-          ctx.beginPath();
-          ctx.moveTo(_ax - 5, _ay + 4); ctx.lineTo(_ax + 4, _ay - 4);
-          ctx.moveTo(_ax - 1, _ay - 4); ctx.lineTo(_ax + 4, _ay - 4); ctx.lineTo(_ax + 4, _ay + 1);
-          ctx.stroke();
-          HUD.settingsMenuItems.push({ key: 'pihole-link', hitbox: phHb });
+          if (_p1Link) {
+            // External link arrow drawn with lines
+            const _ax = smX + smw - 14, _ay = siy + smPhRowH / 2;
+            ctx.strokeStyle = phHov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
+            ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(_ax - 5, _ay + 4); ctx.lineTo(_ax + 4, _ay - 4);
+            ctx.moveTo(_ax - 1, _ay - 4); ctx.lineTo(_ax + 4, _ay - 4); ctx.lineTo(_ax + 4, _ay + 1);
+            ctx.stroke();
+            HUD.settingsMenuItems.push({ key: 'pihole-link', hitbox: phHb });
+          }
           siy += smPhRowH;
-          // PI-HOLE 2 admin link (local 2P mode only)
-          if (S.twoPlayerMode === 'local' && window.P2_DASHBOARD) {
+          // Player 2's row (local 2P mode only): always shown, a link only when there's one to open
+          if (S.twoPlayerMode === 'local') {
             const ph2Hb = { x: smX, y: siy, w: smw, h: smPhRowH };
-            const ph2Hov = !phHov && S.mouseX >= ph2Hb.x && S.mouseX <= ph2Hb.x + ph2Hb.w && S.mouseY >= ph2Hb.y && S.mouseY <= ph2Hb.y + ph2Hb.h;
+            const _p2Link = /^https?:\/\//i.test(window.P2_DASHBOARD || '');
+            const ph2Hov = _p2Link && !phHov && S.mouseX >= ph2Hb.x && S.mouseX <= ph2Hb.x + ph2Hb.w && S.mouseY >= ph2Hb.y && S.mouseY <= ph2Hb.y + ph2Hb.h;
             ctx.strokeStyle = 'rgba(140,160,175,0.10)'; ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(smX + 30, siy + 0.5); ctx.lineTo(smX + smw - 10, siy + 0.5); ctx.stroke();
             if (ph2Hov) { ctx.fillStyle = 'rgba(140,160,175,0.08)'; ctx.fillRect(ph2Hb.x, ph2Hb.y, ph2Hb.w, ph2Hb.h); }
-            const _icon2H = smPhRowH - 8, _icon2W = Math.round(_icon2H * C.PROVIDER_ICON_ASPECT);
-            const _icon2X = smX + 12, _icon2Y = siy + (smPhRowH - _icon2H) / 2;
-            if (C._phIcon.complete && C._phIcon.naturalWidth > 0) {
+            const { x: _icon2X, y: _icon2Y, w: _icon2W, h: _icon2H } = HUD.iconBox(smX + 12, siy, smPhRowH, 2);
+            if (C._p2Icon.complete && C._p2Icon.naturalWidth > 0) {
               ctx.save(); ctx.globalAlpha = ph2Hov ? 0.88 : 0.45;
-              ctx.drawImage(C._phIcon, _icon2X, _icon2Y, _icon2W, _icon2H);
+              ctx.drawImage(C._p2Icon, _icon2X, _icon2Y, _icon2W, _icon2H);
               ctx.restore();
             }
             ctx.textAlign = 'left';
-            const _ph2Lbl = C.PROVIDER_NAME + ' 2';
+            const _ph2Lbl = _sameKind ? C.P2_PROVIDER_NAME + ' 2' : C.P2_PROVIDER_NAME;   // numbered only beside the same kind
             const _ph2LblX = _icon2X + _icon2W + 12;
             C._fitLabelFont(_ph2Lbl, (smX + smw - 19) - _ph2LblX - 4, _fSub);
             ctx.fillStyle = ph2Hov ? 'rgba(215,225,248,0.95)' : 'rgba(175,200,238,0.55)';
             ctx.fillText(_ph2Lbl, _ph2LblX, siy + smPhRowH / 2 + 6);
-            const _a2x = smX + smw - 14, _a2y = siy + smPhRowH / 2;
-            ctx.strokeStyle = ph2Hov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
-            ctx.lineWidth = 1.5; ctx.lineCap = 'round';
-            ctx.beginPath();
-            ctx.moveTo(_a2x - 5, _a2y + 4); ctx.lineTo(_a2x + 4, _a2y - 4);
-            ctx.moveTo(_a2x - 1, _a2y - 4); ctx.lineTo(_a2x + 4, _a2y - 4); ctx.lineTo(_a2x + 4, _a2y + 1);
-            ctx.stroke();
-            HUD.settingsMenuItems.push({ key: 'pihole-link-2', hitbox: ph2Hb });
+            if (_p2Link) {
+              const _a2x = smX + smw - 14, _a2y = siy + smPhRowH / 2;
+              ctx.strokeStyle = ph2Hov ? 'rgba(215,225,248,0.70)' : 'rgba(140,160,175,0.32)';
+              ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+              ctx.beginPath();
+              ctx.moveTo(_a2x - 5, _a2y + 4); ctx.lineTo(_a2x + 4, _a2y - 4);
+              ctx.moveTo(_a2x - 1, _a2y - 4); ctx.lineTo(_a2x + 4, _a2y - 4); ctx.lineTo(_a2x + 4, _a2y + 1);
+              ctx.stroke();
+              HUD.settingsMenuItems.push({ key: 'pihole-link-2', hitbox: ph2Hb });
+            }
           }
         }
         // ── Background flyouts: mode list, with a sky-preset list cascading off STARS ──
@@ -579,7 +606,8 @@
       if (INTEL_W >= 50) {
         const hsBlocked = C.P1.hudStats.blocked;
         // Technitium mirrors its dashboard's "No Error" card; others show allowed (total - blocked).
-        const _isTech = C.PROVIDER === 'technitium';
+        // The 2-player rows share one label row, so a mixed pair uses allowed on both.
+        const _isTech = C.PROVIDER === 'technitium' && !HUD.mixedPair(S);
         const hsAllowed = _isTech ? C.P1.hudStats.no_error
           : (C.P1.hudStats.queries != null && C.P1.hudStats.blocked != null ? C.P1.hudStats.queries - C.P1.hudStats.blocked : null);
         const _allowedLabel = _isTech ? 'no error' : 'allowed';
@@ -619,10 +647,11 @@
         ctx.restore();
       }
 
-      // ── GRAVITY / FILTER ───────────────────────────────────
+      // ── GRAVITY / BLOCKLIST ────────────────────────────────
       ctx.save();
       ctx.beginPath(); ctx.rect(TDB_X, SY, TDB_W, _rowH + _lbExtra); ctx.clip();
-      _modLabel(C.PROVIDER_TOGGLE_LABEL, TDB_X + TDB_W / 2, 'center');
+      _modLabel(HUD.mixedPair(S) && C.P2_PROVIDER_TOGGLE_LABEL !== C.PROVIDER_TOGGLE_LABEL ? 'LISTS' : C.PROVIDER_TOGGLE_LABEL,
+                TDB_X + TDB_W / 2, 'center');
       let sigsStr, sigsColor = 'rgba(95,200,230,0.82)';
       if (C.P1.gravityState === 'updating') {
         sigsStr = 'UPDATING';
@@ -839,10 +868,10 @@
 
         // P2 shield (disable) menu
         if (C.P2.shieldMenuOpen) {
-          const _p2mw = 150, _p2mItemH = 26, _p2mPad = 8;
-          const _p2mh = C.DISABLE_OPTIONS.length * _p2mItemH + _p2mPad * 2;
+          const _p2mw = 150, _p2mPad = 8, _p2mItemH = HUD.menuRowH(C.P2_DISABLE_OPTIONS.length, SY, _p2mPad);
+          const _p2mh = C.P2_DISABLE_OPTIONS.length * _p2mItemH + _p2mPad * 2;
           const _p2menuX = Math.max(0, Math.min(S.W - _p2mw, Math.round(INT_W / 2 - _p2mw / 2)));
-          const _p2menuY = SY - _p2mh - 6;
+          const _p2menuY = Math.max(4, SY - _p2mh - 6);
           ctx.fillStyle = 'rgba(8,11,16,0.92)'; ctx.fillRect(_p2menuX, _p2menuY, _p2mw, _p2mh);
           const _p2mGlow = ctx.createLinearGradient(0, _p2menuY, 0, _p2menuY + 24);
           _p2mGlow.addColorStop(0, 'rgba(140,160,175,0.07)'); _p2mGlow.addColorStop(1, 'rgba(140,160,175,0)');
@@ -857,7 +886,7 @@
           ctx.stroke();
           ctx.font = `${_fSub}px "Press Start 2P", monospace`;
           C.P2.shieldMenuPopupBox = { x: _p2menuX, y: _p2menuY, w: _p2mw, h: _p2mh };
-          C.P2.shieldMenuItems = C.DISABLE_OPTIONS.map((opt, idx) => {
+          C.P2.shieldMenuItems = C.P2_DISABLE_OPTIONS.map((opt, idx) => {
             const iy = _p2menuY + _p2mPad + idx * _p2mItemH;
             const hb = { x: _p2menuX, y: iy, w: _p2mw, h: _p2mItemH };
             const hov = S.mouseX >= hb.x && S.mouseX < hb.x + hb.w && S.mouseY >= hb.y && S.mouseY < hb.y + hb.h;
@@ -875,9 +904,10 @@
         // ── P2 STATS (INTEL) ───────────────────────────────────
         if (INTEL_W >= 50) {
           const _p2Blocked = C.P2.hudStats.blocked;
-          const _p2Allowed = C.PROVIDER === 'technitium' ? C.P2.hudStats.no_error
+          const _p2Tech = C.P2_PROVIDER === 'technitium' && !HUD.mixedPair(S);
+          const _p2Allowed = _p2Tech ? C.P2.hudStats.no_error
             : (C.P2.hudStats.queries != null && _p2Blocked != null ? C.P2.hudStats.queries - _p2Blocked : null);
-          const _p2AllowedLabel = C.PROVIDER === 'technitium' ? 'no error' : 'allowed';
+          const _p2AllowedLabel = _p2Tech ? 'no error' : 'allowed';
           const _p2Total   = C.P2.hudStats.queries;
           const _p2Pct     = C.P2.hudStats.percent;
           const _p2PctColor = _p2Pct == null ? 'rgba(150,150,150,0.50)' : _p2Pct >= 60 ? 'rgba(50,215,120,0.85)' : _p2Pct >= 40 ? 'rgba(210,220,70,0.85)' : 'rgba(255,110,50,0.85)';
