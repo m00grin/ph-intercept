@@ -217,7 +217,7 @@ git -c gpg.ssh.allowedSignersFile=/tmp/ph-intercept-signers tag -v "$tag"
 docker build -t ph-intercept .
 ```
 
-`tag -v` should report a good signature with key `SHA256:34Xm5zcAM5p/n6QZD3nJ7p/bbzp21Mh3/e8sHkGk+co`. The first line picks the newest release. To build a specific one, set `tag` yourself, for example `tag=v1.5.8`.
+`tag -v` should report a good signature with key `SHA256:34Xm5zcAM5p/n6QZD3nJ7p/bbzp21Mh3/e8sHkGk+co`. The first line picks the newest release. To build a specific one, set `tag` yourself, for example `tag=v1.6.0`.
 
 Then use the [Quick Start](#quick-start) compose file, replacing its `image:` line with `image: ph-intercept`. Compose uses the image you just built, so there is nothing to pull. Then run `docker compose up -d`.
 
