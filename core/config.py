@@ -106,9 +106,9 @@ TECHNITIUM2_LOG_CLASS = _env.get("TECHNITIUM2_QUERY_LOG_CLASS", TECHNITIUM_LOG_C
 
 # Blocky. BLOCKY_URL is the HTTP listener (ports.http); its REST API lives under
 # {root}/api/. Blocky has no query-log API, so live queries come from its CSV
-# query log (queryLog.type: csv), mounted read-only at BLOCKY_LOG_DIR. Blocky has
-# no web UI either; BLOCKY_DASHBOARD optionally points the settings-menu link at
-# one (for example a Grafana dashboard).
+# query log (queryLog.type: csv), mounted read-only at BLOCKY_LOG_DIR. Blocky's HTTP
+# port serves a small page of its own (API docs, interactive API, version), which the
+# settings-menu link opens; BLOCKY_DASHBOARD points it elsewhere (a Grafana dashboard, say).
 def _blocky_root(url: str) -> str:
     return url.strip().rstrip('/').removesuffix('/api').rstrip('/')
 
@@ -118,7 +118,7 @@ BLOCKY_BASE = _blocky_root(BLOCKY_URL)
 BLOCKY_LOG_DIR = _env.get("BLOCKY_LOG_DIR", "").strip() or "/blocky-logs"
 _blocky_ssl_raw = _env.get("BLOCKY_VERIFY_SSL", "true").strip().lower()
 BLOCKY_VERIFY_SSL = _blocky_ssl_raw not in ("false", "0", "no")
-BLOCKY_DASHBOARD = _env.get("BLOCKY_DASHBOARD", "").strip()
+BLOCKY_DASHBOARD = _env.get("BLOCKY_DASHBOARD", "").strip() or display_url(BLOCKY_BASE + "/")
 
 # Blocky second instance (2-player local mode)
 BLOCKY2_URL = _env.get("BLOCKY2_URL", "").strip()
@@ -126,7 +126,7 @@ BLOCKY2_BASE = _blocky_root(BLOCKY2_URL) if BLOCKY2_URL else ""
 BLOCKY2_LOG_DIR = _env.get("BLOCKY2_LOG_DIR", "").strip() or "/blocky2-logs"
 _blocky2_ssl_raw = _env.get("BLOCKY2_VERIFY_SSL", "true").strip().lower()
 BLOCKY2_VERIFY_SSL = _blocky2_ssl_raw not in ("false", "0", "no")
-BLOCKY2_DASHBOARD = _env.get("BLOCKY2_DASHBOARD", "").strip()
+BLOCKY2_DASHBOARD = _env.get("BLOCKY2_DASHBOARD", "").strip() or (display_url(BLOCKY2_BASE + "/") if BLOCKY2_BASE else "")
 
 # Second instance, per provider: (configured, dashboard, verify_ssl).
 _P2_BY_PROVIDER = {

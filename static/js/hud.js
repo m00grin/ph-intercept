@@ -446,8 +446,8 @@
         // Pi-hole admin link row
         {
           const phHb = { x: smX, y: siy, w: smw, h: smPhRowH };
-          // A row links out only when there's a web interface to open (Blocky has none unless
-          // BLOCKER_DASHBOARD names one); otherwise it's a plain label naming the ad-blocker.
+          // A row links out only when there's a page to open (every ad-blocker has one by default,
+          // unless BLOCKER_DASHBOARD is set to something that isn't http(s)); otherwise it's a plain label.
           const _p1Link = /^https?:\/\//i.test((document.getElementById('pihole-link') || { dataset: {} }).dataset.href || '');
           const _sameKind = C.P2_PROVIDER === C.PROVIDER;
           const phHov = _p1Link && S.mouseX >= phHb.x && S.mouseX <= phHb.x + phHb.w && S.mouseY >= phHb.y && S.mouseY <= phHb.y + phHb.h;

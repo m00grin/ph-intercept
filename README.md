@@ -408,7 +408,7 @@ statistics:
 | `BLOCKY_LOG_DIR` | `/blocky-logs` | Where the query log folder is mounted in the container. |
 | `BLOCKY2_LOG_DIR` | `/blocky2-logs` | The same for a Blocky on player 2's side in [2-player mode](#local-2-player-mode). |
 
-Blocky has no web interface, so `BLOCKER_DASHBOARD` can point the settings-menu link somewhere useful, for example a Grafana dashboard.
+Blocky has no dashboard of its own, but its HTTP port serves a small page with its API documentation and version, and the settings-menu link opens it. `BLOCKER_DASHBOARD` can point the link somewhere else, for example a Grafana dashboard.
 
 If Blocky's `log.privacy` is on, domains arrive starred out and ph-intercept shows them that way.
 
