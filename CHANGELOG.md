@@ -4,6 +4,65 @@ All notable changes to ph-intercept are documented here.
 
 ---
 
+## [1.6.0] - 2026-11-22
+
+1.6 adds Blocky as a fourth supported ad-blocker, alongside Pi-hole, AdGuard Home, and Technitium. The two sides of 2-player can now run different ad-blockers, and one set of `BLOCKER_*` settings works for all four. Settings from earlier releases keep working.
+
+This is also the most tested release yet: about 1,500 tests, with the browser tests run in Chromium, Firefox, and WebKit. They run ph-intercept against fake ad-blockers that time out, reject logins, or send malformed replies, feed it hostile settings and requests, and keep it running on a busy network. The bugs they turned up are fixed here, (hopefully) before anyone ran into them. The tests run on my machine for now; I'm working on adding them to this repo, with CI, in a future release.
+
+### Added
+
+- **Blocky support** -- Blocky has no API for recent queries, so ph-intercept reads its CSV query log (`queryLog.type: csv`) from a read-only mount; stats and controls use Blocky's REST API, and the settings-menu link opens Blocky's own page. For now ph-intercept has to run on the same machine as Blocky: with Blocky elsewhere, stats and controls work, but no ships appear. See [Blocky setup](README.md#blocky-setup).
+- **2-player with two different ad-blockers** -- for example, Pi-hole on the left and AdGuard Home on the right, each with its own name, icon, timed-disable choices, and settings-menu row. Labels the two sides share use a word that fits both, such as LISTS. Set up the second one with `BLOCKER2_URL` and its login. See [Local 2-Player Mode](README.md#local-2-player-mode).
+- **One set of settings for every ad-blocker** -- `BLOCKER_URL` (the address you open in a browser), `BLOCKER_PASSWORD`, and `BLOCKER_USERNAME` or `BLOCKER_TOKEN` where needed. ph-intercept detects which ad-blocker is at that address; if none matches, or `BLOCKER_TYPE` names a different one, that side doesn't start and the log says why. See [Configuration](README.md#configuration).
+- **Ignore lists for both sides or one** -- `IGNORE_DOMAINS` and `IGNORE_CLIENTS` for both sides, `BLOCKER_IGNORE_*` and `BLOCKER2_IGNORE_*` for one.
+- **Docker secrets** -- passwords, tokens, and usernames can be read from a file with `*_FILE`, for example `BLOCKER_PASSWORD_FILE=/run/secrets/blocker_password`, with the older setting names too.
+- **Startup banner and report** -- the log opens with the ph-intercept ship drawn in text, the version, and the log level, then a line per player: the ad-blocker it found, its address (passwords removed), and the settings it used. A side that can't start says why. Passwords and tokens are never printed.
+- **`LOG_LEVEL`** -- `info` (the default), `debug` for troubleshooting, `warning` for problems only, or `error`.
+- **SBOM** -- release images now carry a list of every package inside them. See [SECURITY.md](SECURITY.md#verifying-a-release).
+- **More places to get the image** -- releases are also published, unchanged, to Codeberg and GitLab. The README shows how to build from a signed release tag.
+
+### Changed
+
+- **Faster, calmer first start** -- while the ad-blocker is still starting, ph-intercept logs one waiting line, retries after 1 second and then a little longer each time (up to 15), and logs `● detected after 6 s` when it answers. Before, it waited 5, 10, 20, then 40 seconds and logged every try. If it stays silent, the log adds a reminder after 1, 2, 4, 8, and 16 minutes, then every 15. An AdGuard Home still in its first-run setup is waited for too.
+- **Quieter log** -- the web server no longer logs each request, so stats polls and health checks don't bury real messages. Ad-blocker messages match the startup report, for example `P2  AdGuard Home: login rejected...`, with one more line when the problem clears.
+- **Simpler example composes** -- one `compose.yaml` works for all four ad-blockers. The AdGuard Home and Technitium guides keep a ready-to-copy compose and cover only what's specific to them.
+- **Read-only screens hide the list-update arrows** -- they can't be used with `READ_ONLY` on; the list counts stay.
+- **Each ad-blocker's own word for its lists** -- GRAVITY (Pi-hole), BLOCKLIST (AdGuard Home, which read FILTER before), BLOCK LIST (Technitium), DENYLIST (Blocky), or LISTS for a mixed pair.
+- **Technitium's own timed-disable choices** -- 1, 5, and 30 minutes, 1 hour, and off, from Technitium's own menu, in place of Pi-hole's 10 seconds, 30 seconds, and 5 minutes. On very short screens, a long menu shrinks its rows or overlaps the HUD instead of running off the screen.
+- **Reproducible image builds** -- every Python package, indirect ones included, is installed from a lock file with exact versions and checksums, and the base image is pinned by digest. Before, two builds of the same release could differ.
+- **Official ad-blocker icons** -- each one is drawn exactly from its project's own artwork.
+- **Docs** -- the README lists the tested versions (AdGuard Home 0.107.52 and newer, Technitium 13 and newer, with 11 and 12 partly, and Blocky 0.28 and newer) and the new log lines, and [SECURITY.md](SECURITY.md) explains how to verify a release and how the build machine is locked down. The CasaOS app, awaiting review in its store, uses the new settings.
+
+### Security
+
+- **Passwords stay out of URLs and logs** -- found by tests that put a marker in every credential and search all output for it. Passwords in URLs (`http://user:pass@host`) are removed from logs, messages, and links; Technitium logins send credentials in the request body instead of the URL; and the HTTP library can't log request URLs.
+- **Request size limit** -- request bodies over 64 KB are refused before they're read.
+- **`RETURN_URL` can't run a script** -- the `javascript:` check could be bypassed with a leading space, tab, or control character. URLs are now read the way browsers read them, `vbscript:`, `data:`, and `blob:` are refused too, and a refused URL logs a warning.
+- **Limits on replies and connections** -- replies from an ad-blocker are cut off past 64 MB, and live connections are capped at 100 per player, both far above real use.
+- **Security headers on errors** -- unexpected server errors now carry the same security headers as every other response.
+
+### Fixed
+
+- **Pi-hole login retries could overload Pi-hole** -- after a failed or slow login, ph-intercept retried on every poll, and on a slow Pi the abandoned logins piled up and pinned its CPU. A failed login now waits 2 seconds, doubling up to 30 (60 after a rate limit), on both sides of 2-player, and a login gets 10 seconds to finish. Tracked down with [@Plxprs](https://github.com/Plxprs) in [#59](https://github.com/m00grin/ph-intercept/issues/59). Thank you!
+- **AdGuard Home and Technitium login retries** -- after a failed login, Technitium retried on every poll, and AdGuard Home sent the password with every request (the same cost as [#58](https://github.com/m00grin/ph-intercept/issues/58)). Both now back off like Pi-hole: on real servers, a wrong password went from about 60 login attempts in 20 seconds to 4. AdGuard setups without login sessions still use Basic Auth, but stop once it's refused.
+- **Technitium releases before 15** -- stats and ships stayed empty, because these releases only accept the API token as a parameter. Tested on 11.5 through 15.6.
+- **Every open screen added load on the ad-blocker** -- each page fetched stats on its own, so six screens in 2-player meant up to 18 API calls a second to each ad-blocker. Stats are now shared: one fetch a second per player, no matter how many screens are open.
+- **2-player wouldn't start with a slow second ad-blocker** -- its login check gave up after 1.5 seconds, less than a Pi-hole on a Pi Zero W needs; it now waits 10.
+- **First queries missing after an empty query log** -- with Pi-hole, AdGuard Home, or Blocky, the first real queries after connecting to an empty log were taken for old history and never shown.
+- **A screen that stopped reading kept its connection forever** -- the signal to reconnect couldn't fit in its full queue, and a page that disconnected right after connecting was never released. Both are released properly now.
+- **Some log lines never appeared** -- info and debug lines from the ad-blocker code went to a logger with no output.
+- **Unknown `PROVIDER` could break the startup report** -- it now runs as Pi-hole throughout, as the warning says, and spaces around the value are ignored.
+- **Blank or misspelled background settings** -- a blank or unknown `BG_MODE` showed no background, and a `BG_IMAGE` of only spaces turned on image mode with no image. Blank now means the default, an unknown value (`SKY_PRESET` too) logs a warning and uses the default, and an invalid `BG_IMAGE` is ignored with a warning.
+- **`/bg/` without a background folder** -- returned a server error instead of "not found".
+- **Malformed Technitium replies** -- valid JSON that wasn't an object could break the blocking toggle.
+
+### Upgrading
+
+Nothing to change. Every setting from earlier releases still works exactly as before, and wins if an older and a newer name are both set. See [Older settings](README.md#older-settings). On Unraid, new installs use the new setting names; existing installs keep theirs.
+
+---
+
 ## [1.5.8] - 2026-11-21
 
 A fix for AdGuard Home users, found by [@21mtd](https://github.com/21mtd) in [#58](https://github.com/m00grin/ph-intercept/issues/58). They noticed AdGuard Home working hard whenever ph-intercept was open (a load average jumping from 1 to 6 on a low-powered box) and tracked it to ph-intercept's requests. Thank you!

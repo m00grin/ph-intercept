@@ -3,20 +3,29 @@
   const canvas = document.getElementById('pihole-canvas');
   const ctx = canvas.getContext('2d');
   const phLinkEl = document.getElementById('pihole-link');
-  const PROVIDER = window.PROVIDER || 'pihole';
-  // Provider-aware branding. Any provider not listed falls back to Pi-hole.
-  const PROVIDER_NAME = PROVIDER === 'adguard' ? 'ADGUARD'
-                      : PROVIDER === 'technitium' ? 'TECHNITIUM'
-                      : 'PI-HOLE';
-  const PROVIDER_ICON = PROVIDER === 'adguard' ? '/static/icons/adguard.svg'
-                      : PROVIDER === 'technitium' ? '/static/icons/technitium.svg'
-                      : '/static/icons/pihole.svg';
-  // Pi-hole's mascot is tall (90x130); AdGuard and Technitium icons are square.
-  const PROVIDER_ICON_ASPECT = (PROVIDER === 'adguard' || PROVIDER === 'technitium') ? 1.0 : (90 / 130);
-  // Label for the block-toggle module (Pi-hole: GRAVITY, AdGuard: FILTER, Technitium: BLOCK LIST).
-  const PROVIDER_TOGGLE_LABEL = PROVIDER === 'adguard' ? 'FILTER'
-                              : PROVIDER === 'technitium' ? 'BLOCK LIST'
-                              : 'GRAVITY';
+  // Provider branding per side. Side 2 can run a different provider than side 1.
+  // An empty provider means the server hasn't been identified yet: no icon, a generic name.
+  // Icon aspect is each viewBox's width/height: Pi-hole 88.32x129.93, AdGuard 91.3x93.5,
+  // Technitium 16x16, Blocky 452x498. Technitium's logo is a 16x16 grid of square cells,
+  // so it's drawn at a whole number of device pixels per cell to stay sharp. The toggle
+  // label names each provider's lists: Pi-hole GRAVITY, AdGuard BLOCKLIST, Technitium
+  // BLOCK LIST, Blocky DENYLIST.
+  const _PROVIDER_META = {
+    pihole:     { name: 'PI-HOLE',    icon: '/static/icons/pihole.svg',     aspect: 88.32 / 129.93, grid: 0,  toggle: 'GRAVITY' },
+    adguard:    { name: 'ADGUARD',    icon: '/static/icons/adguard.svg',    aspect: 91.3 / 93.5,    grid: 0,  toggle: 'BLOCKLIST' },
+    technitium: { name: 'TECHNITIUM', icon: '/static/icons/technitium.svg', aspect: 1.0,            grid: 16, toggle: 'BLOCK LIST' },
+    blocky:     { name: 'BLOCKY',     icon: '/static/icons/blocky.svg',     aspect: 452 / 498,      grid: 0,  toggle: 'DENYLIST' },
+  };
+  const _PENDING_META = { name: 'AD-BLOCKER', icon: '', aspect: 1.0, grid: 0, toggle: 'LISTS' };
+  const _meta = p => p === '' ? _PENDING_META : (_PROVIDER_META[p] || _PROVIDER_META.pihole);
+  const PROVIDER = window.PROVIDER === '' ? '' : (window.PROVIDER || 'pihole');
+  const P2_PROVIDER = window.P2_PROVIDER === undefined ? PROVIDER : (window.P2_PROVIDER === '' ? '' : window.P2_PROVIDER);
+  const _M1 = _meta(PROVIDER), _M2 = _meta(P2_PROVIDER);
+  const PROVIDER_NAME = _M1.name, PROVIDER_ICON = _M1.icon;
+  const PROVIDER_ICON_ASPECT = _M1.aspect, PROVIDER_ICON_GRID = _M1.grid;
+  const PROVIDER_TOGGLE_LABEL = _M1.toggle;
+  const P2_PROVIDER_NAME = _M2.name, P2_PROVIDER_ICON = _M2.icon;
+  const P2_PROVIDER_ICON_ASPECT = _M2.aspect, P2_PROVIDER_ICON_GRID = _M2.grid;
   // Shrink a "Press Start 2P" label so it fits within maxW. Keeps long provider
   // names (e.g. TECHNITIUM) from colliding with a row's link arrow. Sets ctx.font
   // as a side effect and returns the chosen pixel size.
@@ -295,19 +304,28 @@
     midnight.setHours(24, 0, 0, 0);
     return Math.round((midnight - now) / 1000);
   }
-  const DISABLE_OPTIONS = PROVIDER === 'adguard' ? [
+  // Timed-disable choices per provider: AdGuard offers its own set.
+  const _disableOptions = p => p === 'adguard' ? [
     { label: '30 SEC',   timer: 30,   ms: 30000 },
     { label: '1 MIN',    timer: 60,   ms: 60000 },
     { label: '10 MIN',   timer: 600,  ms: 600000 },
     { label: '1 HR',     timer: 3600, ms: 3600000 },
     { label: 'TOMORROW', timerFn: _secsUntilMidnight },
     { label: 'DISABLE',  timer: null, ms: 0 },
+  ] : p === 'technitium' ? [   // from Technitium's own "Disable Blocking For" menu (1, 2, 5, 10, 15, 30 min, 1, 3 hr), trimmed
+    { label: '1 MIN',   timer: 60,   ms: 60000 },
+    { label: '5 MIN',   timer: 300,  ms: 300000 },
+    { label: '30 MIN',  timer: 1800, ms: 1800000 },
+    { label: '1 HR',    timer: 3600, ms: 3600000 },
+    { label: 'DISABLE', timer: null, ms: 0 },
   ] : [
     { label: '10 SEC', timer: 10,  ms: 10000 },
     { label: '30 SEC', timer: 30,  ms: 30000 },
     { label: '5 MIN',  timer: 300, ms: 300000 },
     { label: 'DISABLE', timer: null, ms: 0 },
   ];
+  const DISABLE_OPTIONS = _disableOptions(PROVIDER);
+  const P2_DISABLE_OPTIONS = _disableOptions(P2_PROVIDER);
   // Blocked-entity tier palette [bodyColor, bodyGlow, reticleColor, reticleGlow], indexed
   // 0 = tier 0/1, 1 = tier 2, 2 = tier 3+. Hoisted out of the per-frame entity draw so the
   // array isn't re-allocated for every blocked entity every frame (values unchanged).
@@ -1235,7 +1253,9 @@
   }
 
   const _phIcon = new Image();
-  _phIcon.src = PROVIDER_ICON;
+  if (PROVIDER_ICON) _phIcon.src = PROVIDER_ICON;
+  const _p2Icon = P2_PROVIDER_ICON === PROVIDER_ICON ? _phIcon : new Image();
+  if (_p2Icon !== _phIcon && P2_PROVIDER_ICON) _p2Icon.src = P2_PROVIDER_ICON;
 
   const _SHIP_CONFIGS = {
     protector:  { bmp: PROTECTOR_BMP,     color: 'rgba(195,208,240,0.95)', glow: 'rgba(170,190,235,0.55)', dimColor: 'rgba(195,208,240,0.55)',
@@ -1259,9 +1279,10 @@
   // ── Render ────────────────────────────────────────────────────────
   // Hand the strip its immutables once; the rest arrives per frame in draw().
   HUD.init({
-    AUTOHIDE_MS, BG_MODE_LABELS, BG_MODE_ORDER, DISABLE_OPTIONS,
-    HUD_FADE_DUR, HUD_SLIDE_DUR, POWERDOWN_DUR, PROVIDER,
-    PROVIDER_ICON_ASPECT, PROVIDER_NAME, PROVIDER_TOGGLE_LABEL,
+    AUTOHIDE_MS, BG_MODE_LABELS, BG_MODE_ORDER, DISABLE_OPTIONS, P2_DISABLE_OPTIONS,
+    HUD_FADE_DUR, HUD_SLIDE_DUR, POWERDOWN_DUR, PROVIDER, P2_PROVIDER,
+    PROVIDER_ICON_ASPECT, PROVIDER_ICON_GRID, PROVIDER_NAME, PROVIDER_TOGGLE_LABEL,
+    P2_PROVIDER_ICON_ASPECT, P2_PROVIDER_ICON_GRID, P2_PROVIDER_NAME, P2_PROVIDER_TOGGLE_LABEL: _M2.toggle, _p2Icon,
     SKY_PRESET_LABELS, SKY_PRESET_ORDER, STARTUP_DUR,
     _phIcon, bgImageAvailable, settingsBtnEl, _fitLabelFont, P1, P2,
   });
@@ -3152,6 +3173,7 @@
       fetch('/api/pihole2/stats', { signal: AbortSignal.timeout(1800) })
         .then(r => r.json())
         .then(d => {
+          if (P2_PROVIDER === '' && d.provider) { location.reload(); return; }
           if (d.blocked != null) P2.hudStats.blocked = d.blocked;
           if (d.queries != null) P2.hudStats.queries = d.queries;
           if (d.no_error != null) P2.hudStats.no_error = d.no_error;
@@ -3362,6 +3384,7 @@
     }
     function fetchPiholeStats() {
       fetch('/api/pihole/stats', { signal: AbortSignal.timeout(1800) }).then(r => r.json()).then(d => {
+        if (PROVIDER === '' && d.provider) { location.reload(); return; }
         if (d.gravity != null) P1.hudGravity = d.gravity;
         // Reconciliation: while a local toggle is pending, a poll still reflecting
         // the pre-toggle state is stale. Ignore it until the backend catches up
@@ -3980,7 +4003,7 @@
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
     const ret = (window.BG_CONFIG || {}).return_url;
-    if (!ret || /^(javascript|data):/i.test(ret)) return;
+    if (!ret || /^(javascript|vbscript|data|blob):/i.test(ret.replace(/[\t\n\r]/g, '').replace(/^[\x00-\x20]+/, ''))) return;
     const veil = document.createElement('div');
     veil.dataset.navVeil = '1';
     veil.style.cssText = 'position:fixed;inset:0;background:#000;opacity:0;transition:opacity 180ms linear;z-index:9999;pointer-events:none;';
@@ -4032,8 +4055,15 @@
         twoPlayerMode: twoPlayerMode,
         crewCount: P1.crewMembers.length,
         p2CrewCount: P2.crewMembers.length,
+        entities: P1.entities.length,
+        p2Entities: P2.entities.length,
+        shieldMenu: P1.shieldMenuOpen ? P1.shieldMenuPopupBox : null,
+        p2ShieldMenu: P2.shieldMenuOpen ? P2.shieldMenuPopupBox : null,
+        shieldItems: (P1.shieldMenuItems || []).map(i => i.hitbox),
+        p2ShieldItems: (P2.shieldMenuItems || []).map(i => i.hitbox),
       }),
       setBlocking: (e, t = null) => setBlocking(e, t),
+      openShieldMenu: (side = 1) => { (side === 2 ? P2 : P1).shieldMenuOpen = true; },
       setP2Blocking: (e, t = null) => setP2Blocking(e, t),
       // Open a canvas-drawn menu directly. Only the settings menu has a DOM
       // affordance (#settings-btn); the rest are canvas hit-tested, so the

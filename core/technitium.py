@@ -7,17 +7,18 @@ from collections import deque
 import httpx
 
 from .config import (
+    p2_name, p2_name_cap,
     TECHNITIUM_BASE, TECHNITIUM_TOKEN, TECHNITIUM_USER, TECHNITIUM_PASSWORD,
     TECHNITIUM_TOTP, TECHNITIUM_LOG_APP, TECHNITIUM_LOG_CLASS,
     TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
     TECHNITIUM2_TOTP, TECHNITIUM2_LOG_APP, TECHNITIUM2_LOG_CLASS,
-    TECHNITIUM_IGNORE_DOMAIN_PATTERNS, TECHNITIUM_IGNORE_CLIENT_PATTERNS,
-    HIDE_CLIENT,
+    HIDE_CLIENT, P2_PLACEHOLDER, env_prefix, ignore_patterns,
 )
-from .notice import clear, warn_once
+from .notice import clear, shape, warn_once
+from .settings import display_url
 from .redact import public_domain
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("ph-intercept")
 
 # Query log entries are returned newest-first with only second-granular
 # timestamps, so there is no reliable monotonic watermark. Instead we dedup by a
@@ -28,6 +29,8 @@ _SEEN_LIMIT = 500
 # dashboard counter. LastDay is a periodically-cached aggregate that visibly lags.
 _STATS_TYPE = "LastHour"
 _ENTRIES_PER_PAGE = 50
+_LOGIN_TIMEOUT = 10.0
+_BACKOFF_FIRST, _BACKOFF_MAX, _BACKOFF_RATE_LIMITED = 2.0, 30.0, 60.0
 
 
 class _Instance:
@@ -37,9 +40,11 @@ class _Instance:
     per-instance state (session token, dedup set, re-enable task) than the other
     providers."""
 
-    def __init__(self, label, env, base, token, user, password, totp, log_app, log_class):
+    def __init__(self, label, env, base, token, user, password, totp, log_app, log_class, slot=1):
         self.label = label
         self.env = env
+        self.legacy_env = "TECHNITIUM" if slot == 1 else "TECHNITIUM2"
+        self.ignore_domains, self.ignore_clients = ignore_patterns("technitium", slot)
         self.base = base
         self.static_token = token or None   # permanent API token, if configured
         self.user = user
@@ -58,31 +63,52 @@ class _Instance:
         self.reenable_task: asyncio.Task | None = None
         self.temp_disable_until: float | None = None  # monotonic deadline of a timed disable
         self.last_error: str | None = None
+        # Technitium 15 reads the token from an Authorization header. Older releases
+        # only read a token query parameter; switched on the first time one says so.
+        self.token_in_query = False
+        # After a failed login, wait before the next one (2 s doubling to 30 s, 60 s
+        # after HTTP 429), so a wrong password can't make every poll log in again.
+        self.login_retry_at = 0.0
+        self.login_delay = 0.0
 
 
 _p1 = _Instance(
-    "Technitium", "TECHNITIUM", TECHNITIUM_BASE, TECHNITIUM_TOKEN, TECHNITIUM_USER, TECHNITIUM_PASSWORD,
-    TECHNITIUM_TOTP, TECHNITIUM_LOG_APP, TECHNITIUM_LOG_CLASS,
+    "Technitium", env_prefix("TECHNITIUM", 1), TECHNITIUM_BASE, TECHNITIUM_TOKEN, TECHNITIUM_USER, TECHNITIUM_PASSWORD,
+    TECHNITIUM_TOTP, TECHNITIUM_LOG_APP, TECHNITIUM_LOG_CLASS, slot=1,
 )
 _p2 = _Instance(
-    "Technitium 2", "TECHNITIUM2", TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
-    TECHNITIUM2_TOTP, TECHNITIUM2_LOG_APP, TECHNITIUM2_LOG_CLASS,
+    "Technitium 2", env_prefix("TECHNITIUM", 2), TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
+    TECHNITIUM2_TOTP, TECHNITIUM2_LOG_APP, TECHNITIUM2_LOG_CLASS, slot=2,
 )
+
+
+def _the(name: str) -> str:
+    """'the Technitium 2', but 'player 2's Technitium' already reads as a possessive."""
+    return name if name.startswith("player") else f"the {name}"
+
+
+def _name(inst: _Instance, suffix: str) -> str:
+    """Env var to name in a message. Technitium-only settings keep their own names."""
+    if suffix in ("TOTP", "QUERY_LOG_APP", "QUERY_LOG_CLASS"):
+        return f"{inst.legacy_env}_{suffix}"
+    if suffix == "USER" and inst.env.startswith("BLOCKER"):
+        return f"{inst.env}_USERNAME"
+    return f"{inst.env}_{suffix}"
 
 
 # ── Auth ─────────────────────────────────────────────────────────────────────
 
 def _problem(inst: _Instance, path: str, code: str) -> None:
     if path.startswith("logs/"):
-        warn_once(f"{inst.label} query log", f"{inst.label} query log: API returned '{code}'. Install the 'Query Logs (Sqlite)' DNS app, or check {inst.env}_QUERY_LOG_APP / {inst.env}_QUERY_LOG_CLASS")
+        warn_once(f"{inst.label} query log", f"{inst.label} query log: API returned '{code}'. Install the 'Query Logs (Sqlite)' DNS app, or check {_name(inst, 'QUERY_LOG_APP')} / {_name(inst, 'QUERY_LOG_CLASS')}")
         return
     hints = {
-        "auth_required": f"set {inst.env}_TOKEN, or {inst.env}_USER and {inst.env}_PASSWORD",
-        "auth_failed": f"could not reach {inst.base}. Check {inst.env}_URL",
-        "unreachable": f"could not reach {inst.base}. Check {inst.env}_URL",
-        "invalid-token": f"token rejected. Check {inst.env}_TOKEN",
+        "auth_required": f"set {_name(inst, 'TOKEN')}, or {_name(inst, 'USER')} and {_name(inst, 'PASSWORD')}",
+        "auth_failed": f"could not reach {display_url(inst.base)}. Check {_name(inst, 'URL')}",
+        "unreachable": f"could not reach {display_url(inst.base)}. Check {_name(inst, 'URL')}",
+        "invalid-token": f"token rejected. Check {_name(inst, 'TOKEN')}",
     }
-    warn_once(inst.label, f"{inst.label}: " + hints.get(code, f"API returned '{code}'. Check {inst.env}_USER / {inst.env}_PASSWORD / {inst.env}_TOTP"))
+    warn_once(inst.label, f"{inst.label}: " + hints.get(code, f"API returned '{code}'. Check {_name(inst, 'USER')} / {_name(inst, 'PASSWORD')} / {_name(inst, 'TOTP')}"))
 
 
 async def _ensure_auth(http_client: httpx.AsyncClient, inst: _Instance) -> bool:
@@ -95,28 +121,46 @@ async def _ensure_auth(http_client: httpx.AsyncClient, inst: _Instance) -> bool:
         inst.last_error = "auth_required"
         _problem(inst, "", "auth_required")
         return False
+    if time.monotonic() < inst.login_retry_at:
+        return False
     async with inst.auth_lock:
         if inst.token:
             return True
+        if time.monotonic() < inst.login_retry_at:
+            return False
         params = {"user": inst.user, "pass": inst.password, "includeInfo": "false"}
         if inst.totp:
             params["totp"] = inst.totp
+        resp = None
         try:
-            resp = await http_client.get(f"{inst.base}/api/user/login", params=params, timeout=5.0)
+            # Form data, not the URL: a URL's query string ends up in proxy and server logs.
+            resp = await http_client.post(f"{inst.base}/api/user/login", data=params, timeout=_LOGIN_TIMEOUT)
             data = resp.json()
+            if not isinstance(data, dict):
+                raise ValueError("reply is not a JSON object")
         except Exception:
             inst.last_error = "auth_failed"
             logger.debug("Technitium login failed", exc_info=True)
             _problem(inst, "", "auth_failed")
+            _login_failed(inst, resp)
             return False
         if data.get("status") == "ok" and data.get("token"):
             inst.token = str(data["token"])
             inst.login_token = True
             inst.last_error = None
+            inst.login_retry_at = inst.login_delay = 0.0
             return True
         inst.last_error = str(data.get("status") or "auth_rejected")
         _problem(inst, "", inst.last_error)
+        _login_failed(inst, resp)
         return False
+
+
+def _login_failed(inst: _Instance, resp: httpx.Response | None) -> None:
+    inst.login_delay = _BACKOFF_FIRST if not inst.login_delay else min(inst.login_delay * 2, _BACKOFF_MAX)
+    if resp is not None and resp.status_code == 429:
+        inst.login_delay = max(inst.login_delay, _BACKOFF_RATE_LIMITED)
+    inst.login_retry_at = time.monotonic() + inst.login_delay
 
 
 async def _drop_session(http_client: httpx.AsyncClient, inst: _Instance) -> None:
@@ -130,13 +174,23 @@ async def _drop_session(http_client: httpx.AsyncClient, inst: _Instance) -> None
     inst.token = inst.static_token
     inst.login_token = False
     try:
-        await http_client.get(
-            f"{inst.base}/api/user/logout",
-            headers={"Authorization": f"Bearer {token}"},
-            timeout=1.0,
-        )
+        await _send(http_client, inst, "user/logout", None, token, 1.0)
     except Exception:
         pass
+
+
+async def _send(http_client: httpx.AsyncClient, inst: _Instance, path: str, params: dict | None,
+                token: str, timeout: float) -> httpx.Response:
+    """Technitium 15 reads the token from an Authorization header. Older releases need
+    it as a parameter; it goes in POST form data, never the URL."""
+    url = f"{inst.base}/api/{path.lstrip('/')}"
+    if inst.token_in_query:
+        return await http_client.post(url, data={**(params or {}), "token": token}, timeout=timeout)
+    return await http_client.get(url, params=params, headers={"Authorization": f"Bearer {token}"}, timeout=timeout)
+
+
+def _wants_query_token(data: dict) -> bool:
+    return data.get("status") == "error" and "parameter 'token' missing" in str(data.get("errorMessage", "")).lower()
 
 
 async def _api_call(
@@ -151,13 +205,17 @@ async def _api_call(
     if not await _ensure_auth(http_client, inst):
         return None
     try:
-        resp = await http_client.get(
-            f"{inst.base}/api/{path.lstrip('/')}",
-            params=params,
-            headers={"Authorization": f"Bearer {inst.token}"},
-            timeout=timeout,
-        )
+        resp = await _send(http_client, inst, path, params, inst.token, timeout)
         data = resp.json()
+        if not isinstance(data, dict):
+            raise ValueError("reply is not a JSON object")
+        if not inst.token_in_query and _wants_query_token(data):
+            inst.token_in_query = True
+            logger.info(shape(f"{inst.label}: this release takes the API token as a form parameter; using that", "info"))
+            resp = await _send(http_client, inst, path, params, inst.token, timeout)
+            data = resp.json()
+            if not isinstance(data, dict):
+                raise ValueError("reply is not a JSON object")
     except Exception:
         inst.last_error = "unreachable"
         logger.debug("Technitium call failed: %s", path, exc_info=True)
@@ -316,16 +374,13 @@ def _remember(inst: _Instance, key: str) -> bool:
     return True
 
 
-def _entry_to_event(entry: dict) -> dict | None:
+def _entry_to_event(entry: dict, inst: _Instance | None = None) -> dict | None:
+    inst = inst or _p1
     domain = entry.get("qname") or "unknown"
-    if TECHNITIUM_IGNORE_DOMAIN_PATTERNS and any(
-        p.search(domain) for p in TECHNITIUM_IGNORE_DOMAIN_PATTERNS
-    ):
+    if inst.ignore_domains and any(p.search(domain) for p in inst.ignore_domains):
         return None
     client = entry.get("clientIpAddress") or ""
-    if TECHNITIUM_IGNORE_CLIENT_PATTERNS and client and any(
-        p.search(client) for p in TECHNITIUM_IGNORE_CLIENT_PATTERNS
-    ):
+    if inst.ignore_clients and client and any(p.search(client) for p in inst.ignore_clients):
         return None
     source = _source_for(str(entry.get("responseType") or ""))
     return {
@@ -364,7 +419,7 @@ async def _fetch_events(http_client: httpx.AsyncClient, inst: _Instance) -> list
     events: list[dict] = []
     for entry in reversed(entries):  # oldest-first so ships spawn in order
         if _remember(inst, _entry_key(entry)):
-            event = _entry_to_event(entry)
+            event = _entry_to_event(entry, inst)
             if event:
                 events.append(event)
     # Cap the burst but keep the *newest* events (events is oldest-first); every
@@ -382,10 +437,8 @@ async def _broadcast(inst: _Instance, events: list[dict]) -> None:
         try:
             q.put_nowait(payload)
         except asyncio.QueueFull:
-            try:
-                q.put_nowait(None)  # sentinel so generate() can exit cleanly
-            except asyncio.QueueFull:
-                pass
+            q.get_nowait()   # full: make room, so the close sentinel always lands
+            q.put_nowait(None)
             inst.ws_clients.discard(q)
 
 
@@ -487,7 +540,7 @@ async def probe_p2(http_client: httpx.AsyncClient) -> str | None:
     """Validate that the second Technitium instance is reachable, authenticated,
     and exposes the query-log app. Returns a user-facing error string or None."""
     if not await _ensure_auth(http_client, _p2):
-        return "Technitium 2 authentication failed. Check TECHNITIUM2_TOKEN or TECHNITIUM2_USER / TECHNITIUM2_PASSWORD"
+        return f"{p2_name_cap('technitium', 'Technitium')} authentication failed. Check {_name(_p2, 'TOKEN')} or {_name(_p2, 'USER')} / {_name(_p2, 'PASSWORD')}"
     logs = await _api_call(
         http_client, _p2, "logs/query",
         {"name": _p2.log_app, "classPath": _p2.log_class, "pageNumber": "1", "entriesPerPage": "1"},
@@ -495,7 +548,23 @@ async def probe_p2(http_client: httpx.AsyncClient) -> str | None:
     )
     if logs is None:
         if _p2.last_error in _AUTH_ERRORS:
-            return "Could not reach or authenticate with Technitium 2. Check TECHNITIUM2_URL and credentials"
-        return ("Could not read the Technitium 2 query log. Install the 'Query Logs (Sqlite)' DNS app "
+            return f"Could not reach or authenticate with {p2_name('technitium', 'Technitium')}. Check {_name(_p2, 'URL')} and credentials"
+        return (f"Could not read {_the(p2_name('technitium', 'Technitium'))} query log. Install the 'Query Logs (Sqlite)' DNS app "
                 "and check TECHNITIUM2_QUERY_LOG_APP / TECHNITIUM2_QUERY_LOG_CLASS")
+    return None
+
+
+async def p2_config_error(http_client: httpx.AsyncClient | None) -> str | None:
+    """Validate the second Technitium's config and probe it. Returns an error
+    string, or None when the instance is usable."""
+    if not TECHNITIUM2_BASE:
+        return f"{_name(_p2, 'URL')} is not set in your configuration"
+    if P2_PLACEHOLDER in TECHNITIUM2_BASE:
+        return f"{_name(_p2, 'URL')} still has the default placeholder value. Update it in your compose.yaml"
+    if not (TECHNITIUM2_BASE.startswith("http://") or TECHNITIUM2_BASE.startswith("https://")):
+        return f"{_name(_p2, 'URL')} must start with http:// or https://"
+    if not (TECHNITIUM2_TOKEN or (TECHNITIUM2_USER and TECHNITIUM2_PASSWORD)):
+        return f"{p2_name_cap('technitium', 'Technitium')} needs {_name(_p2, 'TOKEN')}, or {_name(_p2, 'USER')} and {_name(_p2, 'PASSWORD')}"
+    if http_client:
+        return await probe_p2(http_client)
     return None

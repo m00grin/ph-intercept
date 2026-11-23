@@ -1,6 +1,11 @@
-"""ph-intercept - DNS game (Pi-hole, AdGuard Home, and Technitium)."""
+"""ph-intercept - DNS game (Pi-hole, AdGuard Home, Technitium, and Blocky)."""
 
 import asyncio
+import json
+import logging
+import os
+import sys
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -8,74 +13,299 @@ import httpx
 from starlette.applications import Starlette
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, StreamingResponse
+from starlette.exceptions import HTTPException
+from starlette.responses import HTMLResponse, JSONResponse, PlainTextResponse, StreamingResponse
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
 from core.config import (
     BG_MODE, BG_IMAGE, PROVIDER, READ_ONLY, RETURN_URL, SKY_PRESET, SKY_PRESETS,
-    HIDE_CLIENT, HIDE_DOMAIN,
+    HIDE_CLIENT, HIDE_DOMAIN, SIDE1, SIDE2, RESOLVED, DASHBOARD_OVERRIDE,
     TWO_PLAYER_LOCAL_CONFIGURED, TWO_PLAYER_ENABLED, P2_DASHBOARD, P2_VERIFY_SSL,
-    PIHOLE2_URL, PIHOLE2_PASSWORD,
-    ADGUARD2_BASE, ADGUARD2_USERNAME, ADGUARD2_PASSWORD,
-    TECHNITIUM2_BASE, TECHNITIUM2_TOKEN, TECHNITIUM2_USER, TECHNITIUM2_PASSWORD,
 )
+from core import banner as _banner
+from core import config as _config
+from core import settings as _settings
+from core.detect import identify
 from core.multiplayer import get_status as mp_status, set_mode as mp_set_mode
+from core.providers import Slot, p2_config_error, surface
 
-if PROVIDER == "adguard":
-    from core.config import ADGUARD_DASHBOARD as _DASHBOARD, ADGUARD_VERIFY_SSL as _VERIFY_SSL
-    from core.adguard import (
-        add_ws_client, get_stats, query_poller, remove_ws_client,
-        reset_watermark, toggle_blocking, trigger_filter_update, drop_session,
-    )
-elif PROVIDER == "technitium":
-    from core.config import TECHNITIUM_DASHBOARD as _DASHBOARD, TECHNITIUM_VERIFY_SSL as _VERIFY_SSL
-    from core.technitium import (
-        add_ws_client, get_stats, query_poller, remove_ws_client,
-        reset_watermark, toggle_blocking, trigger_filter_update, drop_session,
-    )
+logger = logging.getLogger("ph-intercept")
+_COLOR = _banner.COLOR
+
+# Dashboard link and TLS verification for the primary instance, per provider.
+_P1_SETTINGS = {
+    "pihole": ("PIHOLE_DASHBOARD", "PIHOLE_VERIFY_SSL"),
+    "adguard": ("ADGUARD_DASHBOARD", "ADGUARD_VERIFY_SSL"),
+    "technitium": ("TECHNITIUM_DASHBOARD", "TECHNITIUM_VERIFY_SSL"),
+    "blocky": ("BLOCKY_DASHBOARD", "BLOCKY_VERIFY_SSL"),
+}
+
+
+def _p1_settings(provider: str) -> tuple[str, bool]:
+    dash_name, ssl_name = _P1_SETTINGS.get(provider, _P1_SETTINGS["pihole"])
+    return DASHBOARD_OVERRIDE[1] or getattr(_config, dash_name), getattr(_config, ssl_name)
+
+
+# A legacy side has its provider at import and runs exactly as before 1.6. A
+# BLOCKER_* side goes through a Slot, bound once startup has confirmed (or
+# detected) which server answers.
+if SIDE1.style == "legacy":
+    _DASHBOARD, _VERIFY_SSL = _p1_settings(PROVIDER)
+    _P1 = surface(PROVIDER, 1)
 else:
-    from core.config import PIHOLE_DASHBOARD as _DASHBOARD, PIHOLE_VERIFY_SSL as _VERIFY_SSL
-    from core.pihole import (
-        add_ws_client, remove_ws_client, reset_watermark, toggle_blocking, drop_session, query_poller,
-        get_pihole_stats as get_stats, trigger_gravity_update as trigger_filter_update,
-    )
+    _DASHBOARD, _VERIFY_SSL = ("", _config.neutral_verify(1)) if not SIDE1.provider else _p1_settings(SIDE1.provider)
+    _P1 = Slot(1)
 
+# Module-level names, so route handlers (and tests) see one shape for every provider.
+get_stats = _P1.get_stats
+toggle_blocking = _P1.toggle_blocking
+trigger_filter_update = _P1.trigger_filter_update
+query_poller = _P1.query_poller
+add_ws_client = _P1.add_ws_client
+remove_ws_client = _P1.remove_ws_client
+reset_watermark = _P1.reset_watermark
+drop_session = _P1.drop_session
+
+_P2_DASHBOARD = P2_DASHBOARD
+_P2_VERIFY_SSL = P2_VERIFY_SSL
+_P2_KNOWN = SIDE2.style == "legacy" and bool(SIDE2.provider)
 if TWO_PLAYER_LOCAL_CONFIGURED:
-    # The second instance mirrors the primary provider.
-    if PROVIDER == "adguard":
-        from core.adguard import (
-            add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark,
-            get_p2_stats, drop_p2_session, query_p2_poller,
-            toggle_p2_blocking, trigger_p2_gravity_update,
-        )
-    elif PROVIDER == "technitium":
-        from core.technitium import (
-            add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark,
-            get_p2_stats, drop_p2_session, query_p2_poller,
-            toggle_p2_blocking, trigger_p2_gravity_update,
-            probe_p2 as technitium_probe_p2,
-        )
-    else:
-        from core.pihole import (
-            add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark,
-            get_p2_pihole_stats as get_p2_stats, drop_p2_session, query_p2_poller,
-            toggle_p2_blocking, trigger_p2_gravity_update,
-        )
+    _P2 = surface(SIDE2.provider, 2) if _P2_KNOWN else Slot(2)
+    get_p2_stats = _P2.get_stats
+    toggle_p2_blocking = _P2.toggle_blocking
+    trigger_p2_gravity_update = _P2.trigger_filter_update
+    query_p2_poller = _P2.query_poller
+    add_p2_ws_client = _P2.add_ws_client
+    remove_p2_ws_client = _P2.remove_ws_client
+    reset_p2_watermark = _P2.reset_watermark
+    drop_p2_session = _P2.drop_session
+else:
+    _P2 = None
 
 _http_client: httpx.AsyncClient | None = None
 _http_client2: httpx.AsyncClient | None = None
 
 
+def _side_provider(slot: int) -> str:
+    target = _P1 if slot == 1 else _P2
+    if isinstance(target, Slot):
+        return target.provider or ""
+    if slot == 1:
+        return PROVIDER
+    return SIDE2.provider or ""
+
+
+def _secret_state(provider: str, slot: int, fld: str) -> str:
+    name = _settings.legacy_name(provider, slot, fld)
+    return "set" if RESOLVED.env.get(name, "") else "not set"
+
+
+def _report_side(slot: int, status: str = "") -> None:
+    side = SIDE1 if slot == 1 else SIDE2
+    if slot == 2 and not TWO_PLAYER_LOCAL_CONFIGURED:
+        logger.info(_banner.side(2, "not configured", color=_COLOR))
+        return
+    provider = _side_provider(slot)
+    target = _P1 if slot == 1 else _P2
+    if not provider:
+        err = target.error if isinstance(target, Slot) else None
+        logger.info(_banner.side(slot, f"not started: {err}" if err else "waiting for the ad-blocker", color=_COLOR))
+        _spoke(slot)
+        return
+    style = (f"{_settings.neutral_prefix(slot)}_* settings" if side.style == "new"
+             else f"{_settings.SPEC[provider]['prefix']}{'' if slot == 1 else '2'}_* settings")
+    url = _settings.display_url(RESOLVED.env.get(_settings.legacy_name(provider, slot, "url"), "")) or "(default)"
+    creds = [f"{fld} {_secret_state(provider, slot, fld)}"
+             for fld in ("username", "password", "token") if fld in _settings.SPEC[provider]["fields"]]
+    logger.info(_banner.side(slot, _settings.NAMES[provider], url, status, color=_COLOR))
+    logger.info(_banner.detail(", ".join([style, *creds]), color=_COLOR))
+    for note in side.notes:
+        logger.info(_banner.detail(note, color=_COLOR))
+    for name in _settings.unused_fields(side, RESOLVED.source):
+        logger.info(_banner.detail(f"{name} isn't needed for {_settings.NAMES[provider]}, so it's ignored", color=_COLOR))
+    _spoke(slot)
+
+
+# Detection retries: quick at first, since on a first boot the ad-blocker is usually seconds from ready.
+_FIRST_RETRY, _MAX_RETRY = 1.0, 15.0
+# While still waiting: a reminder after 1 minute, then 2, 4, 8, ... and at most every 15 minutes.
+_FIRST_REMINDER, _MAX_REMINDER_GAP = 60.0, 900.0
+_monotonic = time.monotonic
+# Player 2's lines wait for player 1's first one (at most a few seconds), so the report reads in order.
+_P1_SPOKE = asyncio.Event()
+
+
+def _spoke(slot: int) -> None:
+    if slot == 1:
+        _P1_SPOKE.set()
+
+
+async def _after_p1(step):
+    try:
+        await asyncio.wait_for(_P1_SPOKE.wait(), 5.0)
+    except TimeoutError:
+        pass
+    result = step()
+    if asyncio.iscoroutine(result):
+        await result
+
+
+async def _settle(slot: int, client: httpx.AsyncClient) -> None:
+    """Confirm or detect a BLOCKER_* side's provider, then bind it. Strict: a
+    config error or a server that matches no provider (or several) is reported
+    and the side stays off; only an unreachable server is retried."""
+    global _DASHBOARD, _VERIFY_SSL, _P2_DASHBOARD, _P2_VERIFY_SSL
+    side = SIDE1 if slot == 1 else SIDE2
+    target: Slot = _P1 if slot == 1 else _P2
+    if side.error:
+        target.fail(side.error)
+        logger.error(_banner.problem(slot, f"not started: {side.error}", _COLOR))
+        _spoke(slot)
+        return
+    delay, waiting_since, remind_at, last_reason = _FIRST_RETRY, None, _FIRST_REMINDER, ""
+    status = ""
+    while True:
+        found, reason = await identify(client, side.root)
+        if side.provider and (found in (None, side.provider)) and reason != "adguard-setup":
+            status = "confirmed" if found else ""
+            if found is None:
+                logger.info(_banner.side(slot, f"could not confirm {_settings.NAMES[side.provider]} at "
+                                               f"{_settings.display_url(side.root)} ({reason}); using it as configured",
+                                         color=_COLOR))
+            break
+        if side.provider and found and found != side.provider:
+            msg = (f"{_settings.neutral_prefix(slot)}_TYPE says {side.provider}, but "
+                   f"{_settings.display_url(side.root)} answers like {_settings.NAMES[found]}")
+            target.fail(msg)
+            logger.error(_banner.problem(slot, f"not started: {msg}", _COLOR))
+            _spoke(slot)
+            return
+        if found:
+            side.provider = found
+            status = "detected"
+            break
+        if reason == "certificate":
+            msg = (f"{_settings.display_url(side.root)} has an HTTPS certificate this container doesn't trust. For a self-signed "
+                   f"certificate, set {_settings.neutral_prefix(slot)}_VERIFY_SSL to false")
+            target.fail(msg)
+            logger.error(_banner.problem(slot, f"not started: {msg}", _COLOR))
+            _spoke(slot)
+            return
+        if reason not in ("unreachable", "adguard-setup"):
+            msg = (f"could not tell which ad-blocker is at {_settings.display_url(side.root)}: {reason}. "
+                   f"Check {_settings.neutral_prefix(slot)}_URL, or set {_settings.neutral_prefix(slot)}_TYPE")
+            target.fail(msg)
+            logger.error(_banner.problem(slot, f"not started: {msg}", _COLOR))
+            _spoke(slot)
+            return
+        url = _settings.display_url(side.root)
+        setting_up = reason == "adguard-setup"
+        what = (f"AdGuard Home at {url} to finish its setup (open it in a browser)" if setting_up
+                else f"{url} to answer")
+        target.fail(f"waiting for {what}")
+        if waiting_since is None or reason != last_reason:
+            # Normal on a first boot: the ad-blocker's container is often still starting.
+            waiting_since = waiting_since or _monotonic()
+            logger.info(_banner.side(slot, f"waiting for {what}", color=_COLOR))
+            _spoke(slot)
+        elif _monotonic() - waiting_since >= remind_at:
+            still = (f"AdGuard Home at {url} still hasn't finished its setup" if setting_up
+                     else f"still no answer from {url}")
+            logger.warning(_banner.problem(slot, f"{still} after {_banner.elapsed(remind_at)}", _COLOR))
+            remind_at += min(remind_at, _MAX_REMINDER_GAP)
+        last_reason = reason
+        await asyncio.sleep(delay)
+        delay = min(delay * 1.5, _MAX_RETRY)
+    if waiting_since is not None and status:
+        status = f"{status} after {_banner.elapsed(_monotonic() - waiting_since)}"
+    err = _settings.credential_error(side, RESOLVED.env)
+    if err:
+        target.fail(err)
+        logger.error(_banner.problem(slot, f"not started: {err}", _COLOR))
+        _spoke(slot)
+        return
+    if slot == 1:
+        _DASHBOARD, _VERIFY_SSL = _p1_settings(side.provider)
+    else:
+        _, _P2_DASHBOARD, _P2_VERIFY_SSL = _config.p2_settings(side.provider)
+    target.bind(side.provider)
+    if slot == 1 and isinstance(_P2, Slot) and SIDE2.style == "legacy":
+        SIDE2.provider = side.provider
+        _, _P2_DASHBOARD, _P2_VERIFY_SSL = _config.p2_settings(side.provider)
+        _P2.bind(side.provider)
+        _report_side(slot, status)
+        _report_side(2)
+        return
+    _report_side(slot, status)
+
+
+async def _p2_validate(http_client) -> str | None:
+    if isinstance(_P2, Slot) and not _P2.provider:
+        return f"Player 2 isn't ready: {_P2.error or 'waiting for the ad-blocker'}"
+    return await p2_config_error(_side_provider(2) or "pihole")(http_client)
+
+
+_MAX_REPLY = 64 * 1024 * 1024   # far above any real reply (AdGuard's filter status with a huge rule list included)
+
+
+class _CappedStream(httpx.AsyncByteStream):
+    def __init__(self, stream):
+        self._stream = stream
+
+    async def __aiter__(self):
+        total = 0
+        async for chunk in self._stream:
+            total += len(chunk)
+            if total > _MAX_REPLY:
+                raise httpx.ReadError(f"reply larger than {_MAX_REPLY // (1024 * 1024)} MB")
+            yield chunk
+
+    async def aclose(self) -> None:
+        await self._stream.aclose()
+
+
+class _CappedTransport(httpx.AsyncBaseTransport):
+    """Wraps a transport so no reply is read past _MAX_REPLY bytes."""
+
+    def __init__(self, inner: httpx.AsyncBaseTransport):
+        self._inner = inner
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        response = await self._inner.handle_async_request(request)
+        response.stream = _CappedStream(response.stream)
+        return response
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
+
+
+def _client(verify: bool) -> httpx.AsyncClient:
+    return httpx.AsyncClient(timeout=1.5, headers={"User-Agent": "ph-intercept"}, verify=verify,
+                             transport=_CappedTransport(httpx.AsyncHTTPTransport(verify=verify)))
+
+
 @asynccontextmanager
 async def lifespan(_app):
     global _http_client, _http_client2
-    _http_client = httpx.AsyncClient(timeout=1.5, headers={"User-Agent": "ph-intercept"}, verify=_VERIFY_SSL)
+    _http_client = _client(_VERIFY_SSL)
     tasks = [asyncio.create_task(query_poller(_http_client))]
     if TWO_PLAYER_LOCAL_CONFIGURED:
-        _http_client2 = httpx.AsyncClient(timeout=1.5, headers={"User-Agent": "ph-intercept"}, verify=P2_VERIFY_SSL)
+        _http_client2 = _client(_P2_VERIFY_SSL)
         tasks.append(asyncio.create_task(query_p2_poller(_http_client2)))
+    for line in _banner.lines(_COLOR, _config.LOG_LEVEL):
+        logger.info(line)
+    for note in RESOLVED.notes:
+        logger.warning(note)
+    if isinstance(_P1, Slot):
+        tasks.append(asyncio.create_task(_settle(1, _http_client)))
+    else:
+        _report_side(1)
+    if isinstance(_P2, Slot) and SIDE2.style == "new":
+        tasks.append(asyncio.create_task(_after_p1(lambda: _settle(2, _http_client2))))
+    elif _P2 is None or not isinstance(_P2, Slot):
+        tasks.append(asyncio.create_task(_after_p1(lambda: _report_side(2))))
     yield
     for t in tasks:
         t.cancel()
@@ -127,9 +357,17 @@ def _is_cross_site_write(request: Request) -> bool:
     return False
 
 
+_MAX_BODY = 64 * 1024
+
+
 async def _json_body(request: Request) -> dict | None:
+    raw = b""
+    async for chunk in request.stream():
+        raw += chunk
+        if len(raw) > _MAX_BODY:
+            raise HTTPException(413)
     try:
-        body = await request.json()
+        body = json.loads(raw)
     except Exception:
         return None
     return body if isinstance(body, dict) else None
@@ -139,15 +377,36 @@ def _bad_body() -> JSONResponse:
     return JSONResponse({"error": "request body must be a JSON object"}, status_code=400)
 
 
+def _too_big(request: Request) -> bool:
+    try:
+        return int(request.headers.get("content-length", "0")) > _MAX_BODY
+    except ValueError:
+        return True
+
+
+class _OptionalStaticFiles(StaticFiles):
+    """/bg is a folder the user may or may not mount: missing means 404, not 500."""
+
+    async def check_config(self) -> None:
+        if self.directory is not None and os.path.isdir(self.directory):
+            await super().check_config()
+
+
 class ResponseHeaderMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         if _is_cross_site_write(request):
             response = JSONResponse({"error": "cross-site request refused"}, status_code=403)
         elif READ_ONLY and request.method == "POST":
-            # Every POST route changes the DNS server or the 2-player mode.
+            # Every POST route changes the ad-blocker or the 2-player mode.
             response = JSONResponse({"error": "read-only mode"}, status_code=403)
+        elif _too_big(request):
+            response = JSONResponse({"error": "request body too large"}, status_code=413)
         else:
-            response = await call_next(request)
+            try:
+                response = await call_next(request)
+            except Exception:
+                logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+                response = PlainTextResponse("Internal Server Error", status_code=500)
         response.headers["X-Content-Type-Options"] = "nosniff"
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Content-Security-Policy"] = _CSP
@@ -159,13 +418,24 @@ class ResponseHeaderMiddleware(BaseHTTPMiddleware):
         return response
 
 
+async def _await_settled(target, seconds: float = 3.0) -> None:
+    if isinstance(target, Slot) and not target.provider and not target.error:
+        try:
+            await asyncio.wait_for(target.bound.wait(), seconds)
+        except TimeoutError:
+            pass
+
+
 async def index(request: Request) -> HTMLResponse:
     preset = SKY_PRESETS.get(SKY_PRESET, SKY_PRESETS["summer_triangle"])
+    await _await_settled(_P1)
+    await _await_settled(_P2)
     return templates.TemplateResponse(request, "index.html", {
         "bg_mode": BG_MODE,
-        "provider": PROVIDER,
+        "provider": _side_provider(1),
+        "p2_provider": _side_provider(2),
         "pihole_dashboard": _DASHBOARD,
-        "p2_dashboard": P2_DASHBOARD,
+        "p2_dashboard": _P2_DASHBOARD,
         "two_player_enabled": TWO_PLAYER_ENABLED,
         "read_only": READ_ONLY,
         "hide_client": HIDE_CLIENT,
@@ -183,11 +453,18 @@ async def index(request: Request) -> HTMLResponse:
     })
 
 
+def _with_provider(target, payload: dict) -> JSONResponse:
+    # A BLOCKER_* side reports its provider, so a page loaded before detection can refresh.
+    if isinstance(target, Slot) and target.provider:
+        payload["provider"] = target.provider
+    return JSONResponse(payload)
+
+
 async def pihole_stats(_request: Request) -> JSONResponse:
     data = await get_stats(_http_client)
     if not data:
-        return JSONResponse({})
-    return JSONResponse({
+        return _with_provider(_P1, {})
+    return _with_provider(_P1, {
         "percent":     data.get("percent"),
         "queries":     data.get("queries"),
         "blocked":     data.get("blocked"),
@@ -217,79 +494,10 @@ async def two_player_status(_request: Request) -> JSONResponse:
     return JSONResponse(mp_status(TWO_PLAYER_LOCAL_CONFIGURED))
 
 
-_P2_PLACEHOLDER = "CHANGE.ME"
-
-
 async def _p2_config_error() -> str | None:
     """Validate the second-instance config and probe reachability for the active
     provider. Returns an error string, or None when the instance is usable."""
-    if PROVIDER == "adguard":
-        if not ADGUARD2_BASE:
-            return "ADGUARD2_URL is not set in your configuration"
-        if _P2_PLACEHOLDER in ADGUARD2_BASE:
-            return "ADGUARD2_URL still has the default placeholder value. Update it in your compose.yaml"
-        if not (ADGUARD2_BASE.startswith("http://") or ADGUARD2_BASE.startswith("https://")):
-            return "ADGUARD2_URL must start with http:// or https://"
-        if not ADGUARD2_PASSWORD:
-            return "ADGUARD2_PASSWORD is not set in your configuration"
-        if _http_client2:
-            try:
-                resp = await _http_client2.get(
-                    f"{ADGUARD2_BASE}/status",
-                    auth=(ADGUARD2_USERNAME, ADGUARD2_PASSWORD),
-                )
-                if resp.status_code == 401:
-                    return "AdGuard 2 authentication failed. Check ADGUARD2_USERNAME and ADGUARD2_PASSWORD"
-                if resp.status_code != 200:
-                    return "Could not reach AdGuard 2. Check ADGUARD2_URL"
-            except Exception:
-                return "Could not reach AdGuard 2. Check ADGUARD2_URL"
-        return None
-
-    if PROVIDER == "technitium":
-        if not TECHNITIUM2_BASE:
-            return "TECHNITIUM2_URL is not set in your configuration"
-        if _P2_PLACEHOLDER in TECHNITIUM2_BASE:
-            return "TECHNITIUM2_URL still has the default placeholder value. Update it in your compose.yaml"
-        if not (TECHNITIUM2_BASE.startswith("http://") or TECHNITIUM2_BASE.startswith("https://")):
-            return "TECHNITIUM2_URL must start with http:// or https://"
-        if not (TECHNITIUM2_TOKEN or (TECHNITIUM2_USER and TECHNITIUM2_PASSWORD)):
-            return "Technitium 2 needs TECHNITIUM2_TOKEN, or TECHNITIUM2_USER and TECHNITIUM2_PASSWORD"
-        if _http_client2:
-            return await technitium_probe_p2(_http_client2)
-        return None
-
-    if not PIHOLE2_URL:
-        return "PIHOLE2_URL is not set in your configuration"
-    if _P2_PLACEHOLDER in PIHOLE2_URL:
-        return "PIHOLE2_URL still has the default placeholder value. Update it in your compose.yaml"
-    if not (PIHOLE2_URL.startswith("http://") or PIHOLE2_URL.startswith("https://")):
-        return "PIHOLE2_URL must start with http:// or https://"
-    if not PIHOLE2_PASSWORD:
-        return "PIHOLE2_PASSWORD is not set in your configuration"
-    if _http_client2:
-        try:
-            resp = await _http_client2.post(
-                f"{PIHOLE2_URL}/auth",
-                json={"password": PIHOLE2_PASSWORD},
-            )
-            session = resp.json().get("session", {})
-        except Exception:
-            return "Could not reach Pi-hole 2. Check PIHOLE2_URL"
-        if resp.status_code == 429:
-            return "Pi-hole 2 is rate-limiting logins. Wait a few seconds and try again"
-        if not session.get("valid"):
-            return "Pi-hole 2 authentication failed. Check PIHOLE2_PASSWORD"
-        if session.get("sid"):
-            try:
-                await _http_client2.delete(
-                    f"{PIHOLE2_URL}/auth",
-                    headers={"X-FTL-SID": session["sid"]},
-                    timeout=0.5,
-                )
-            except Exception:
-                pass
-    return None
+    return await _p2_validate(_http_client2)
 
 
 async def two_player_set_mode(request: Request) -> JSONResponse:
@@ -312,8 +520,8 @@ async def pihole2_stats(_request: Request) -> JSONResponse:
         return JSONResponse({})
     data = await get_p2_stats(_http_client2)
     if not data:
-        return JSONResponse({})
-    return JSONResponse({
+        return _with_provider(_P2, {})
+    return _with_provider(_P2, {
         "percent":     data.get("percent"),
         "queries":     data.get("queries"),
         "blocked":     data.get("blocked"),
@@ -324,16 +532,21 @@ async def pihole2_stats(_request: Request) -> JSONResponse:
     })
 
 
-async def pihole2_events(request: Request) -> StreamingResponse:
-    if not TWO_PLAYER_LOCAL_CONFIGURED:
-        return StreamingResponse(iter([]), media_type="text/event-stream")
+_SSE_MAX = 100   # live-event connections per side; a tab holds one per side, and closed tabs are released
+_SSE_OPEN = {1: set(), 2: set()}
+
+
+def _event_stream(slot: int, add, remove, reset):
+    if len(_SSE_OPEN[slot]) >= _SSE_MAX:
+        return JSONResponse({"error": "too many live connections"}, status_code=503)
 
     async def generate():
         q: asyncio.Queue = asyncio.Queue(maxsize=60)
-        add_p2_ws_client(q)
-        reset_p2_watermark()
-        yield ": ok\n\n"
+        _SSE_OPEN[slot].add(q)
         try:
+            add(q)
+            reset()
+            yield ": ok\n\n"
             while True:
                 payload = await q.get()
                 if payload is None:
@@ -342,13 +555,20 @@ async def pihole2_events(request: Request) -> StreamingResponse:
         except asyncio.CancelledError:
             pass
         finally:
-            remove_p2_ws_client(q)
+            remove(q)
+            _SSE_OPEN[slot].discard(q)
 
     return StreamingResponse(
         generate(),
         media_type="text/event-stream",
         headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
     )
+
+
+async def pihole2_events(request: Request) -> StreamingResponse:
+    if not TWO_PLAYER_LOCAL_CONFIGURED:
+        return StreamingResponse(iter([]), media_type="text/event-stream")
+    return _event_stream(2, add_p2_ws_client, remove_p2_ws_client, reset_p2_watermark)
 
 
 async def pihole_gravity_update(request: Request) -> JSONResponse:
@@ -379,27 +599,7 @@ async def pihole2_gravity_update(_request: Request) -> JSONResponse:
 
 
 async def pihole_events(request: Request) -> StreamingResponse:
-    async def generate():
-        q: asyncio.Queue = asyncio.Queue(maxsize=60)
-        add_ws_client(q)
-        reset_watermark()
-        yield ": ok\n\n"
-        try:
-            while True:
-                payload = await q.get()
-                if payload is None:
-                    break
-                yield f"data: {payload}\n\n"
-        except asyncio.CancelledError:
-            pass
-        finally:
-            remove_ws_client(q)
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
-    )
+    return _event_stream(1, add_ws_client, remove_ws_client, reset_watermark)
 
 
 app = Starlette(
@@ -417,7 +617,7 @@ app = Starlette(
         Route("/api/pihole2/gravity-update", pihole2_gravity_update, methods=["POST"]),
         Route("/api/pihole2/events", pihole2_events),
         Mount("/static", StaticFiles(directory=_base / "static"), name="static"),
-        Mount("/bg", StaticFiles(directory=_base / "static" / "bg", check_dir=False), name="bg"),
+        Mount("/bg", _OptionalStaticFiles(directory=_base / "static" / "bg", check_dir=False), name="bg"),
     ],
 )
 app.add_middleware(ResponseHeaderMiddleware)

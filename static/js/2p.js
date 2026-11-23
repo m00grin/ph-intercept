@@ -53,11 +53,14 @@
     </div>`;
 
     if (!off) {
-      const _p2Name = window.PROVIDER === 'adguard' ? 'ADGUARD'
-                    : window.PROVIDER === 'technitium' ? 'TECHNITIUM'
+      const _p2p = window.P2_PROVIDER === undefined ? window.PROVIDER : window.P2_PROVIDER;
+      const _p2Name = _p2p === 'adguard' ? 'ADGUARD'
+                    : _p2p === 'technitium' ? 'TECHNITIUM'
+                    : _p2p === 'blocky' ? 'BLOCKY'
+                    : _p2p === '' ? 'AD-BLOCKER'
                     : 'PI-HOLE';
       h += `<div class="m2p-divider"></div>
-      <div class="m2p-info">SECOND ${_p2Name} CONNECTED</div>`;
+      <div class="m2p-info">${_p2p === (window.PROVIDER || 'pihole') ? `SECOND ${_p2Name} CONNECTED` : `PLAYER 2: ${_p2Name} CONNECTED`}</div>`;
     }
 
     if (_error) {

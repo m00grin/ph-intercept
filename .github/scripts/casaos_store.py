@@ -36,11 +36,8 @@ ID_RE = re.compile(r"^(?=[a-z0-9._-]*\.)[a-z0-9]+(?:[._-][a-z0-9]+)*$")
 SEMVER = re.compile(r"\d+\.\d+\.\d+")
 ENV_NAME = re.compile(r"\b[A-Z][A-Z0-9]*_[A-Z0-9_]*[A-Z0-9]\b")
 SECRET = re.compile(r"PASSWORD|TOKEN|TOTP")
-USER_SUPPLIED = {"PIHOLE_URL", "ADGUARD_URL", "TECHNITIUM_URL"}
-ESSENTIAL = {
-    "PROVIDER", "PIHOLE_URL", "PIHOLE_PASSWORD", "ADGUARD_URL", "ADGUARD_USERNAME", "ADGUARD_PASSWORD",
-    "TECHNITIUM_URL", "TECHNITIUM_TOKEN", "BG_IMAGE",
-}
+USER_SUPPLIED = {"PIHOLE_URL", "ADGUARD_URL", "TECHNITIUM_URL", "BLOCKER_URL"}
+ESSENTIAL = {"BLOCKER_URL", "BLOCKER_PASSWORD", "BLOCKER_USERNAME", "BLOCKER_TOKEN", "BG_IMAGE"}
 MIB = 1024 * 1024
 
 
@@ -262,8 +259,9 @@ def check() -> list[str]:
         default = env_code.get(name)
         if name in env_code and default is not None and name not in USER_SUPPLIED and value.lower() != default.strip().lower():
             errors.append(f"{name}: value {value!r} differs from the code default {default!r}")
-    providers = set(re.findall(r'"(\w+)"', required(r"PROVIDER not in \(([^)]*)\)", config_py, "the PROVIDER list").group(1)))
-    if env.get("PROVIDER") not in providers:
+    settings_py = (ROOT / "core" / "settings.py").read_text()
+    providers = set(re.findall(r'"(\w+)"', required(r"^PROVIDERS = \(([^)]*)\)", settings_py, "the PROVIDERS list", re.M).group(1)))
+    if "PROVIDER" in env and env["PROVIDER"] not in providers:
         errors.append(f"PROVIDER: {env.get('PROVIDER')!r} is not one of {sorted(providers)}")
     skies = set(re.findall(r'^\s*"(\w+)":', required(r"SKY_PRESETS = \{(.*?)\n\}", config_py, "SKY_PRESETS", re.S).group(1), re.M))
     if "SKY_PRESET" in env and env["SKY_PRESET"] not in skies:
@@ -286,7 +284,7 @@ def check() -> list[str]:
         for name in sorted(set(ENV_NAME.findall(body)) - set(env)):
             errors.append(f"{where}: mentions {name}, which is not in the install form")
     for where in ("description", "tips"):
-        for name in ("PROVIDER", "PIHOLE_URL", "ADGUARD_URL", "TECHNITIUM_URL"):
+        for name in ("BLOCKER_URL", "BLOCKER_PASSWORD", "BLOCKER_USERNAME", "BLOCKER_TOKEN"):
             if name not in prose[where]:
                 errors.append(f"{where}: setup steps should mention {name}")
     for link in re.findall(r"\]\((https://github\.com/m00grin/ph-intercept[^)]*)\)", prose["description"]):
