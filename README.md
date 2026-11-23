@@ -139,6 +139,12 @@ services:
 
     read_only: true
 
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
     ports:
       # Host port : container port. Change the left side if 4653 is taken
       - "4653:4653"
@@ -469,7 +475,7 @@ It starts with the banner and a line per player. After that, ph-intercept logs o
 
 The same lines name `PIHOLE_URL`, `ADGUARD_PASSWORD`, and so on if you use the [older settings](#older-settings). In 2-player mode the second side logs as `P2`, pointing at the `BLOCKER2_*` settings.
 
-The log is a few lines per start plus problems, so it needs no rotation settings. If you leave `LOG_LEVEL: debug` on for a long time, Docker's [log rotation](https://docs.docker.com/engine/logging/drivers/json-file/) keeps it in check.
+The example compose's `logging:` block caps the log at three files of 10 MB, so even `LOG_LEVEL: debug` left on can't fill the disk.
 
 ---
 

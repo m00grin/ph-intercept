@@ -89,6 +89,12 @@ services:
 
     read_only: true
 
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
     ports:
       # Host port : container port. Change the left side if 4673 is taken
       - "4673:4653"
